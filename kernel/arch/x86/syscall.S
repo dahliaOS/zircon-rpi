@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT
 
 #include <asm.h>
+#include <arch/x86/mmu.h>
 #include <arch/x86/mp.h>
 #include <zircon/zx-syscall-numbers.h>
 
@@ -298,6 +299,13 @@ FUNCTION_LABEL(x86_syscall)
     push_value %r11 /* user RFLAGS */
     push_value %rcx /* user RIP */
 
+    /* switch to kPML4 */
+    BEGIN_KPTI_ASPACE_SWITCH(kpml4_switch)
+    mov %cr3, %r11
+    andq $~USER_PML4_BIT, %r11
+    mov %r11, %cr3
+    END_KPTI_ASPACE_SWITCH(kpml4_switch)
+
     // Any changes to the stack here need to be reflected in
     // pre_push and post_pop macros above to maintain alignment.
     // Verify the syscall is in range and jump to it.
@@ -321,7 +329,7 @@ FUNCTION_LABEL(x86_syscall)
     pop_value %r11 /* user RFLAGS */
 
     /* zero out trashed arg registers */
-    xorl    %edi, %edi
+    /* Don't zero %rdi yet -- it will be used for the PML4 swap later */
     xorl    %esi, %esi
     /* Don't zero %rdx yet -- it contains the "is_signaled" indicator */
     xorl    %r10d, %r10d
@@ -341,6 +349,15 @@ FUNCTION_LABEL(x86_syscall)
 
     /* restore the user stack */
     pop_value %rsp
+
+    /* switch back to uPML4, using rdi since it will need to be zeroed out as trashed anyway */
+    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
+    mov %cr3, %rdi
+    orq $USER_PML4_BIT, %rdi
+    mov %rdi, %cr3
+    END_KPTI_ASPACE_SWITCH(upml4_switch)
+
+    xor %edi, %edi
 
     /* put the user gs back */
     swapgs

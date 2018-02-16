@@ -6,6 +6,7 @@
 
 #include <asm.h>
 #include <arch/x86/descriptor.h>
+#include <arch/x86/mmu.h>
 
 // x86_uspace_entry(uintptr_t arg1, uintptr_t arg2, uintptr_t sp, uintptr_t pc, uint64_t rflags)
 FUNCTION(x86_uspace_entry)
@@ -32,11 +33,21 @@ FUNCTION(x86_uspace_entry)
     xorl %r12d, %r12d
     xorl %r13d, %r13d
     xorl %r14d, %r14d
-    xorl %r15d, %r15d
+    // Don't clear r15 until after we use it as scratch space below
 
     // We do not need to clear extended register state, since the kernel only
     // uses the general purpose registers, and the extended state is initialized
     // to a cleared state.
+
+    // switch to uPML4
+    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
+    mov %cr3, %r15
+    orq $USER_PML4_BIT, %r15
+    mov %r15, %cr3
+    END_KPTI_ASPACE_SWITCH(upml4_switch)
+
+    // Clear the last of the registers
+    xorl %r15d, %r15d
 
     swapgs
 

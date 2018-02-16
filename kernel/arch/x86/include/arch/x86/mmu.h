@@ -9,6 +9,7 @@
 #pragma once
 
 #include <arch/x86/page_tables/constants.h>
+#include <lib/code_patching.h>
 
 /* top level defines for the x86 mmu */
 /* NOTE: the top part can be included from assembly */
@@ -76,6 +77,15 @@
 #define PFEX_I      (1<<4)
 #define PFEX_PK     (1<<5)
 #define PFEX_SGX    (1<<15)
+
+/* When set in PML4, indicates that a PML4 is a uPML4 rather than a kPML4. */
+#define USER_PML4_BIT 0x1000
+
+/* helpers codepatching KPTI address space switching in kernel entry points */
+#define BEGIN_KPTI_ASPACE_SWITCH(label) .L ## label :
+#define END_KPTI_ASPACE_SWITCH(label) \
+        .L ## label ## _end: \
+        APPLY_CODE_PATCH_FUNC_WITH_DEFAULT(x86_kpti_codepatch, .L ## label, .L ## label ## _end - .L ## label)
 
 /* C defines below */
 #ifndef __ASSEMBLER__

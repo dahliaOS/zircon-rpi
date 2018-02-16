@@ -38,8 +38,12 @@ int g_enable_isolation = -1;
 /* True if the system supports 1GB pages */
 static bool supports_huge_pages = false;
 
-/* top level kernel page tables, initialized in start.S */
-volatile pt_entry_t pml4[NO_OF_PT_ENTRIES] __ALIGNED(PAGE_SIZE);
+/* top level kernel page tables, initialized in start.S
+ * Note that pml4 is 8K aligned rather than 4K aligned, to simplify TLB
+ * invalidation handling for PTI.  If we did not 8K align it, we would need to
+ * special-case the kernel PML4 for TLB invalidation operations.
+ * */
+volatile pt_entry_t pml4[NO_OF_PT_ENTRIES] __ALIGNED(2 * PAGE_SIZE);
 volatile pt_entry_t pdp[NO_OF_PT_ENTRIES] __ALIGNED(PAGE_SIZE); /* temporary */
 volatile pt_entry_t pte[NO_OF_PT_ENTRIES] __ALIGNED(PAGE_SIZE);
 
@@ -141,6 +145,11 @@ static void TlbInvalidatePage_task(void* raw_context) {
     TlbInvalidatePage_context* context = (TlbInvalidatePage_context*)raw_context;
 
     ulong cr3 = x86_get_cr3();
+    if (g_enable_isolation == 1) {
+        // Mask out the kPML4 bit, so that we will invalidate from both the
+        // kPML4 and the uPML4.
+        cr3 &= ~X86PageTableMmu::kUserPml4Bit;
+    }
     if (context->target_cr3 != cr3 && !context->pending->contains_global) {
         /* This invalidation doesn't apply to this CPU, ignore it */
         return;
@@ -338,6 +347,18 @@ uint X86PageTableMmu::pt_flags_to_mmu_flags(PtFlags flags, PageTableLevel level)
     return mmu_flags;
 }
 
+void X86PageTableMmu::Pml4EChanged(size_t idx) {
+    if (!x86_kpti_is_enabled()) {
+        return;
+    }
+
+    // Check if the modified entry corresponds to the userspace entries shared
+    // between the two PML4s, and if so, mirror the change.
+    if (idx < NO_OF_PT_ENTRIES / 2) {
+        virt_[NO_OF_PT_ENTRIES + idx] = virt_[idx];
+    }
+}
+
 bool X86PageTableEpt::allowed_flags(uint flags) {
     if (!(flags & ARCH_MMU_FLAG_PERM_READ)) {
         return false;
@@ -452,9 +473,7 @@ void x86_mmu_early_init() {
 }
 
 void x86_mmu_init(void) {
-    g_enable_isolation = cmdline_get_bool("kernel.pti.enable", true);
-    printf("Kernel PTI %s\n", g_enable_isolation ? "enabled" : "disabled");
-
+    DEBUG_ASSERT(g_enable_isolation != -1);
     // All other CPUs will do this in x86_mmu_percpu_init
     if (g_enable_isolation) {
         disable_global_pages();
@@ -463,7 +482,88 @@ void x86_mmu_init(void) {
 
 // We disable analysis due to the write to |pages_| tripping it up.  It is safe
 // to write to |pages_| since this is part of object construction.
+zx_status_t X86PageTableMmu::Init(void* ctx) TA_NO_THREAD_SAFETY_ANALYSIS {
+    size_t pages_needed;
+    paddr_t pa;
+
+    // allocate a top level page table for the new address space
+    if (x86_kpti_is_enabled()) {
+        // If we're using page table isolation, we need to allocate kPML4 and
+        // uPML4.
+        pages_needed = 2;
+        list_node pages = LIST_INITIAL_VALUE(pages);
+        size_t allocated = pmm_alloc_contiguous(pages_needed, PMM_ALLOC_FLAG_KMAP,
+                                                PAGE_SIZE_SHIFT + 1, &pa, &pages);
+        if (allocated != pages_needed) {
+            pmm_free(&pages);
+            TRACEF("error allocating top level page directory\n");
+            return ZX_ERR_NO_MEMORY;
+        }
+
+        while (!list_is_empty(&pages)) {
+            vm_page_t* p = list_remove_head_type(&pages, vm_page_t, free.node);
+            p->state = VM_PAGE_STATE_MMU;
+        }
+    } else {
+        pages_needed = 1;
+        vm_page_t* p = pmm_alloc_page(PMM_ALLOC_FLAG_KMAP, &pa);
+        if (!p) {
+            TRACEF("error allocating top level page directory\n");
+            return ZX_ERR_NO_MEMORY;
+        }
+        p->state = VM_PAGE_STATE_MMU;
+    }
+
+    phys_ = pa;
+    virt_ = static_cast<pt_entry_t*>(paddr_to_physmap(pa));
+    pages_ = pages_needed;
+    ctx_ = ctx;
+
+    // TODO(abdulla): Remove when PMM returns pre-zeroed pages.
+    for (size_t i = 0; i < pages_needed; ++i) {
+        arch_zero_page(reinterpret_cast<void*>(
+                reinterpret_cast<uintptr_t>(virt_) + i * PAGE_SIZE));
+    }
+
+    return AliasKernelMappings();
+}
+
+void X86PageTableMmu::Destroy(vaddr_t base, size_t size) {
+#if LK_DEBUGLEVEL > 1
+    pt_entry_t* table = static_cast<pt_entry_t*>(virt_);
+    uint start = VADDR_TO_PML4_INDEX(base);
+    uint end = VADDR_TO_PML4_INDEX(base + size - 1);
+
+    // Don't check start if that table is shared with another aspace.
+    if (!IS_ALIGNED(base, 1ull << PML4_SHIFT)) {
+        start += 1;
+    }
+    // Do check the end if it fills out the table entry.
+    if (!IS_ALIGNED(base + size, 1ull << PML4_SHIFT)) {
+        end += 1;
+    }
+
+    for (uint i = start; i < end; ++i) {
+        DEBUG_ASSERT(!IS_PAGE_PRESENT(table[i]));
+    }
+#endif
+
+    list_node pages = LIST_INITIAL_VALUE(pages);
+    vm_page_t* page = paddr_to_vm_page(phys_);
+    list_add_tail(&pages, &page->free.node);
+    if (x86_kpti_is_enabled()) {
+        page = paddr_to_vm_page(phys_ + PAGE_SIZE);
+        list_add_tail(&pages, &page->free.node);
+    }
+    pmm_free(&pages);
+    phys_ = 0;
+}
+
+// We disable analysis due to the write to |pages_| tripping it up.  It is safe
+// to write to |pages_| since this is part of object construction.
 zx_status_t X86PageTableMmu::InitKernel(void* ctx) TA_NO_THREAD_SAFETY_ANALYSIS {
+    DEBUG_ASSERT(IS_ALIGNED(kernel_pt_phys, 2 * PAGE_SIZE));
+
     phys_ = kernel_pt_phys;
     virt_ = (pt_entry_t*)X86_PHYS_TO_VIRT(phys_);
     ctx_ = ctx;
@@ -473,10 +573,25 @@ zx_status_t X86PageTableMmu::InitKernel(void* ctx) TA_NO_THREAD_SAFETY_ANALYSIS 
 }
 
 zx_status_t X86PageTableMmu::AliasKernelMappings() {
-    // Copy the kernel portion of it from the master kernel pt.
+    // Copy the kernel portion of it from the master kernel pt.  Note that if
+    // PTI is enabled, this is only copied to the kPML4.
     memcpy(virt_ + NO_OF_PT_ENTRIES / 2,
            const_cast<pt_entry_t*>(&KERNEL_PT[NO_OF_PT_ENTRIES / 2]),
            sizeof(pt_entry_t) * NO_OF_PT_ENTRIES / 2);
+
+    DEBUG_ASSERT(g_enable_isolation != -1);
+    if (x86_kpti_is_enabled()) {
+        // TODO(teisenbe): Remove this copy of the kernel mappings so we can
+        // lock down which entries are mapped in the uPML4.
+        memcpy(virt_ + NO_OF_PT_ENTRIES + NO_OF_PT_ENTRIES / 2,
+               const_cast<pt_entry_t*>(&KERNEL_PT[NO_OF_PT_ENTRIES / 2]),
+               sizeof(pt_entry_t) * NO_OF_PT_ENTRIES / 2);
+
+        // If PTI is enabled, the uPML4 needs enough mappings to let the kernel swap
+        // to the kPML4.
+        // TODO(teisenbe): Copy those over
+    }
+
     return ZX_OK;
 }
 
@@ -518,11 +633,6 @@ zx_status_t X86ArchVmAspace::Init(vaddr_t base, size_t size, uint mmu_flags) {
         pt_ = mmu;
 
         zx_status_t status = mmu->Init(this);
-        if (status != ZX_OK) {
-            return status;
-        }
-
-        status = mmu->AliasKernelMappings();
         if (status != ZX_OK) {
             return status;
         }
@@ -640,6 +750,22 @@ void x86_mmu_percpu_init(void) {
     uint64_t efer_msr = read_msr(X86_MSR_IA32_EFER);
     efer_msr |= X86_EFER_NXE;
     write_msr(X86_MSR_IA32_EFER, efer_msr);
+}
+
+extern "C" {
+
+// Patch out the KPTI CR3 switches if isolation is disabled
+void x86_kpti_codepatch(const CodePatchInfo* patch) {
+    g_enable_isolation = cmdline_get_bool("kernel.pti.enable", true);
+    printf("Kernel PTI %s\n", g_enable_isolation ? "enabled" : "disabled");
+
+    DEBUG_ASSERT(g_enable_isolation != -1);
+    static const uint8_t kNopInstruction = 0x90;
+    if (!x86_kpti_is_enabled()) {
+        memset(patch->dest_addr, kNopInstruction, patch->dest_size);
+    }
+}
+
 }
 
 X86ArchVmAspace::~X86ArchVmAspace() {
