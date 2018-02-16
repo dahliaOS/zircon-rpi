@@ -7,6 +7,7 @@
 #include <asm.h>
 #include <arch/x86/descriptor.h>
 #include <arch/x86/iframe.h>
+#include <arch/x86/mmu.h>
 
 // x86_uspace_entry(x86_iframe_t* iframe)
 FUNCTION(x86_uspace_entry)
@@ -44,6 +45,13 @@ FUNCTION(x86_uspace_entry)
     // fs.base and gs.base values or the extended register state might have
     // been set via thread_write_state while the thread was suspended before
     // entering userspace and those values should be preserved.
+
+    // switch to uPML4
+    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
+    movq %cr3, %rax
+    orq $USER_PML4_BIT, %rax
+    movq %rax, %cr3
+    END_KPTI_ASPACE_SWITCH(upml4_switch)
 
     swapgs
     iretq

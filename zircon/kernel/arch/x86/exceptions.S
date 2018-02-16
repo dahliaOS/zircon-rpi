@@ -9,6 +9,7 @@
 
 #include <asm.h>
 #include <arch/x86/descriptor.h>
+#include <arch/x86/mmu.h>
 
 #define NUM_INT 256
 
@@ -95,18 +96,27 @@ FUNCTION_LABEL(interrupt_common)
        assume that the direction flag is unset. */
     cld
 
+    /* save r15 early so we have a scratch register */
+    push_reg %r15
+
     /* Check to see if we came from user space by testing the PL of the
      * CS register that was saved on the stack automatically. Check for != 0.
      */
-    testb $3, 0x18(%rsp)
-    jz    1f
+    testb $3, 0x20(%rsp)
+    jz    .Lsave_registers
 
     /* swap gs to kernel space */
     swapgs
 
-1:
-    /* save general purpose registers */
-    push_reg %r15
+    /* switch to kPML4 */
+    BEGIN_KPTI_ASPACE_SWITCH(kpml4_switch)
+    mov %cr3, %r15
+    andq $~USER_PML4_BIT, %r15
+    mov %r15, %cr3
+    END_KPTI_ASPACE_SWITCH(kpml4_switch)
+
+.Lsave_registers:
+    /* save general purpose registers; r15 was already saved, above */
     push_reg %r14
     push_reg %r13
     push_reg %r12
@@ -146,16 +156,25 @@ interrupt_common_iframe_set_up_for_debugger:
     pop_reg %r12
     pop_reg %r13
     pop_reg %r14
-    pop_reg %r15
+    /* don't restore r15 until after we switch cr3, so we have a scratch register */
 
     /* check if we're returning to user space as per before */
-    testb $3, 0x18(%rsp)
-    jz    1f
+    testb $3, 0x20(%rsp)
+    jz    .Lfinish_restore_frame
+
+    /* switch back to uPML4 */
+    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
+    mov %cr3, %r15
+    orq $USER_PML4_BIT, %r15
+    mov %r15, %cr3
+    END_KPTI_ASPACE_SWITCH(upml4_switch)
 
     /* swap gs back to user space */
     swapgs
 
-1:
+.Lfinish_restore_frame:
+    pop_reg %r15
+
     /* drop vector number and error code*/
     add_to_sp 16
 
