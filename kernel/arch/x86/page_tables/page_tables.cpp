@@ -266,6 +266,10 @@ void X86PageTableBase::UpdateEntry(ConsistencyManager* cm, PageTableLevel level,
     *pte = paddr | flags | X86_MMU_PG_P;
     cm->cache_line_flusher()->FlushPtEntry(pte);
 
+    if (unlikely(level == PML4_L)) {
+        Pml4EChanged((vaddr >> PML4_SHIFT) & (NO_OF_PT_ENTRIES - 1));
+    }
+
     /* attempt to invalidate the page */
     if (IS_PAGE_PRESENT(olde)) {
         // TODO(teisenbe): the is_kernel_address should be a check for the
@@ -282,6 +286,10 @@ void X86PageTableBase::UnmapEntry(ConsistencyManager* cm, PageTableLevel level, 
 
     *pte = 0;
     cm->cache_line_flusher()->FlushPtEntry(pte);
+
+    if (unlikely(level == PML4_L)) {
+        Pml4EChanged((vaddr >> PML4_SHIFT) & (NO_OF_PT_ENTRIES - 1));
+    }
 
     /* attempt to invalidate the page */
     if (IS_PAGE_PRESENT(olde)) {

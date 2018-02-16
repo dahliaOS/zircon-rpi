@@ -116,6 +116,11 @@ protected:
     virtual PtFlags split_flags(PageTableLevel level, PtFlags flags) = 0;
     // Execute the given pending invalidation
     virtual void TlbInvalidate(PendingTlbInvalidation* pending) = 0;
+    // Invoked whenever a PML4 entry is changed by Map/Unmap/Protect.
+    // |idx| indicates which entry in the PML4 was changed.  It is guaranteed
+    // that this will be called for a mapping before TlbInvalidate.  This may
+    // be used for implementing mirroring of parts of an address space.
+    virtual void Pml4EChanged(size_t idx) { }
 
     // Convert PtFlags to ARCH_MMU_* flags.
     virtual uint pt_flags_to_mmu_flags(PtFlags flags, PageTableLevel level) = 0;
