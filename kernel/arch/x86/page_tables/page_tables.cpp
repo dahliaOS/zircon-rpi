@@ -1045,3 +1045,32 @@ void X86PageTableBase::Destroy(vaddr_t base, size_t size) {
     pmm_free_page(paddr_to_vm_page(phys_));
     phys_ = 0;
 }
+
+X86PageTableBase::X86PageTableBase() {
+}
+
+X86PageTableBase::~X86PageTableBase() {
+    DEBUG_ASSERT_MSG(!phys_, "page table dtor called before Destroy()");
+}
+
+// We disable analysis due to the write to |pages_| tripping it up.  It is safe
+// to write to |pages_| since this is part of object construction.
+zx_status_t X86PageTableBase::Init(void* ctx) TA_NO_THREAD_SAFETY_ANALYSIS {
+    /* allocate a top level page table for the new address space */
+    paddr_t pa;
+    vm_page_t* p = pmm_alloc_page(PMM_ALLOC_FLAG_KMAP, &pa);
+    if (!p) {
+        TRACEF("error allocating top level page directory\n");
+        return ZX_ERR_NO_MEMORY;
+    }
+    virt_ = reinterpret_cast<pt_entry_t*>(paddr_to_physmap(pa));
+    phys_ = pa;
+    p->state = VM_PAGE_STATE_MMU;
+
+    // TODO(abdulla): Remove when PMM returns pre-zeroed pages.
+    arch_zero_page(virt_);
+
+    ctx_ = ctx;
+    pages_ = 1;
+    return ZX_OK;
+}
