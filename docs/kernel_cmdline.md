@@ -194,6 +194,12 @@ kernel thread should sleep between checks.
 The `k oom info` command will show the current value of this and other
 parameters.
 
+## kernel.pti.enable=\<bool>
+
+This option only effects x86 systems.  If set to true (the default), this
+enables page table isolation, a mitigation for the Meltdown vulnerability (AKA
+CVE-2017-5754).
+
 ## kernel.mexec-pci-shutdown=\<bool>
 
 If false, this option leaves PCI devices running when calling mexec. Defaults

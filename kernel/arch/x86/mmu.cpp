@@ -16,6 +16,7 @@
 #include <arch/x86/feature.h>
 #include <arch/x86/mmu.h>
 #include <arch/x86/mmu_mem_types.h>
+#include <kernel/cmdline.h>
 #include <kernel/mp.h>
 #include <vm/arch_vm_aspace.h>
 #include <vm/physmap.h>
@@ -30,6 +31,9 @@
  * newer versions fetched below */
 uint8_t g_vaddr_width = 48;
 uint8_t g_paddr_width = 32;
+
+/* 1 if page table isolation should be used, 0 if not.  -1 if uninitialized. */
+int g_enable_isolation = -1;
 
 /* True if the system supports 1GB pages */
 static bool supports_huge_pages = false;
@@ -417,6 +421,10 @@ uint X86PageTableEpt::pt_flags_to_mmu_flags(PtFlags flags, PageTableLevel level)
     return mmu_flags;
 }
 
+static void disable_global_pages() {
+    x86_set_cr4(x86_get_cr4() & ~X86_CR4_PGE);
+}
+
 void x86_mmu_early_init() {
     x86_mmu_percpu_init();
 
@@ -443,7 +451,15 @@ void x86_mmu_early_init() {
     LTRACEF("paddr_width %u vaddr_width %u\n", g_paddr_width, g_vaddr_width);
 }
 
-void x86_mmu_init(void) {}
+void x86_mmu_init(void) {
+    g_enable_isolation = cmdline_get_bool("kernel.pti.enable", true);
+    printf("Kernel PTI %s\n", g_enable_isolation ? "enabled" : "disabled");
+
+    // All other CPUs will do this in x86_mmu_percpu_init
+    if (g_enable_isolation) {
+        disable_global_pages();
+    }
+}
 
 // We disable analysis due to the write to |pages_| tripping it up.  It is safe
 // to write to |pages_| since this is part of object construction.
@@ -598,18 +614,26 @@ zx_status_t X86ArchVmAspace::Query(vaddr_t vaddr, paddr_t* paddr, uint* mmu_flag
 
 void x86_mmu_percpu_init(void) {
     ulong cr0 = x86_get_cr0();
-    /* Set write protect bit in CR0*/
+    // Set write protect bit in CR0
     cr0 |= X86_CR0_WP;
     // Clear Cache disable/not write-through bits
     cr0 &= ~(X86_CR0_NW | X86_CR0_CD);
     x86_set_cr0(cr0);
 
-    /* Setting the SMEP & SMAP bit in CR4 */
+    // Setting the SMEP & SMAP bit in CR4
     ulong cr4 = x86_get_cr4();
-    if (x86_feature_test(X86_FEATURE_SMEP))
+    if (x86_feature_test(X86_FEATURE_SMEP)) {
         cr4 |= X86_CR4_SMEP;
-    if (x86_feature_test(X86_FEATURE_SMAP))
+    }
+    if (x86_feature_test(X86_FEATURE_SMAP)) {
         cr4 |= X86_CR4_SMAP;
+    }
+
+    // Explicitly check that this is 1, since if this is CPU 0, this may not be
+    // initialized yet.
+    if (g_enable_isolation == 1) {
+        disable_global_pages();
+    }
     x86_set_cr4(cr4);
 
     // Set NXE bit in X86_MSR_IA32_EFER.
