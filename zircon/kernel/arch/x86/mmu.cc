@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <err.h>
+#include <lib/code_patching.h>
 #include <lib/counters.h>
 #include <string.h>
 #include <trace.h>
@@ -802,3 +803,16 @@ template class X86PageTableBase<pmm_alloc_page>;
 extern page_alloc_fn_t test_page_alloc_fn;
 template class X86ArchVmAspace<test_page_alloc_fn>;
 template class X86PageTableBase<test_page_alloc_fn>;
+
+extern "C" {
+
+// Patch out the KPTI CR3 switches if isolation is disabled
+void x86_kpti_codepatch(const CodePatchInfo* patch) {
+//  DEBUG_ASSERT(g_enable_isolation != -1);
+  static const uint8_t kNopInstruction = 0x90;
+  if (!x86_kpti_is_enabled()) {
+    memset(patch->dest_addr, kNopInstruction, patch->dest_size);
+  }
+}
+
+}

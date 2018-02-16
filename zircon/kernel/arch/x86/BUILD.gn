@@ -155,6 +155,7 @@ library("x86") {
 
     # <arch/x86/apic.h> has #include <dev/interrupt.h>.
     "$zx/kernel/dev/interrupt:headers",
+    "$zx/kernel/lib/code_patching",
   ]
 }
 
@@ -164,6 +165,7 @@ source_set("syscall") {
   ]
   deps = [
     "$zx/kernel/syscalls:syscall-abi",
+    "$zx/kernel/lib/code_patching",
   ]
 }
 
