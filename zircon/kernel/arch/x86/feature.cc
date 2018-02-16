@@ -13,6 +13,7 @@
 
 #include <arch/ops.h>
 #include <arch/x86/cpuid.h>
+#include <arch/x86/mmu.h>
 #include <arch/x86/platform_access.h>
 #include <fbl/algorithm.h>
 
@@ -413,6 +414,9 @@ void x86_feature_debug(void) {
     printf("mds ");
   if (g_x86_feature_pcid_good)
     printf("pcid_good ");
+  if (x86_kpti_is_enabled()) {
+    printf("pti_enabled ");
+  }
   printf("\n");
 }
 
