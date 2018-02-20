@@ -165,40 +165,6 @@ static void TlbInvalidatePage_task(void* raw_context) {
     }
 }
 
-/**
- * @brief Execute a queued TLB invalidation
- *
- * @param pt The page table we're invalidating for (if nullptr, assume for current one)
- * @param pending The planned invalidation
- */
-static void x86_tlb_invalidate_page(const X86PageTableBase* pt, PendingTlbInvalidation* pending) {
-    if (pending->count == 0) {
-        return;
-    }
-
-    ulong cr3 = pt ? pt->phys() : x86_get_cr3();
-    struct TlbInvalidatePage_context task_context = {
-        .target_cr3 = cr3, .pending = pending,
-    };
-
-    /* Target only CPUs this aspace is active on.  It may be the case that some
-     * other CPU will become active in it after this load, or will have left it
-     * just before this load.  In the former case, it is becoming active after
-     * the write to the page table, so it will see the change.  In the latter
-     * case, it will get a spurious request to flush. */
-    mp_ipi_target_t target;
-    cpu_mask_t target_mask = 0;
-    if (pending->contains_global || pt == nullptr) {
-        target = MP_IPI_TARGET_ALL;
-    } else {
-        target = MP_IPI_TARGET_MASK;
-        target_mask = static_cast<X86ArchVmAspace*>(pt->ctx())->active_cpus();
-    }
-
-    mp_sync_exec(target, target_mask, TlbInvalidatePage_task, &task_context);
-    pending->clear();
-}
-
 bool X86PageTableMmu::check_paddr(paddr_t paddr) {
     return x86_mmu_check_paddr(paddr);
 }
@@ -297,7 +263,31 @@ X86PageTableBase::PtFlags X86PageTableMmu::split_flags(PageTableLevel level,
 }
 
 void X86PageTableMmu::TlbInvalidate(PendingTlbInvalidation* pending) {
-    x86_tlb_invalidate_page(this, pending);
+    if (pending->count == 0) {
+        return;
+    }
+
+    ulong cr3 = phys();
+    struct TlbInvalidatePage_context task_context = {
+        .target_cr3 = cr3, .pending = pending,
+    };
+
+    /* Target only CPUs this aspace is active on.  It may be the case that some
+     * other CPU will become active in it after this load, or will have left it
+     * just before this load.  In the former case, it is becoming active after
+     * the write to the page table, so it will see the change.  In the latter
+     * case, it will get a spurious request to flush. */
+    mp_ipi_target_t target;
+    cpu_mask_t target_mask = 0;
+    if (pending->contains_global) {
+        target = MP_IPI_TARGET_ALL;
+    } else {
+        target = MP_IPI_TARGET_MASK;
+        target_mask = static_cast<X86ArchVmAspace*>(ctx())->active_cpus();
+    }
+
+    mp_sync_exec(target, target_mask, TlbInvalidatePage_task, &task_context);
+    pending->clear();
 }
 
 uint X86PageTableMmu::pt_flags_to_mmu_flags(PtFlags flags, PageTableLevel level) {
@@ -434,9 +424,7 @@ void x86_mmu_early_init() {
 
     // Unmap the lower identity mapping.
     pml4[0] = 0;
-    PendingTlbInvalidation tlb;
-    tlb.enqueue(0, PML4_L, /* global */ false, /* terminal */ false);
-    x86_tlb_invalidate_page(nullptr, &tlb);
+    x86_tlb_global_invalidate();
 
     /* get the address width from the CPU */
     uint8_t vaddr_width = x86_linear_address_width();
