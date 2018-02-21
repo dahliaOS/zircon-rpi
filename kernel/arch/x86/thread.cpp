@@ -91,7 +91,15 @@ __NO_SAFESTACK __attribute__((target("fsgsbase"))) void arch_context_switch(thre
     //printf("cs 0x%llx\n", kstack_top);
 
     /* set the tss SP0 value to point at the top of our stack */
-    x86_set_tss_sp(newthread->stack_top);
+    if (x86_kpti_is_enabled()) {
+        struct x86_percpu* percpu = x86_get_percpu();
+        percpu->kernel_stack_top = newthread->stack_top;
+        x86_set_tss_sp(reinterpret_cast<uintptr_t>(
+                percpu->leaked.trampoline_stack + TRAMPOLINE_STACK_SIZE));
+
+    } else {
+        x86_set_tss_sp(newthread->stack_top);
+    }
 
     /* Save the user fs_base register value.  The new rdfsbase instruction
      * is much faster than reading the MSR, so use the former in

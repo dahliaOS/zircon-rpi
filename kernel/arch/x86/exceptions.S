@@ -10,6 +10,7 @@
 #include <asm.h>
 #include <arch/x86/descriptor.h>
 #include <arch/x86/mmu.h>
+#include <arch/x86/mp.h>
 
 #define NUM_INT 256
 
@@ -79,11 +80,15 @@ DATA(_isr_table)
 def_isr
 .endr
 
+/* The size of the the frame made by hardware + the _isr_* entry points */
+#define INT_FRAME_QUADS 7
+#define INT_FRAME_SIZE (INT_FRAME_QUADS * 8)
+
 FUNCTION_LABEL(interrupt_common)
     .cfi_startproc simple
     .cfi_signal_frame
     /* Set CFA for an interrupt frame. */
-    .cfi_def_cfa %rsp, 7 * 8 /* hw + _isr_* push this many values */
+    .cfi_def_cfa %rsp, INT_FRAME_SIZE /* hw + _isr_* push this many values */
     .cfi_offset %rip, -(5 * 8)
     /* Mark each reg as having the same value as from the "calling" frame.
        This is the default state for callee-saved registers, but for completeness
@@ -96,27 +101,46 @@ FUNCTION_LABEL(interrupt_common)
        assume that the direction flag is unset. */
     cld
 
-    /* save r15 early so we have a scratch register */
-    push_reg %r15
-
     /* Check to see if we came from user space by testing the PL of the
      * CS register that was saved on the stack automatically. Check for != 0.
      */
-    testb $3, 0x20(%rsp)
+    testb $3, 0x18(%rsp)
     jz    .Lsave_registers
 
     /* swap gs to kernel space */
     swapgs
 
-    /* switch to kPML4 */
-    BEGIN_KPTI_ASPACE_SWITCH(kpml4_switch)
-    mov %cr3, %r15
-    andq $~USER_PML4_BIT, %r15
-    mov %r15, %cr3
-    END_KPTI_ASPACE_SWITCH(kpml4_switch)
+    BEGIN_KPTI_ASPACE_SWITCH(pti_entry)
+    /* switch to kPML4, clobbering rsp.  We clobber rsp, rather than spilling, because any
+     * spilled register will be leaked to someone exploiting Meltdown.  rsp is safe to clobber
+     * because it is a known value and will be recovered via gs later. */
+    mov %cr3, %rsp
+    andq $~USER_PML4_BIT, %rsp
+    mov %rsp, %cr3
+
+    /* switch to the real kernel stack */
+    mov %gs:PERCPU_KERNEL_STACK_TOP_OFFSET, %rsp
+    sub $INT_FRAME_SIZE, %rsp /* reserve space for the to-be-copied interrupt frame */
+
+    /* copy the interrupt frame from the trampoline stack to the real stack */
+    push_reg %rsi
+    push_reg %rdi
+    push_reg %rcx
+
+    lea 0x18(%rsp), %rdi /* Skip past the saved rcx, rdi, and rsi on the stack */
+    mov %gs:PERCPU_KERNEL_ENTRY_SP_OFFSET, %rsi /* this should be the trampoline stack */
+    sub $INT_FRAME_SIZE, %rsi /* The interrupt frame should be this large */
+    mov $INT_FRAME_QUADS, %rcx
+    rep movsq
+
+    pop_reg %rcx
+    pop_reg %rdi
+    pop_reg %rsi
+    END_KPTI_ASPACE_SWITCH(pti_entry)
 
 .Lsave_registers:
-    /* save general purpose registers; r15 was already saved, above */
+    /* save general purpose registers */
+    push_reg %r15
     push_reg %r14
     push_reg %r13
     push_reg %r12
@@ -156,24 +180,42 @@ interrupt_common_iframe_set_up_for_debugger:
     pop_reg %r12
     pop_reg %r13
     pop_reg %r14
-    /* don't restore r15 until after we switch cr3, so we have a scratch register */
+    pop_reg %r15
 
     /* check if we're returning to user space as per before */
-    testb $3, 0x20(%rsp)
+    testb $3, 0x18(%rsp)
     jz    .Lfinish_restore_frame
 
+    BEGIN_KPTI_ASPACE_SWITCH(pti_exit)
+    /* copy interrupt frame to trampoline stack */
+    push_reg %rsi
+    push_reg %rdi
+    push_reg %rcx
+
+    lea 0x18(%rsp), %rsi /* Skip past the saved rcx, rdi, and rsi on the stack */
+    mov %gs:PERCPU_KERNEL_ENTRY_SP_OFFSET, %rdi /* this should be the trampoline stack */
+    sub $INT_FRAME_SIZE, %rdi /* The interrupt frame should be this large */
+    mov $INT_FRAME_QUADS, %rcx
+    rep movsq
+
+    pop_reg %rcx
+    pop_reg %rdi
+    pop_reg %rsi
+
     /* switch back to uPML4 */
-    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
-    mov %cr3, %r15
-    orq $USER_PML4_BIT, %r15
-    mov %r15, %cr3
-    END_KPTI_ASPACE_SWITCH(upml4_switch)
+    mov %cr3, %rsp
+    orq $USER_PML4_BIT, %rsp
+    mov %rsp, %cr3
+
+    /* switch to trampoline stack */
+    mov %gs:PERCPU_KERNEL_ENTRY_SP_OFFSET, %rsp
+    sub $INT_FRAME_SIZE, %rsp
+    END_KPTI_ASPACE_SWITCH(pti_exit)
 
     /* swap gs back to user space */
     swapgs
 
 .Lfinish_restore_frame:
-    pop_reg %r15
 
     /* drop vector number and error code*/
     add_to_sp 16

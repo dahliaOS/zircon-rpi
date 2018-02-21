@@ -24,7 +24,7 @@
 
 void x86_reset_tss_io_bitmap(void) {
     DEBUG_ASSERT(arch_ints_disabled());
-    tss_t* tss = &x86_get_percpu()->default_tss;
+    tss_t* tss = &x86_get_percpu()->leaked.default_tss;
     auto tss_bitmap = reinterpret_cast<unsigned long*>(tss->tss_bitmap);
 
     bitmap_set(tss_bitmap, 0, IO_BITMAP_BITS);
@@ -32,7 +32,7 @@ void x86_reset_tss_io_bitmap(void) {
 
 static void x86_clear_tss_io_bitmap(const bitmap::RleBitmap& bitmap) {
     DEBUG_ASSERT(arch_ints_disabled());
-    tss_t* tss = &x86_get_percpu()->default_tss;
+    tss_t* tss = &x86_get_percpu()->leaked.default_tss;
 
     auto tss_bitmap = reinterpret_cast<unsigned long*>(tss->tss_bitmap);
     for (const auto& extent : bitmap) {
@@ -51,7 +51,7 @@ void x86_clear_tss_io_bitmap(IoBitmap& io_bitmap) {
 
 static void x86_set_tss_io_bitmap(const bitmap::RleBitmap& bitmap) {
     DEBUG_ASSERT(arch_ints_disabled());
-    tss_t* tss = &x86_get_percpu()->default_tss;
+    tss_t* tss = &x86_get_percpu()->leaked.default_tss;
 
     auto tss_bitmap = reinterpret_cast<unsigned long*>(tss->tss_bitmap);
     for (const auto& extent : bitmap) {
@@ -149,7 +149,7 @@ int IoBitmap::SetIoBitmap(uint32_t port, uint32_t len, bool enable) {
         IoBitmap& current = GetCurrent();
         if (this == &current) {
             // Set the io bitmap in the tss (the tss IO bitmap has reversed polarity)
-            tss_t* tss = &x86_get_percpu()->default_tss;
+            tss_t* tss = &x86_get_percpu()->leaked.default_tss;
             if (enable) {
                 bitmap_clear(reinterpret_cast<unsigned long*>(tss->tss_bitmap), port, len);
             } else {

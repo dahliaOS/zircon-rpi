@@ -290,21 +290,23 @@ FUNCTION_LABEL(x86_syscall)
     mov     %rsp, %gs:PERCPU_SAVED_USER_SP_OFFSET
 
     /* load the kernel stack pointer */
-    mov     %gs:PERCPU_KERNEL_SP_OFFSET, %rsp
+    mov     %gs:PERCPU_KERNEL_ENTRY_SP_OFFSET, %rsp
     .cfi_def_cfa %rsp, 0
+
+    BEGIN_KPTI_ASPACE_SWITCH(pti_entry)
+    /* switch to kPML4, clobbering rsp */
+    mov %cr3, %rsp
+    andq $~USER_PML4_BIT, %rsp
+    mov %rsp, %cr3
+
+    /* load the real kernel stack pointer */
+    mov %gs:PERCPU_KERNEL_STACK_TOP_OFFSET, %rsp
+    END_KPTI_ASPACE_SWITCH(pti_entry)
 
     /* save away the user stack pointer */
     push_value %gs:PERCPU_SAVED_USER_SP_OFFSET
-
     push_value %r11 /* user RFLAGS */
     push_value %rcx /* user RIP */
-
-    /* switch to kPML4 */
-    BEGIN_KPTI_ASPACE_SWITCH(kpml4_switch)
-    mov %cr3, %r11
-    andq $~USER_PML4_BIT, %r11
-    mov %r11, %cr3
-    END_KPTI_ASPACE_SWITCH(kpml4_switch)
 
     // Any changes to the stack here need to be reflected in
     // pre_push and post_pop macros above to maintain alignment.
@@ -351,11 +353,11 @@ FUNCTION_LABEL(x86_syscall)
     pop_value %rsp
 
     /* switch back to uPML4, using rdi since it will need to be zeroed out as trashed anyway */
-    BEGIN_KPTI_ASPACE_SWITCH(upml4_switch)
+    BEGIN_KPTI_ASPACE_SWITCH(pti_exit)
     mov %cr3, %rdi
     orq $USER_PML4_BIT, %rdi
     mov %rdi, %cr3
-    END_KPTI_ASPACE_SWITCH(upml4_switch)
+    END_KPTI_ASPACE_SWITCH(pti_exit)
 
     xor %edi, %edi
 

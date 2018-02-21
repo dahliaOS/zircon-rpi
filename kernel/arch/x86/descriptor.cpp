@@ -33,7 +33,7 @@ struct task_desc {
 void x86_initialize_percpu_tss(void) {
     struct x86_percpu* percpu = x86_get_percpu();
     uint cpu_num = percpu->cpu_num;
-    tss_t* tss = &percpu->default_tss;
+    tss_t* tss = &percpu->leaked.default_tss;
     memset(tss, 0, sizeof(*tss));
 
     /* zeroed out TSS is okay for now */
@@ -49,13 +49,13 @@ void x86_initialize_percpu_tss(void) {
 }
 
 static void x86_tss_assign_ists(struct x86_percpu* percpu, tss_t* tss) {
-    tss->ist1 = (uintptr_t)&percpu->interrupt_stacks[0] + PAGE_SIZE;
-    tss->ist2 = (uintptr_t)&percpu->interrupt_stacks[1] + PAGE_SIZE;
-    tss->ist3 = (uintptr_t)&percpu->interrupt_stacks[2] + PAGE_SIZE;
+    tss->ist1 = (uintptr_t)&percpu->leaked.interrupt_stacks[0] + PAGE_SIZE;
+    tss->ist2 = (uintptr_t)&percpu->leaked.interrupt_stacks[1] + PAGE_SIZE;
+    tss->ist3 = (uintptr_t)&percpu->leaked.interrupt_stacks[2] + PAGE_SIZE;
 }
 
 void x86_set_tss_sp(vaddr_t sp) {
-    tss_t* tss = &x86_get_percpu()->default_tss;
+    tss_t* tss = &x86_get_percpu()->leaked.default_tss;
     tss->rsp0 = sp;
 }
 

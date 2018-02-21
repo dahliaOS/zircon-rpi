@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <arch/defines.h>
+
 /* describes the per cpu structure pointed to by gs: in the kernel */
 
 /* offsets into this structure, used by assembly */
@@ -14,14 +16,17 @@
 #define PERCPU_CURRENT_THREAD_OFFSET   0x8
 //      ZX_TLS_STACK_GUARD_OFFSET      0x10
 //      ZX_TLS_UNSAFE_SP_OFFSET        0x18
-#define PERCPU_SAVED_USER_SP_OFFSET    0x20
+#define PERCPU_KERNEL_STACK_TOP_OFFSET 0x20
 #define PERCPU_IN_IRQ_OFFSET           0x28
 #define PERCPU_GPF_RETURN_OFFSET       0x40
 #define PERCPU_CPU_NUM_OFFSET          0x48
-#define PERCPU_DEFAULT_TSS_OFFSET      0x50
+#define PERCPU_SAVED_USER_SP_OFFSET    PAGE_SIZE
+#define PERCPU_DEFAULT_TSS_OFFSET      (PERCPU_SAVED_USER_SP_OFFSET + 16)
 
 /* offset of default_tss.rsp0 */
-#define PERCPU_KERNEL_SP_OFFSET        (PERCPU_DEFAULT_TSS_OFFSET + 4)
+#define PERCPU_KERNEL_ENTRY_SP_OFFSET (PERCPU_DEFAULT_TSS_OFFSET + 4)
+
+#define TRAMPOLINE_STACK_SIZE 64
 
 #ifndef __ASSEMBLER__
 
@@ -40,6 +45,22 @@ __BEGIN_CDECLS
 
 struct thread;
 
+struct x86_percpu_leaked {
+    /* temporarily saved during a syscall */
+    uintptr_t saved_user_sp;
+
+    /* This CPU's default TSS */
+    tss_t default_tss __ALIGNED(16);
+
+    /* The kernel stack used as part of the trampoline for switching to the kPML4
+     * when PTI is enabled.  It is cache aligned so that when we copy an interrupt frame
+     * from the trampoline stack to the real stack, we only need to touch one cache line. */
+    uint8_t trampoline_stack[TRAMPOLINE_STACK_SIZE] __CPU_ALIGN;
+
+    /* Reserved space for interrupt stacks */
+    uint8_t interrupt_stacks[NUM_ASSIGNED_IST_ENTRIES][PAGE_SIZE] __ALIGNED(16);
+};
+
 struct x86_percpu {
     /* a direct pointer to ourselves */
     struct x86_percpu *direct;
@@ -52,8 +73,9 @@ struct x86_percpu {
     uintptr_t stack_guard;
     uintptr_t kernel_unsafe_sp;
 
-    /* temporarily saved during a syscall */
-    uintptr_t saved_user_sp;
+    /* Target to switch to from the trampoline stack during kernel entry from
+     * userspace.  This is only used when PTI is enabled. */
+    uintptr_t kernel_stack_top;
 
     /* are we currently in an irq handler */
     uint32_t in_irq;
@@ -70,23 +92,29 @@ struct x86_percpu {
     /* CPU number */
     cpu_num_t cpu_num;
 
-    /* This CPU's default TSS */
-    tss_t default_tss __ALIGNED(16);
-
-    /* Reserved space for interrupt stacks */
-    uint8_t interrupt_stacks[NUM_ASSIGNED_IST_ENTRIES][PAGE_SIZE] __ALIGNED(16);
+    /* Per cpu data that will be leaked to usermode by KPTI.  This is page-aligned
+     * so that we can map only this part of the structure in the page tables that
+     * leak to usermode. */
+    struct x86_percpu_leaked leaked __ALIGNED(PAGE_SIZE);
 } __CPU_ALIGN;
 
 static_assert(__offsetof(struct x86_percpu, direct) == PERCPU_DIRECT_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, current_thread) == PERCPU_CURRENT_THREAD_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, stack_guard) == ZX_TLS_STACK_GUARD_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, kernel_unsafe_sp) == ZX_TLS_UNSAFE_SP_OFFSET, "");
-static_assert(__offsetof(struct x86_percpu, saved_user_sp) == PERCPU_SAVED_USER_SP_OFFSET, "");
+static_assert(__offsetof(struct x86_percpu, kernel_stack_top) == PERCPU_KERNEL_STACK_TOP_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, in_irq) == PERCPU_IN_IRQ_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, gpf_return_target) == PERCPU_GPF_RETURN_OFFSET, "");
 static_assert(__offsetof(struct x86_percpu, cpu_num) == PERCPU_CPU_NUM_OFFSET, "");
-static_assert(__offsetof(struct x86_percpu, default_tss) == PERCPU_DEFAULT_TSS_OFFSET, "");
-static_assert(__offsetof(struct x86_percpu, default_tss.rsp0) == PERCPU_KERNEL_SP_OFFSET, "");
+static_assert(__offsetof(struct x86_percpu, leaked.saved_user_sp) == PERCPU_SAVED_USER_SP_OFFSET, "");
+static_assert(__offsetof(struct x86_percpu, leaked.default_tss) == PERCPU_DEFAULT_TSS_OFFSET, "");
+static_assert(__offsetof(struct x86_percpu, leaked.default_tss.rsp0) == PERCPU_KERNEL_ENTRY_SP_OFFSET, "");
+// These two checks together enforce that the top of the trampoline stack is
+// 16-byte aligned.  The hardware will automatically handle alignment on
+// interrupt entry, but the asm routine for copying the interrupt frame from the trampoline stack
+// is simpler if we force the alignment.
+static_assert(__offsetof(struct x86_percpu, leaked.default_tss) % 16 == 0, "");
+static_assert(TRAMPOLINE_STACK_SIZE % 16 == 0, "");
 
 extern struct x86_percpu bp_percpu;
 extern struct x86_percpu *ap_percpus;

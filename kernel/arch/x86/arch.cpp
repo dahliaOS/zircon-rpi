@@ -69,7 +69,7 @@ void arch_init(void) {
 void arch_enter_uspace(uintptr_t entry_point, uintptr_t sp,
                        uintptr_t arg1, uintptr_t arg2) {
     LTRACEF("entry %#" PRIxPTR " user stack %#" PRIxPTR "\n", entry_point, sp);
-    LTRACEF("kernel stack %#" PRIxPTR "\n", x86_get_percpu()->default_tss.rsp0);
+    LTRACEF("kernel stack %#" PRIxPTR "\n", x86_get_percpu()->leaked.default_tss.rsp0);
 
     arch_disable_ints();
 
@@ -83,7 +83,7 @@ void arch_enter_uspace(uintptr_t entry_point, uintptr_t sp,
     DEBUG_ASSERT(is_kernel_address(read_msr(X86_MSR_IA32_GS_BASE)));
 
     /* check that the kernel stack is set properly */
-    DEBUG_ASSERT(is_kernel_address(x86_get_percpu()->default_tss.rsp0));
+    DEBUG_ASSERT(is_kernel_address(x86_get_percpu()->leaked.default_tss.rsp0));
 
     /* set up user's fs: gs: base */
     write_msr(X86_MSR_IA32_FS_BASE, 0);
