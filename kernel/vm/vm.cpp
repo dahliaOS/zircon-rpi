@@ -171,6 +171,15 @@ void vm_init() {
     zx_status_t status = aspace->ReserveSpace("random_padding", random_size, PHYSMAP_BASE + PHYSMAP_SIZE);
     ASSERT(status == ZX_OK);
     LTRACEF("VM: aspace random padding size: %#" PRIxPTR "\n", random_size);
+
+    // Reserve a PDP page for data that is safe to be leaked to usermode in the
+    // presence of the Meltdown vulnerability
+    fbl::RefPtr<VmAddressRegion> x86_leaked;
+    status = aspace->RootVmar()->CreateSubVmar(
+            0, 1ull << PDP_SHIFT, PDP_SHIFT,
+            VMAR_FLAG_CAN_MAP_READ | VMAR_FLAG_CAN_MAP_WRITE | VMAR_FLAG_CAN_MAP_EXECUTE,
+            "x86_meltdown_leak", &x86_leaked);
+    ASSERT(status == ZX_OK);
 }
 
 paddr_t vaddr_to_paddr(const void* ptr) {
