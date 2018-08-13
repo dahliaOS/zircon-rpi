@@ -27,6 +27,7 @@ zx_library("vm") {
     "vm_object_paged.cc",
     "vm_object_physical.cc",
     "vm_page_list.cc",
+    "vmalloc.cc",
     "vmm.cc",
   ]
   deps = [

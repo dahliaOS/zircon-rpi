@@ -24,6 +24,7 @@
 #include <vm/physmap.h>
 #include <vm/pmm.h>
 #include <vm/vm_aspace.h>
+#include <vm/vmalloc.h>
 
 #include "vm_priv.h"
 
@@ -182,6 +183,8 @@ void vm_init() {
   ASSERT(status == ZX_OK);
   LTRACEF("VM: aspace random padding size: %#" PRIxPTR "\n", random_size);
 #endif
+
+  vmalloc_init();
 }
 
 paddr_t vaddr_to_paddr(const void* ptr) {
