@@ -13,6 +13,7 @@ import("//build/package.gni")
 group("audio") {
   testonly = true
   deps = [
+    "chan5",
     "fx",
     "simple_sine",
     "sync_sine",

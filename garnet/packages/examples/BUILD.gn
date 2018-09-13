@@ -166,6 +166,7 @@ group("media") {
   testonly = true
   public_deps = [
     "//src/media:examples",
+    "//examples/media/audio/chan5",
     "//examples/media/audio/fx",
     "//examples/media/audio/simple_sine",
     "//examples/media/audio/sync_sine",

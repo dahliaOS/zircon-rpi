@@ -133,6 +133,9 @@ class AudioDeviceManager : public fuchsia::media::AudioDeviceEnumerator {
     AudioDeviceSettings::EnableDeviceSettings(enabled);
   }
 
+  void AddDeviceByChannel(::zx::channel device_channel, std::string device_name,
+                          bool is_input) final;
+
  private:
   // KeyTraits we use to sort our AudioDeviceSettings set to ensure uniqueness.
   struct AudioDeviceSettingsKeyTraits {

@@ -8,6 +8,7 @@
 #include <fbl/macros.h>
 #include <fbl/mutex.h>
 #include <fuchsia/media/cpp/fidl.h>
+#include <lib/fit/function.h>
 #include <zircon/compiler.h>
 #include <zircon/device/vfs.h>
 #include <zircon/types.h>
@@ -28,7 +29,12 @@ class AudioPlugDetector {
   void Stop();
 
  private:
+  friend class AudioDeviceManager;
+
   void AddAudioDevice(int dir_fd, const std::string& name, bool is_input);
+  zx_status_t AddDeviceByChannel(::zx::channel device_channel,
+                                 const std::string& name, bool is_input);
+
   std::vector<std::unique_ptr<fsl::DeviceWatcher>> watchers_;
   AudioDeviceManager* manager_ = nullptr;
 };

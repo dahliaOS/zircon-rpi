@@ -1,0 +1,10 @@
+{
+    "program": {
+        "binary": "bin/chan5"
+    },
+    "sandbox": {
+        "services": [
+            "fuchsia.media.AudioDeviceEnumerator"
+        ]
+    }
+}

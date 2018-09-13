@@ -785,4 +785,18 @@ void AudioDeviceManager::CommitDirtySettings() {
   }
 }
 
+void AudioDeviceManager::AddDeviceByChannel(::zx::channel device_channel,
+                                            std::string device_name,
+                                            bool is_input) {
+  FXL_LOG(INFO) << __func__ << ": adding Audio "
+                << (is_input ? "Input" : "Output") << " from channel '"
+                << device_name << "'";
+
+  zx_status_t status = plug_detector_.AddDeviceByChannel(
+      std::move(device_channel), device_name, is_input);
+  if (status != ZX_OK) {
+    // Can we hang up, from here?
+  }
+}
+
 }  // namespace media::audio

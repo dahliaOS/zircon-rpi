@@ -126,12 +126,18 @@ void AudioPlugDetector::AddAudioDevice(int dir_fd, const std::string& name,
     return;
   }
 
+  res = AddDeviceByChannel(std::move(channel), name, is_input);
+}
+
+zx_status_t AudioPlugDetector::AddDeviceByChannel(::zx::channel device_channel,
+                                                  const std::string& name,
+                                                  bool is_input) {
   // Hand the stream off to the proper type of class to manage.
   fbl::RefPtr<AudioDevice> new_device;
   if (is_input) {
-    new_device = AudioInput::Create(std::move(channel), manager_);
+    new_device = AudioInput::Create(std::move(device_channel), manager_);
   } else {
-    new_device = DriverOutput::Create(std::move(channel), manager_);
+    new_device = DriverOutput::Create(std::move(device_channel), manager_);
   }
 
   if (new_device == nullptr) {
@@ -142,6 +148,7 @@ void AudioPlugDetector::AddAudioDevice(int dir_fd, const std::string& name,
     REP(AddingDevice(name, *new_device));
     manager_->AddDevice(std::move(new_device));
   }
+  return ZX_OK;
 }
 
 }  // namespace media::audio
