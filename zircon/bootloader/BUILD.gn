@@ -24,6 +24,20 @@ if (current_toolchain == default_toolchain) {
     # the way we use it.
     exclude_variant_tags = [ "gcc" ]
   }
+  environment("efi") {
+    cpu = "arm64"
+    os = "win"
+    globals = {
+      is_kernel = true
+    }
+    configs += standard_fuchsia_configs + [ ":efi_config" ]
+
+    # TODO: strip = true
+
+    # There isn't a GCC toolchain that supports the Windows target directly
+    # the way we use it.
+    exclude_variant_tags = [ "gcc" ]
+  }
 } else if (toolchain.environment == "efi") {
   # This is the top config for all code in the efi_toolchain.
   config("efi_config") {
@@ -40,12 +54,18 @@ if (current_toolchain == default_toolchain) {
     ]
     if (current_cpu == "x64") {
       cflags += [ "-mno-red-zone" ]
+    } else if (current_cpu == "arm64") {
+      cflags += [ "-mgeneral-regs-only" ]
     }
   }
 
   executable("bootloader") {
     output_dir = root_out_dir
-    output_name = "boot${current_cpu}"
+    if (current_cpu == "arm64") {
+      output_name = "bootaa64"
+    } else {
+      output_name = "boot${current_cpu}"
+    }
     output_extension = "efi"
     deps = [
       "lib",

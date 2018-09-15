@@ -38,8 +38,8 @@ static size_t get_last_crashlog(efi_system_table* sys, void* ptr, size_t max) {
 
 static unsigned char scratch[32768];
 
-static void start_zircon(uint64_t entry, void* bootdata) {
 #if __x86_64__
+static void start_zircon(uint64_t entry, void* bootdata) {
     // ebx = 0, ebp = 0, edi = 0, esi = bootdata
     __asm__ __volatile__(
         "movl $0, %%ebp \n"
@@ -47,12 +47,23 @@ static void start_zircon(uint64_t entry, void* bootdata) {
         "jmp *%[entry] \n" ::[entry] "a"(entry),
         [bootdata] "S"(bootdata),
         "b"(0), "D"(0));
-#else
-#warning "add code for other arches here"
-#endif
     for (;;)
         ;
 }
+#elif __aarch64__
+static void start_zircon(uint64_t entry, void* bootdata) {
+    __asm__ __volatile__(
+        "mov x16, %0\n"
+        "mov x0, %1\n"
+        "br  x16\n"
+        :
+        : "r" (entry), "r"(bootdata)
+        : "memory"
+    );
+    for (;;)
+        ;
+}
+#endif
 
 static int add_bootdata(void** ptr, size_t* avail,
                         zbi_header_t* bd, void* data) {
@@ -103,7 +114,11 @@ static int header_check(void* image, size_t sz, uint64_t* _entry,
     }
     zircon_kernel_t* kernel = image;
     if ((sz < sizeof(zircon_kernel_t)) ||
+#if __x86_64__
         (kernel->hdr_kernel.type != ZBI_TYPE_KERNEL_X64) ||
+#else
+        (kernel->hdr_kernel.type != ZBI_TYPE_KERNEL_ARM64) ||
+#endif
         ((kernel->hdr_kernel.flags & ZBI_FLAG_VERSION) == 0)) {
         printf("boot: invalid zircon kernel header\n");
         return -1;
@@ -292,6 +307,14 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
         }
     }
 
+#if __aarch64__
+    // in current ZBI layouts, the arm64 entry point is the offset into the image, not
+    // absolute address. Adjust for this here.
+    entry += kernel_zone_base;
+#endif
+
+    printf("copying kernel image from %p to %p size %zu, entry at %p\n",
+            image, (void *)kernel_zone_base, isz, (void *)entry);
     memcpy((void*)kernel_zone_base, image, isz);
 
     // Obtain the system memory map
@@ -307,6 +330,8 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
             printf("boot: cannot GetMemoryMap()\n");
             goto fail;
         }
+
+        printf("got memory map, attempt %d\n", attempts);
 
         r = sys->BootServices->ExitBootServices(img, mkey);
         if (r == EFI_SUCCESS) {
@@ -326,6 +351,8 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
         goto fail;
     }
     memcpy(scratch, &dsize, sizeof(uint64_t));
+
+    // jump to the kernel
 
     // install memory map
     hdr.type = ZBI_TYPE_EFI_MEMORY_MAP;
@@ -351,7 +378,6 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
     hdr.flags = ZBI_FLAG_VERSION;
     memcpy(bptr, &hdr, sizeof(hdr));
 
-    // jump to the kernel
     start_zircon(entry, ramdisk - FRONT_BYTES);
 
 fail:

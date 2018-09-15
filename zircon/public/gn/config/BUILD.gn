@@ -481,8 +481,9 @@ config("visibility_hidden") {
 
 config("machine") {
   ldflags = []
-  if (current_cpu == "arm64") {
-    # The linker rewrites instructions to work around a CPU bug.
+  if (current_cpu == "arm64" && current_os != "win") {
+    # The linker flag rewrites instructions to work around a CPU bug.
+    # The flag is unsupported when linking windows binaries.
     ldflags += [ "-Wl,--fix-cortex-a53-843419" ]
   }
   if (is_fuchsia) {

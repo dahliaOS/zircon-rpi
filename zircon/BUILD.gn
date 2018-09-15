@@ -245,15 +245,13 @@ foreach(cpu, standard_fuchsia_cpus) {
     environment_label = "$zx/public/gn/toolchain:user"
     cpu = cpu
     deps = [
+      "$zx/bootloader",
       "$zx/kernel",
       "$zx/system/core",
       "$zx/system/dev",
       "$zx/system/uapp",
       "$zx/third_party/uapp",
     ]
-    if (cpu == "x64") {
-      deps += [ "$zx/bootloader" ]
-    }
   }
 
   environment_redirect("legacy-tests-deps-$cpu") {
