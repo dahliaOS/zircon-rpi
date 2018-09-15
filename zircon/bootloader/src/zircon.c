@@ -52,7 +52,8 @@ static void start_zircon(uint64_t entry, void* bootdata) {
             "mov x29, xzr\n"            // Clear FP.
             "mov x30, xzr\n"            // Clear LR.
             "br %[entry]\n"
-            :: [entry] "r"(entry), [zbi] "r"(bootdata) : "x0", "x29", "x30");
+            :: [entry] "r"(entry), [zbi] "r"(bootdata)
+            : "x0", "x29", "x30");
 #else
 # error "add code for other arches here"
 #endif
@@ -108,7 +109,11 @@ static int header_check(void* image, size_t sz, uint64_t* _entry,
     }
     zircon_kernel_t* kernel = image;
     if ((sz < sizeof(zircon_kernel_t)) ||
+#if __x86_64__
         (kernel->hdr_kernel.type != ZBI_TYPE_KERNEL_X64) ||
+#else
+        (kernel->hdr_kernel.type != ZBI_TYPE_KERNEL_ARM64) ||
+#endif
         ((kernel->hdr_kernel.flags & ZBI_FLAG_VERSION) == 0)) {
         printf("boot: invalid zircon kernel header\n");
         return -1;
@@ -297,6 +302,14 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
         }
     }
 
+#if __aarch64__
+    // in current ZBI layouts, the arm64 entry point is the offset into the image, not
+    // absolute address. Adjust for this here.
+    entry += kernel_zone_base;
+#endif
+
+    printf("copying kernel image from %p to %p size %zu, entry at %p\n",
+            image, (void *)kernel_zone_base, isz, (void *)entry);
     memcpy((void*)kernel_zone_base, image, isz);
 
     // Obtain the system memory map
@@ -332,6 +345,8 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
     }
     memcpy(scratch, &dsize, sizeof(uint64_t));
 
+    // jump to the kernel
+
     // install memory map
     hdr.type = ZBI_TYPE_EFI_MEMORY_MAP;
     hdr.length = msize + sizeof(uint64_t);
@@ -356,7 +371,6 @@ int boot_zircon(efi_handle img, efi_system_table* sys,
     hdr.flags = ZBI_FLAG_VERSION;
     memcpy(bptr, &hdr, sizeof(hdr));
 
-    // jump to the kernel
     start_zircon(entry, ramdisk - FRONT_BYTES);
 
 fail:

@@ -13,6 +13,7 @@
 #define PAGE_MASK (PAGE_SIZE - 1)
 
 #define BYTES_TO_PAGES(n) (((n) + PAGE_MASK) / PAGE_SIZE)
+#define ROUNDUP(a, b) (((a) + ((b)-1)) & ~((b)-1))
 
 // Ensure there are some pages preceding the
 // Ramdisk so that the kernel start code can

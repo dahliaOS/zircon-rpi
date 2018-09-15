@@ -286,7 +286,7 @@ int netifc_open(void) {
 
     ret = snp->ReceiveFilters(snp,
                             EFI_SIMPLE_NETWORK_RECEIVE_UNICAST |
-                                EFI_SIMPLE_NETWORK_RECEIVE_MULTICAST,
+                            0, //     EFI_SIMPLE_NETWORK_RECEIVE_MULTICAST,
                             0, 0, mcast_filter_count, (void*)mcast_filters);
     if (ret) {
         printf("Failed to install multicast filters %s\n", xefi_strerror(ret));

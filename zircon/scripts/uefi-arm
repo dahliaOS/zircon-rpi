@@ -1,0 +1,24 @@
+#!/bin/sh
+
+set -e
+
+BUILDDIR=build-arm64
+KERNEL=$BUILDDIR/qemu-boot-shim.bin
+INITRD=$BUILDDIR/zircon.zbi
+GIGABOOT=build-gcc/efi-arm64-clang/bootaa64.efi
+UEFI=/usr/share/qemu-efi-aarch64/QEMU_EFI.fd
+
+./scripts/build-zircon
+
+exec ./prebuilt/downloads/qemu/bin/qemu-system-aarch64 \
+    -m 2048 -smp 4 -machine virtualization=true -cpu cortex-a53 -machine virt,gic_version=3 \
+    -nographic \
+    -drive file=blk.bin,format=raw,if=none,id=mydisk -device virtio-blk-pci,drive=mydisk \
+    -netdev type=tap,ifname=qemu,script=no,downscript=no,id=net0 -device virtio-net-pci,netdev=net0,mac=52:54:00:63:5e:7a \
+    -bios $UEFI \
+    -kernel $GIGABOOT \
+    -append 'TERM=xterm-256color kernel.entropy-mixin=dcf7d1a283377ddddaabae2f7021b4b22850ab03b44dc1a9f1861a9ee87dcd0c kernel.halt-on-panic=true '
+
+    #-initrd $INITRD \
+ #-serial stdio -vga none -device virtio-gpu-pci \
+ #-netdev type=user,hostname=qemu,id=net0 -device virtio-net-pci,netdev=net0 \
