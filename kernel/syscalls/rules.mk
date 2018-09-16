@@ -47,6 +47,8 @@ ifeq ($(ARCH),x86)
 MODULE_SRCS += $(LOCAL_DIR)/system_x86.cpp \
 	       $(LOCAL_DIR)/ddk_x86.cpp \
 
+MODULE_DEPS += third_party/lib/acpica
+
 else ifeq ($(ARCH),arm64)
 MODULE_SRCS += $(LOCAL_DIR)/system_arm64.cpp \
 	       $(LOCAL_DIR)/ddk_arm64.cpp \

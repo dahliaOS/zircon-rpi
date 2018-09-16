@@ -105,6 +105,10 @@ static void hpet_init(uint level) {
     _hpet_ticks_per_ms = 1000000000000ULL / tick_period_in_fs;
     min_ticks_ahead = 100000000ULL / tick_period_in_fs;
     hpet_present = true;
+
+    dprintf(INFO, "HPET: detected at %#" PRIx64 " ticks per ms %" PRIu64 " num timers %hhu\n",
+            hpet_desc.address, _hpet_ticks_per_ms, num_timers);
+
     return;
 
 fail:

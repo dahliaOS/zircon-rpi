@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <acpica/acpi.h>
 #include <arch/x86/apic.h>
 #include <zircon/compiler.h>
 #include <zircon/types.h>

@@ -28,8 +28,8 @@ MODULE_SRCS += \
     $(LOCAL_DIR)/timer.cpp \
 
 MODULE_DEPS += \
-    third_party/lib/acpica \
     third_party/lib/cksum \
+    kernel/lib/acpi_lite \
     kernel/lib/cbuf \
     kernel/lib/gfxconsole \
     kernel/lib/fixed_point \
