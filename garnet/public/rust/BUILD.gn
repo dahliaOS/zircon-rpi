@@ -7,24 +7,42 @@ import("//build/testing/environments.gni")
 
 unittest_package("rust-crates-tests") {
   deps = [
+    "algebra:algebra_test",
+    "algebra",
     "fuchsia-archive:fuchsia-archive_test",
+    "fuchsia-archive",
     "fuchsia-component:fuchsia-component-blackbox-unit-tests",
     "fuchsia-cprng:fuchsia-cprng_test",
     "fuchsia-framebuffer",
     "fuchsia-hyper:fuchsia-hyper-tests",
     "fuchsia-inspect:fuchsia-inspect_test",
+    "fuchsia-inspect",
     "fuchsia-inspect-contrib:fuchsia-inspect-contrib_test",
+    "fuchsia-inspect-contrib",
     "fuchsia-merkle:fuchsia-merkle_test",
+    "fuchsia-merkle",
     "fuchsia-trace:fuchsia-trace_test",
+    "fuchsia-trace",
     "fuchsia-vfs/pseudo-fs:pseudo-fs_test",
+    "fuchsia-vfs/pseudo-fs",
     "mapped-vmo:mapped-vmo_test",
+    "mapped-vmo",
     "mundane:mundane_test",
+    "mundane",
     "packet:packet_test",
+    "packet",
     "shared-buffer:shared-buffer_test",
+    "shared-buffer",
+    "text-format:text-format_test",
+    "text-format",
     "zerocopy:zerocopy_test",
+    "zerocopy",
   ]
 
   tests = [
+    {
+      name = "algebra_lib_test"
+    },
     {
       name = "fuchsia_archive_lib_test"
       environments = basic_envs
@@ -72,6 +90,9 @@ unittest_package("rust-crates-tests") {
     {
       name = "shared_buffer_lib_test"
       environments = basic_envs
+    },
+    {
+      name = "text_format_lib_test"
     },
     {
       name = "zerocopy_lib_test"
