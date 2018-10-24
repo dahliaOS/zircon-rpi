@@ -8,6 +8,7 @@ package("rust-crates-tests") {
   testonly = true
 
   deps = [
+    "algebra",
     "fdio",
     "fuchsia-archive",
     "fuchsia-async",
@@ -27,6 +28,7 @@ package("rust-crates-tests") {
     "mundane",
     "packet",
     "shared-buffer",
+    "text-format",
     "zerocopy",
   ]
 

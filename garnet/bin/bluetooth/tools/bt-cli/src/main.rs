@@ -6,9 +6,10 @@
 
 use {
     failure::{bail, Error, ResultExt},
-    fidl_fuchsia_bluetooth_control::{ControlEvent, ControlEventStream, ControlMarker, ControlProxy},
+    fidl_fuchsia_bluetooth_control::{ControlEvent, ControlEventStream, ControlMarker, ControlProxy, TechnologyType},
     fuchsia_app::client::connect_to_service,
     fuchsia_async::{self as fasync, futures::select},
+    fuchsia_bluetooth::assigned_numbers::find_service_uuid,
     fuchsia_bluetooth::types::Status,
     futures::{
         channel::mpsc::{channel, SendError},
@@ -24,7 +25,8 @@ use {
     parking_lot::Mutex,
     regex::Regex,
     rustyline::{error::ReadlineError, CompletionType, Config, EditMode, Editor},
-    std::{collections::HashMap, fmt::Write, iter::FromIterator, sync::Arc, thread},
+    std::{collections::HashMap, fmt::Write, sync::Arc, thread},
+    text_format::tabulate,
 };
 
 use crate::{
@@ -34,7 +36,6 @@ use crate::{
 
 mod commands;
 mod types;
-
 
 static PROMPT: &str = "\x1b[34mbt>\x1b[0m ";
 /// Escape code to clear the pty line on which the cursor is located.
@@ -78,9 +79,7 @@ fn get_devices(state: &Mutex<State>) -> String {
     if state.devices.is_empty() {
         String::from("No known remote devices")
     } else {
-        String::from_iter(
-            state.devices.values().map(|device| device.to_string())
-        )
+        format_devices(state.devices.iter().map(|(_, d)| d).collect())
     }
 }
 
@@ -102,6 +101,61 @@ async fn set_discovery(discovery: bool, control_svc: &ControlProxy) -> Result<St
         Ok(Status::from(response).to_string())
     } else {
         Ok(String::new())
+    }
+}
+
+fn format_devices(devices: Vec<&RemoteDevice>) -> String {
+    let headers = vec![
+        "Identifier",
+        "Address",
+        "Name",
+        "Technology",
+        "RSSI",
+        "Connected",
+        "Bonded",
+        "Appearance",
+        "TX Power",
+        "Services",
+    ];
+    let rows: Vec<Vec<String>> = devices.into_iter().map(format_device).collect();
+    tabulate(rows, Some(headers))
+}
+
+fn format_device(d: &RemoteDevice) -> Vec<String> {
+    fn show_option_int(i: &Option<Box<fidl_fuchsia_bluetooth::Int8>>) -> String {
+        match i {
+            Some(i) => i.value.to_string(),
+            None => "".to_string(),
+        }
+    }
+
+    let d = &d.0;
+    vec![
+        d.identifier.clone(),
+        d.address.clone(),
+        match &d.name {
+            Some(n) => n.clone(),
+            _ => "".to_string(),
+        },
+        format_technology(d.technology),
+        show_option_int(&d.rssi),
+        d.connected.to_string(),
+        d.bonded.to_string(),
+        format!("{:?}", d.appearance),
+        show_option_int(&d.tx_power),
+        d.service_uuids
+            .iter()
+            .map(|uuid| find_service_uuid(uuid).map(|an| an.name).unwrap_or(uuid))
+            .collect::<Vec<_>>()
+            .join(", "),
+    ]
+}
+
+fn format_technology(tech: TechnologyType) -> String {
+    match tech {
+        TechnologyType::LowEnergy => "LE".to_string(),
+        TechnologyType::Classic => "Classic".to_string(),
+        TechnologyType::DualMode => "DualMode".to_string(),
     }
 }
 
