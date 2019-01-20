@@ -11,32 +11,38 @@
 
 #include <kernel/dpc.h>
 #include <kernel/event.h>
+#include <kernel/lockdep.h>
 #include <kernel/percpu.h>
 #include <kernel/spinlock.h>
 #include <lk/init.h>
 
-static spin_lock_t dpc_lock = SPIN_LOCK_INITIAL_VALUE;
+namespace {
+
+DECLARE_SINGLETON_SPINLOCK(dpc_lock);
+
+} // anonymous namespace
 
 zx_status_t dpc_queue(dpc_t* dpc, bool reschedule) {
     DEBUG_ASSERT(dpc);
     DEBUG_ASSERT(dpc->func);
 
-    // disable interrupts before finding lock
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&dpc_lock, state);
+    struct percpu* cpu;
 
-    if (list_in_list(&dpc->node)) {
-        spin_unlock_irqrestore(&dpc_lock, state);
-        return ZX_ERR_ALREADY_EXISTS;
+    // disable interrupts before finding lock
+    {
+        Guard<SpinLock, IrqSave> guard{dpc_lock::Get()};
+
+        if (list_in_list(&dpc->node)) {
+            return ZX_ERR_ALREADY_EXISTS;
+        }
+
+        cpu = get_local_percpu();
+
+        // put the dpc at the tail of the list
+        list_add_tail(&cpu->dpc_list, &dpc->node);
     }
 
-    struct percpu* cpu = get_local_percpu();
-
-    // put the dpc at the tail of the list and signal the worker
-    list_add_tail(&cpu->dpc_list, &dpc->node);
-
-    spin_unlock_irqrestore(&dpc_lock, state);
-
+    // signal the worker
     event_signal(&cpu->dpc_event, reschedule);
 
     return ZX_OK;
@@ -47,10 +53,9 @@ zx_status_t dpc_queue_thread_locked(dpc_t* dpc) {
     DEBUG_ASSERT(dpc->func);
 
     // interrupts are already disabled
-    spin_lock(&dpc_lock);
+    Guard<SpinLock, NoIrqSave> guard{dpc_lock::Get()};
 
     if (list_in_list(&dpc->node)) {
-        spin_unlock(&dpc_lock);
         return ZX_ERR_ALREADY_EXISTS;
     }
 
@@ -60,27 +65,25 @@ zx_status_t dpc_queue_thread_locked(dpc_t* dpc) {
     list_add_tail(&cpu->dpc_list, &dpc->node);
     event_signal_thread_locked(&cpu->dpc_event);
 
-    spin_unlock(&dpc_lock);
-
     return ZX_OK;
 }
 
 void dpc_shutdown(uint cpu_id) {
     DEBUG_ASSERT(cpu_id < SMP_MAX_CPUS);
 
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&dpc_lock, state);
+    thread_t* t;
+    {
+        Guard<SpinLock, IrqSave> guard{dpc_lock::Get()};
 
-    DEBUG_ASSERT(!percpu[cpu_id].dpc_stop);
+        DEBUG_ASSERT(!percpu[cpu_id].dpc_stop);
 
-    // Ask the DPC thread to terminate.
-    percpu[cpu_id].dpc_stop = true;
+        // Ask the DPC thread to terminate.
+        percpu[cpu_id].dpc_stop = true;
 
-    // Take the thread pointer so we can join outside the spinlock.
-    thread_t* t = percpu[cpu_id].dpc_thread;
-    percpu[cpu_id].dpc_thread = nullptr;
-
-    spin_unlock_irqrestore(&dpc_lock, state);
+        // Take the thread pointer so we can join outside the spinlock.
+        t = percpu[cpu_id].dpc_thread;
+        percpu[cpu_id].dpc_thread = nullptr;
+    }
 
     // Wake it.
     event_signal(&percpu[cpu_id].dpc_event, false);
@@ -95,8 +98,7 @@ void dpc_shutdown(uint cpu_id) {
 void dpc_shutdown_transition_off_cpu(uint cpu_id) {
     DEBUG_ASSERT(cpu_id < SMP_MAX_CPUS);
 
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&dpc_lock, state);
+    Guard<SpinLock, IrqSave> guard{dpc_lock::Get()};
 
     uint cur_cpu = arch_curr_cpu_num();
     DEBUG_ASSERT(cpu_id != cur_cpu);
@@ -117,46 +119,45 @@ void dpc_shutdown_transition_off_cpu(uint cpu_id) {
     DEBUG_ASSERT(list_is_empty(&percpu[cpu_id].dpc_list));
     percpu[cpu_id].dpc_stop = false;
     event_destroy(&percpu[cpu_id].dpc_event);
-
-    spin_unlock_irqrestore(&dpc_lock, state);
 }
 
 static int dpc_thread(void* arg) {
     dpc_t dpc_local;
 
-    spin_lock_saved_state_t state;
-    arch_interrupt_save(&state, SPIN_LOCK_FLAG_INTERRUPTS);
+    // Make sure we don't get moved off of this cpu during the next
+    // block of code.
+    // TODO: Determine if we really need to lock this.
+    thread_preempt_disable();
 
     struct percpu* cpu = get_local_percpu();
     event_t* event = &cpu->dpc_event;
     list_node_t* list = &cpu->dpc_list;
 
-    arch_interrupt_restore(state, SPIN_LOCK_FLAG_INTERRUPTS);
+    thread_preempt_reenable();
 
     for (;;) {
         // wait for a dpc to fire
         __UNUSED zx_status_t err = event_wait(event);
         DEBUG_ASSERT(err == ZX_OK);
 
-        spin_lock_irqsave(&dpc_lock, state);
+        {
+            Guard<SpinLock, IrqSave> guard{dpc_lock::Get()};
 
-        if (cpu->dpc_stop) {
-            spin_unlock_irqrestore(&dpc_lock, state);
-            return 0;
+            if (cpu->dpc_stop) {
+                return 0;
+            }
+
+            // pop a dpc off the list, make a local copy.
+            dpc_t* dpc = list_remove_head_type(list, dpc_t, node);
+
+            // if the list is now empty, unsignal the event so we block until it is
+            if (!dpc) {
+                event_unsignal(event);
+                dpc_local.func = NULL;
+            } else {
+                dpc_local = *dpc;
+            }
         }
-
-        // pop a dpc off the list, make a local copy.
-        dpc_t* dpc = list_remove_head_type(list, dpc_t, node);
-
-        // if the list is now empty, unsignal the event so we block until it is
-        if (!dpc) {
-            event_unsignal(event);
-            dpc_local.func = NULL;
-        } else {
-            dpc_local = *dpc;
-        }
-
-        spin_unlock_irqrestore(&dpc_lock, state);
 
         // call the dpc
         if (dpc_local.func) {

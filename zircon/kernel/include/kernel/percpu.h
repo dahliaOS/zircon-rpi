@@ -46,10 +46,10 @@ struct percpu {
     int64_t* counters;
 
     // dpc context
-    list_node_t dpc_list;
+    list_node_t dpc_list; // TA_GUARDED(dpc_lock);
     event_t dpc_event;
     // request the dpc thread to stop by setting to true; guarded by dpc_lock
-    bool dpc_stop;
+    bool dpc_stop; // TA_GUARDED(dpc_lock);
     // each cpu has a dedicated thread for processing dpcs
     thread_t* dpc_thread;
 } __CPU_ALIGN;
