@@ -29,20 +29,24 @@ static_assert((DLOG_SIZE & DLOG_MASK) == 0u, "must be power of two");
 static_assert(DLOG_MAX_RECORD <= DLOG_SIZE, "wat");
 static_assert((DLOG_MAX_RECORD & 3) == 0, "E_DONT_DO_THAT");
 
-static uint8_t DLOG_DATA[DLOG_SIZE];
+namespace {
 
-static dlog_t DLOG(DLOG_DATA);
+uint8_t DLOG_DATA[DLOG_SIZE];
 
-static thread_t* notifier_thread;
-static thread_t* dumper_thread;
+dlog_t DLOG(DLOG_DATA);
+
+thread_t* notifier_thread;
+thread_t* dumper_thread;
 
 // Used to request that notifier and dumper threads terminate.
-static fbl::atomic_bool notifier_shutdown_requested;
-static fbl::atomic_bool dumper_shutdown_requested;
+fbl::atomic_bool notifier_shutdown_requested;
+fbl::atomic_bool dumper_shutdown_requested;
 
 // dlog_bypass_ will directly write to console. It also has the side effect of
 // disabling uart Tx interrupts. So all serial console writes are polling.
-static bool dlog_bypass_ = false;
+bool dlog_bypass_ = false;
+
+} // anonymous namespace
 
 // We need to preserve the compile time switch (ENABLE_KERNEL_LL_DEBUG), even
 // though we add a kernel cmdline (kernel.bypass-debuglog), to bypass the debuglog.
@@ -126,60 +130,60 @@ zx_status_t dlog_write(uint32_t flags, const void* data_ptr, size_t len) {
         hdr.tid = 0;
     }
 
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&log->lock, state);
+    bool holding_thread_lock;
+    {
+        Guard<SpinLock, IrqSave> guard{&log->lock};
 
-    // Discard records at tail until there is enough
-    // space for the new record.
-    while ((log->head - log->tail) > (DLOG_SIZE - wiresize)) {
-        uint32_t header = *reinterpret_cast<uint32_t*>(log->data + (log->tail & DLOG_MASK));
-        log->tail += DLOG_HDR_GET_FIFOLEN(header);
+        // Discard records at tail until there is enough
+        // space for the new record.
+        while ((log->head - log->tail) > (DLOG_SIZE - wiresize)) {
+            uint32_t header = *reinterpret_cast<uint32_t*>(log->data + (log->tail & DLOG_MASK));
+            log->tail += DLOG_HDR_GET_FIFOLEN(header);
+        }
+
+        size_t offset = (log->head & DLOG_MASK);
+
+        size_t fifospace = DLOG_SIZE - offset;
+
+        if (fifospace >= wiresize) {
+            // everything fits in one write, simple case!
+            memcpy(log->data + offset, &hdr, sizeof(hdr));
+            memcpy(log->data + offset + sizeof(hdr), ptr, len);
+        } else if (fifospace < sizeof(hdr)) {
+            // the wrap happens in the header
+            memcpy(log->data + offset, &hdr, fifospace);
+            memcpy(log->data, reinterpret_cast<uint8_t*>(&hdr) + fifospace, sizeof(hdr) - fifospace);
+            memcpy(log->data + (sizeof(hdr) - fifospace), ptr, len);
+        } else {
+            // the wrap happens in the data
+            memcpy(log->data + offset, &hdr, sizeof(hdr));
+            offset += sizeof(hdr);
+            fifospace -= sizeof(hdr);
+            memcpy(log->data + offset, ptr, fifospace);
+            memcpy(log->data, ptr + fifospace, len - fifospace);
+        }
+        log->head += wiresize;
+
+        // Need to check this before re-releasing the log lock, since we may
+        // re-enable interrupts while doing that.  If interrupts are enabled when we
+        // make this check, we could see the following sequence of events between
+        // two CPUs and incorrectly conclude we are holding the thread lock:
+        // C2: Acquire thread_lock
+        // C1: Running this thread, evaluate spin_lock_holder_cpu(&thread_lock) -> C2
+        // C1: Context switch away
+        // C2: Release thread_lock
+        // C2: Context switch to this thread
+        // C2: Running this thread, evaluate arch_curr_cpu_num() -> C2
+        holding_thread_lock = spin_lock_holder_cpu(&thread_lock) == arch_curr_cpu_num();
     }
-
-    size_t offset = (log->head & DLOG_MASK);
-
-    size_t fifospace = DLOG_SIZE - offset;
-
-    if (fifospace >= wiresize) {
-        // everything fits in one write, simple case!
-        memcpy(log->data + offset, &hdr, sizeof(hdr));
-        memcpy(log->data + offset + sizeof(hdr), ptr, len);
-    } else if (fifospace < sizeof(hdr)) {
-        // the wrap happens in the header
-        memcpy(log->data + offset, &hdr, fifospace);
-        memcpy(log->data, reinterpret_cast<uint8_t*>(&hdr) + fifospace, sizeof(hdr) - fifospace);
-        memcpy(log->data + (sizeof(hdr) - fifospace), ptr, len);
-    } else {
-        // the wrap happens in the data
-        memcpy(log->data + offset, &hdr, sizeof(hdr));
-        offset += sizeof(hdr);
-        fifospace -= sizeof(hdr);
-        memcpy(log->data + offset, ptr, fifospace);
-        memcpy(log->data, ptr + fifospace, len - fifospace);
-    }
-    log->head += wiresize;
-
-    // Need to check this before re-releasing the log lock, since we may
-    // re-enable interrupts while doing that.  If interrupts are enabled when we
-    // make this check, we could see the following sequence of events between
-    // two CPUs and incorrectly conclude we are holding the thread lock:
-    // C2: Acquire thread_lock
-    // C1: Running this thread, evaluate spin_lock_holder_cpu(&thread_lock) -> C2
-    // C1: Context switch away
-    // C2: Release thread_lock
-    // C2: Context switch to this thread
-    // C2: Running this thread, evaluate arch_curr_cpu_num() -> C2
-    bool holding_thread_lock = spin_lock_holder_cpu(&thread_lock) == arch_curr_cpu_num();
-
-    spin_unlock_irqrestore(&log->lock, state);
 
     [log, holding_thread_lock]() TA_NO_THREAD_SAFETY_ANALYSIS {
         // if we happen to be called from within the global thread lock, use a
         // special version of event signal
         if (holding_thread_lock) {
-            event_signal_thread_locked(&log->event);
+            log->event.SignalThreadLocked();
         } else {
-            event_signal(&log->event, false);
+            log->event.SignalNoResched();
         }
     }();
 
@@ -200,8 +204,7 @@ zx_status_t dlog_read(dlog_reader_t* rdr, uint32_t flags, void* data_ptr,
     dlog_t* log = rdr->log;
     zx_status_t status = ZX_ERR_SHOULD_WAIT;
 
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&log->lock, state);
+    Guard<SpinLock, IrqSave> guard{&log->lock};
 
     size_t rtail = rdr->tail;
 
@@ -235,8 +238,6 @@ zx_status_t dlog_read(dlog_reader_t* rdr, uint32_t flags, void* data_ptr,
 
     rdr->tail = rtail;
 
-    spin_unlock_irqrestore(&log->lock, state);
-
     return status;
 }
 
@@ -247,32 +248,31 @@ void dlog_reader_init(dlog_reader_t* rdr, void (*notify)(void*), void* cookie) {
     rdr->notify = notify;
     rdr->cookie = cookie;
 
-    mutex_acquire(&log->readers_lock);
+    Guard<fbl::Mutex> readers_guard{&log->readers_lock};
+
     list_add_tail(&log->readers, &rdr->node);
 
     bool do_notify = false;
 
-    spin_lock_saved_state_t state;
-    spin_lock_irqsave(&log->lock, state);
-    rdr->tail = log->tail;
-    do_notify = (log->tail != log->head);
-    spin_unlock_irqrestore(&log->lock, state);
+    {
+        Guard<SpinLock, IrqSave> guard{&log->lock};
+
+        rdr->tail = log->tail;
+        do_notify = (log->tail != log->head);
+    }
 
     // simulate notify callback for events that arrived
     // before we were initialized
     if (do_notify && notify) {
         notify(cookie);
     }
-
-    mutex_release(&log->readers_lock);
 }
 
 void dlog_reader_destroy(dlog_reader_t* rdr) {
     dlog_t* log = rdr->log;
 
-    mutex_acquire(&log->readers_lock);
+    Guard<fbl::Mutex> readers_guard{&log->readers_lock};
     list_delete(&rdr->node);
-    mutex_release(&log->readers_lock);
 }
 
 // The debuglog notifier thread observes when the debuglog is
@@ -285,17 +285,16 @@ static int debuglog_notifier(void* arg) {
         if (notifier_shutdown_requested.load()) {
             break;
         }
-        event_wait(&log->event);
+        log->event.Wait(Deadline::infinite());
 
         // notify readers that new log items were posted
-        mutex_acquire(&log->readers_lock);
+        Guard<fbl::Mutex> readers_guard{&log->readers_lock};
         dlog_reader_t* rdr;
         list_for_every_entry (&log->readers, rdr, dlog_reader_t, node) {
             if (rdr->notify) {
                 rdr->notify(rdr->cookie);
             }
         }
-        mutex_release(&log->readers_lock);
     }
     return ZX_OK;
 }
@@ -322,11 +321,11 @@ void dlog_serial_write(const char* data, size_t len) {
 // debuglog writes and dump them to the kernel consoles
 // and kernel serial console.
 static void debuglog_dumper_notify(void* cookie) {
-    event_t* event = reinterpret_cast<event_t*>(cookie);
-    event_signal(event, false);
+    Event* event = reinterpret_cast<Event*>(cookie);
+    event->SignalNoResched();
 }
 
-static event_t dumper_event = EVENT_INITIAL_VALUE(dumper_event, 0, EVENT_FLAG_AUTOUNSIGNAL);
+static Event dumper_event {EVENT_FLAG_AUTOUNSIGNAL};
 
 static int debuglog_dumper(void* arg) {
     // assembly buffer with room for log text plus header text
@@ -344,7 +343,7 @@ static int debuglog_dumper(void* arg) {
         if (dumper_shutdown_requested.load()) {
             break;
         }
-        event_wait(&dumper_event);
+        dumper_event.Wait(Deadline::infinite());
 
         // dump records to kernel console
         size_t actual;
@@ -416,7 +415,7 @@ void dlog_shutdown(void) {
     // Shutdown the notifier thread first. Ordering is important because the notifier thread is
     // responsible for passing log records to the dumper.
     notifier_shutdown_requested.store(true);
-    event_signal(&DLOG.event, false);
+    DLOG.event.Signal();
     if (notifier_thread != nullptr) {
         zx_status_t status = thread_join(notifier_thread, nullptr, deadline);
         if (status != ZX_OK) {
@@ -426,7 +425,7 @@ void dlog_shutdown(void) {
     }
 
     dumper_shutdown_requested.store(true);
-    event_signal(&dumper_event, false);
+    dumper_event.Signal();
     if (dumper_thread != nullptr) {
         zx_status_t status = thread_join(dumper_thread, nullptr, deadline);
         if (status != ZX_OK) {

@@ -6,22 +6,26 @@
 
 #pragma once
 
+#include <list.h>
+#include <fbl/mutex.h>
+#include <kernel/event.h>
+#include <kernel/lockdep.h>
+#include <kernel/mutex.h>
+#include <kernel/spinlock.h>
+#include <stdint.h>
 #include <zircon/compiler.h>
 #include <zircon/types.h>
-#include <kernel/event.h>
-#include <kernel/mutex.h>
-#include <list.h>
-#include <stdint.h>
 
 typedef struct dlog dlog_t;
 typedef struct dlog_header dlog_header_t;
 typedef struct dlog_record dlog_record_t;
 typedef struct dlog_reader dlog_reader_t;
 
+// TODO: Convert to full class
 struct dlog {
     constexpr dlog(uint8_t* data_ptr) : data(data_ptr) {}
 
-    spin_lock_t lock = SPIN_LOCK_INITIAL_VALUE;
+    DECLARE_SPINLOCK(dlog) lock;
 
     size_t head = 0;
     size_t tail = 0;
@@ -30,10 +34,11 @@ struct dlog {
 
     bool panic = false;
 
-    event_t event = EVENT_INITIAL_VALUE(this->event, 0, EVENT_FLAG_AUTOUNSIGNAL);
+    Event event{EVENT_FLAG_AUTOUNSIGNAL};
 
-    mutex_t readers_lock = {};
-    struct list_node readers = LIST_INITIAL_VALUE(this->readers);
+    DECLARE_MUTEX(dlog) readers_lock;
+
+    struct list_node readers TA_GUARDED(readers_lock) = LIST_INITIAL_VALUE(this->readers);
 };
 
 struct dlog_reader {
@@ -84,18 +89,18 @@ void dlog_serial_write(const char* data, size_t len);
 // bluescreen_init should be called at the "start" of a fatal fault or
 // panic to ensure that the fault output (via kernel printf/dprintf)
 // is captured or displayed to the user
-void dlog_bluescreen_init(void);
+void dlog_bluescreen_init();
 
 // bluescreen_halt should be called from inside platform_halt to allow
 // the bluescreen service to finalize the display of the panic data
 // (for example, creating a qrcode)
-void dlog_bluescreen_halt(void);
+void dlog_bluescreen_halt();
 
 // Shutdown the debuglog subsystem.
 //
 // Note: This may block for an extended period of time.
-void dlog_shutdown(void);
+void dlog_shutdown();
 
-void dlog_bypass_init_early(void);
-void dlog_bypass_init(void);
-bool dlog_bypass(void);
+void dlog_bypass_init_early();
+void dlog_bypass_init();
+bool dlog_bypass();
