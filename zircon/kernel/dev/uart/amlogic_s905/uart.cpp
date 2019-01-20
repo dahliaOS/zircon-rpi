@@ -8,6 +8,7 @@
 #include <dev/interrupt.h>
 #include <dev/uart.h>
 #include <kernel/thread.h>
+#include <kernel/spinlock.h>
 #include <lib/cbuf.h>
 #include <lib/debuglog.h>
 #include <reg.h>
@@ -80,10 +81,12 @@
 
 // clang-format on
 
-static cbuf_t uart_rx_buf;
-static bool initialized = false;
-static vaddr_t s905_uart_base = 0;
-static uint32_t s905_uart_irq = 0;
+namespace {
+
+cbuf_t uart_rx_buf;
+bool initialized = false;
+vaddr_t s905_uart_base = 0;
+uint32_t s905_uart_irq = 0;
 
 /*
  * Tx driven irq:
@@ -101,12 +104,14 @@ static uint32_t s905_uart_irq = 0;
  * 4) Setting TXINTEN will generate an interrupt each time a byte is
  * read from the Tx FIFO. So we can leave the interrupt unmasked.
  */
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
-                                                      true,
-                                                      EVENT_FLAG_AUTOUNSIGNAL);
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
+                                               true,
+                                               EVENT_FLAG_AUTOUNSIGNAL);
 
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 static interrupt_eoi uart_irq(void* arg) {
     uintptr_t base = (uintptr_t)arg;
@@ -120,13 +125,12 @@ static interrupt_eoi uart_irq(void* arg) {
         cbuf_write_char(&uart_rx_buf, c);
     }
     if (UARTREG(s905_uart_base, S905_UART_CONTROL) & S905_UART_CONTROL_TXINTEN) {
-        spin_lock(&uart_spinlock);
+        Guard<SpinLock, NoIrqSave> guard{uart_spinlock::Get()};
         if (!(UARTREG(s905_uart_base, S905_UART_STATUS) & S905_UART_STATUS_TXFULL))
         /* Signal any waiting Tx */
         {
             event_signal(&uart_dputc_event, true);
         }
-        spin_unlock(&uart_spinlock);
     }
 
     return IRQ_EOI_DEACTIVATE;
@@ -236,7 +240,6 @@ static int s905_uart_getc(bool wait) {
  */
 static void s905_dputs(const char* str, size_t len,
                        bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
 
     if (!s905_uart_base) {
@@ -245,17 +248,18 @@ static void s905_dputs(const char* str, size_t len,
     if (!uart_tx_irq_enabled) {
         block = false;
     }
-    spin_lock_irqsave(&uart_spinlock, state);
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
     while (len > 0) {
         /* Is FIFO Full ? */
         while (UARTREG(s905_uart_base, S905_UART_STATUS) & S905_UART_STATUS_TXFULL) {
-            spin_unlock_irqrestore(&uart_spinlock, state);
-            if (block) {
-                event_wait(&uart_dputc_event);
-            } else {
-                arch_spinloop_pause();
-            }
-            spin_lock_irqsave(&uart_spinlock, state);
+            /* Drop the lock and wait or spin */
+            guard.CallUnlocked([block]() {
+                if (block) {
+                    event_wait(&uart_dputc_event);
+                } else {
+                    arch_spinloop_pause();
+                }
+            });
         }
 
         if (*str == '\n' && map_NL && !copied_CR) {
@@ -267,7 +271,6 @@ static void s905_dputs(const char* str, size_t len,
             len--;
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 static void s905_uart_start_panic() {

@@ -42,11 +42,13 @@
 
 #define RXBUF_SIZE 16
 
-// values read from zbi
-static vaddr_t uart_base = 0;
-static uint32_t uart_irq = 0;
+namespace {
 
-static cbuf_t uart_rx_buf;
+// values read from zbi
+vaddr_t uart_base = 0;
+uint32_t uart_irq = 0;
+
+cbuf_t uart_rx_buf;
 
 /*
  * Tx driven irq:
@@ -54,12 +56,14 @@ static cbuf_t uart_rx_buf;
  * mask it when we no longer care about it and unmask it when we start
  * xmitting.
  */
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
                                                       true,
                                                       EVENT_FLAG_AUTOUNSIGNAL);
 
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 static inline void pl011_mask_tx() {
     UARTREG(uart_base, UART_IMSC) &= ~(1 << 5);
@@ -86,7 +90,7 @@ static interrupt_eoi pl011_uart_irq(void* arg) {
             cbuf_write_char(&uart_rx_buf, c);
         }
     }
-    spin_lock(&uart_spinlock);
+    Guard<SpinLock, NoIrqSave> guard{uart_spinlock::Get()};
     if (isr & (1 << 5)) {
         /*
          * Signal any waiting Tx and mask Tx interrupts once we
@@ -95,7 +99,6 @@ static interrupt_eoi pl011_uart_irq(void* arg) {
         event_signal(&uart_dputc_event, true);
         pl011_mask_tx();
     }
-    spin_unlock(&uart_spinlock);
 
     return IRQ_EOI_DEACTIVATE;
 }
@@ -163,26 +166,27 @@ static int pl011_uart_pgetc() {
 
 static void pl011_dputs(const char* str, size_t len,
                         bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
 
     if (!uart_tx_irq_enabled) {
         block = false;
     }
-    spin_lock_irqsave(&uart_spinlock, state);
+
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
     while (len > 0) {
         // Is FIFO Full ?
         while (UARTREG(uart_base, UART_FR) & (1 << 5)) {
             if (block) {
                 /* Unmask Tx interrupts before we block on the event */
                 pl011_unmask_tx();
-                spin_unlock_irqrestore(&uart_spinlock, state);
-                event_wait(&uart_dputc_event);
+                guard.CallUnlocked([]() {
+                    event_wait(&uart_dputc_event);
+                });
             } else {
-                spin_unlock_irqrestore(&uart_spinlock, state);
-                arch_spinloop_pause();
+                guard.CallUnlocked([]() {
+                    arch_spinloop_pause();
+                });
             }
-            spin_lock_irqsave(&uart_spinlock, state);
         }
         if (!copied_CR && map_NL && *str == '\n') {
             copied_CR = true;
@@ -193,7 +197,6 @@ static void pl011_dputs(const char* str, size_t len,
             len--;
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 static void pl011_start_panic() {

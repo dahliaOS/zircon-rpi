@@ -92,19 +92,23 @@
 
 #define RXBUF_SIZE 32
 
+namespace {
+
 // values read from zbi
-static bool initialized = false;
-static vaddr_t uart_base = 0;
-static vaddr_t soc_base = 0;
-static uint32_t uart_irq = 0;
-static cbuf_t uart_rx_buf;
+bool initialized = false;
+vaddr_t uart_base = 0;
+vaddr_t soc_base = 0;
+uint32_t uart_irq = 0;
+cbuf_t uart_rx_buf;
 
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
-                                                      true,
-                                                      EVENT_FLAG_AUTOUNSIGNAL);
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
+                                               true,
+                                               EVENT_FLAG_AUTOUNSIGNAL);
 
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 #define UARTREG(reg) (*(volatile uint32_t*)((uart_base) + (reg)))
 #define SOCREG(reg) (*(volatile uint32_t*)((soc_base) + (reg)))
@@ -122,12 +126,11 @@ static interrupt_eoi uart_irq_handler(void* arg) {
     // Signal if anyone is waiting to TX
     if (UARTREG(UART_LSR) & UART_LSR_THRE) {
         UARTREG(UART_IER) &= ~UART_IER_ETBEI; // Disable TX interrupt
-        spin_lock(&uart_spinlock);
+        Guard<SpinLock, NoIrqSave> guard{uart_spinlock::Get()};
         // TODO(andresoportus): Revisit all UART drivers usage of events, from event.h:
         // 1. The reschedule flag is not supposed to be true in interrupt context.
         // 2. FLAG_AUTOUNSIGNAL only wakes up one thread.
         event_signal(&uart_dputc_event, true);
-        spin_unlock(&uart_spinlock);
     }
 
     return IRQ_EOI_DEACTIVATE;
@@ -177,7 +180,6 @@ static int mt8167_uart_getc(bool wait) {
 
 static void mt8167_dputs(const char* str, size_t len,
                          bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
 
     if (!uart_base) {
@@ -186,19 +188,20 @@ static void mt8167_dputs(const char* str, size_t len,
     if (!uart_tx_irq_enabled) {
         block = false;
     }
-    spin_lock_irqsave(&uart_spinlock, state);
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
 
     while (len > 0) {
         // is FIFO full?
         while (!(UARTREG(UART_LSR) & UART_LSR_THRE)) {
-            spin_unlock_irqrestore(&uart_spinlock, state);
-            if (block) {
-                UARTREG(UART_IER) |= UART_IER_ETBEI; // Enable TX interrupt.
-                event_wait(&uart_dputc_event);
-            } else {
-                arch_spinloop_pause();
-            }
-            spin_lock_irqsave(&uart_spinlock, state);
+            // Drop the lock and wait or spin
+            guard.CallUnlocked([block]() {
+                if (block) {
+                    UARTREG(UART_IER) |= UART_IER_ETBEI; // Enable TX interrupt.
+                    event_wait(&uart_dputc_event);
+                } else {
+                    arch_spinloop_pause();
+                }
+            });
         }
         if (*str == '\n' && map_NL && !copied_CR) {
             copied_CR = true;
@@ -209,7 +212,6 @@ static void mt8167_dputs(const char* str, size_t len,
             len--;
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 static void mt8167_start_panic() {

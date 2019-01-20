@@ -107,18 +107,22 @@
 
 // clang-format on
 
+namespace {
+
 // values read from zbi
-static uint64_t uart_base = 0;
-static uint32_t uart_irq = 0;
+uint64_t uart_base = 0;
+uint32_t uart_irq = 0;
 
-static cbuf_t uart_rx_buf;
+cbuf_t uart_rx_buf;
 
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
                                                       true,
                                                       EVENT_FLAG_AUTOUNSIGNAL);
 
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 static inline uint32_t uart_read(int offset) {
     return readl(uart_base + offset);
@@ -282,7 +286,6 @@ static void msm_start_panic(void) {
 
 static void msm_dputs(const char* str, size_t len,
                          bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
 
     if (!uart_base) {
@@ -291,19 +294,20 @@ static void msm_dputs(const char* str, size_t len,
     if (!uart_tx_irq_enabled) {
         block = false;
     }
-    spin_lock_irqsave(&uart_spinlock, state);
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
 
     while (len > 0) {
         // is FIFO full?
         while (!(uart_read(UART_DM_SR) & UART_DM_SR_TXEMT)) {
-            spin_unlock_irqrestore(&uart_spinlock, state);
-            if (block) {
-                // TODO(voydanoff) Enable TX interrupt.
-                event_wait(&uart_dputc_event);
-            } else {
-                arch_spinloop_pause();
-            }
-            spin_lock_irqsave(&uart_spinlock, state);
+            /* Drop the lock and wait or spin */
+            guard.CallUnlocked([block]() {
+                if (block) {
+                    // TODO(voydanoff) Enable TX interrupt.
+                    event_wait(&uart_dputc_event);
+                } else {
+                    arch_spinloop_pause();
+                }
+            });
         }
         if (*str == '\n' && map_NL && !copied_CR) {
             copied_CR = true;
@@ -314,7 +318,6 @@ static void msm_dputs(const char* str, size_t len,
             len--;
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 static const struct pdev_uart_ops uart_ops = {

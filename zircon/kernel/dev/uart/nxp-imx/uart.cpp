@@ -63,19 +63,23 @@
 
 // clang-format on
 
+namespace {
+
 // values read from zbi
-static bool initialized = false;
-static vaddr_t uart_base = 0;
-static uint32_t uart_irq = 0;
-static cbuf_t uart_rx_buf;
+bool initialized = false;
+vaddr_t uart_base = 0;
+uint32_t uart_irq = 0;
+cbuf_t uart_rx_buf;
 // static cbuf_t uart_tx_buf;
 
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event,
                                                       true,
                                                       EVENT_FLAG_AUTOUNSIGNAL);
 
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 #define UARTREG(reg) (*(volatile uint32_t*)((uart_base) + (reg)))
 
@@ -91,12 +95,11 @@ static interrupt_eoi uart_irq_handler(void* arg) {
 
     /* Signal if anyone is waiting to TX */
     if (UARTREG(MX8_UCR1) & UCR1_TRDYEN) {
-        spin_lock(&uart_spinlock);
+        Guard<SpinLock, NoIrqSave> guard{uart_spinlock::Get()};
         if (!(UARTREG(MX8_USR2) & UTS_TXFULL)) {
             // signal
             event_signal(&uart_dputc_event, true);
         }
-        spin_unlock(&uart_spinlock);
     }
 
     return IRQ_EOI_DEACTIVATE;
@@ -147,7 +150,6 @@ static int imx_uart_getc(bool wait) {
 
 static void imx_dputs(const char* str, size_t len,
                       bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
 
     if (!uart_base) {
@@ -156,18 +158,19 @@ static void imx_dputs(const char* str, size_t len,
     if (!uart_tx_irq_enabled) {
         block = false;
     }
-    spin_lock_irqsave(&uart_spinlock, state);
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
 
     while (len > 0) {
         // is FIFO full?
         while ((UARTREG(MX8_UTS) & UTS_TXFULL)) {
-            spin_unlock_irqrestore(&uart_spinlock, state);
-            if (block) {
-                event_wait(&uart_dputc_event);
-            } else {
-                arch_spinloop_pause();
-            }
-            spin_lock_irqsave(&uart_spinlock, state);
+            // Drop the lock and wait or spin
+            guard.CallUnlocked([block]() {
+                if (block) {
+                    event_wait(&uart_dputc_event);
+                } else {
+                    arch_spinloop_pause();
+                }
+            });
         }
         if (*str == '\n' && map_NL && !copied_CR) {
             copied_CR = true;
@@ -178,7 +181,6 @@ static void imx_dputs(const char* str, size_t len,
             len--;
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 static void imx_start_panic() {

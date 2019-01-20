@@ -10,6 +10,7 @@
 #include <bits.h>
 #include <dev/interrupt.h>
 #include <kernel/cmdline.h>
+#include <kernel/lockdep.h>
 #include <kernel/spinlock.h>
 #include <kernel/thread.h>
 #include <kernel/timer.h>
@@ -33,20 +34,25 @@
 
 #include "platform_p.h"
 
-static const int uart_baud_rate = 115200;
-static int uart_io_port = 0x3f8;
-static uint64_t uart_mem_addr = 0;
-static uint32_t uart_irq = ISA_IRQ_SERIAL1;
-
 cbuf_t console_input_buf;
-static bool output_enabled = false;
+
+namespace {
+
+const int uart_baud_rate = 115200;
+int uart_io_port = 0x3f8;
+uint64_t uart_mem_addr = 0;
+uint32_t uart_irq = ISA_IRQ_SERIAL1;
+
+bool output_enabled = false;
 uint32_t uart_fifo_depth;
 
 // tx driven irq
-static bool uart_tx_irq_enabled = false;
-static event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event, true,
-                                                      EVENT_FLAG_AUTOUNSIGNAL);
-static spin_lock_t uart_spinlock = SPIN_LOCK_INITIAL_VALUE;
+bool uart_tx_irq_enabled = false;
+event_t uart_dputc_event = EVENT_INITIAL_VALUE(uart_dputc_event, true,
+                                               EVENT_FLAG_AUTOUNSIGNAL);
+DECLARE_SINGLETON_SPINLOCK(uart_spinlock);
+
+} // anonymous namespace
 
 static uint8_t uart_read(uint8_t reg) {
     if (uart_mem_addr) {
@@ -65,7 +71,7 @@ static void uart_write(uint8_t reg, uint8_t val) {
 }
 
 static interrupt_eoi uart_irq_handler(void *arg) {
-    spin_lock(&uart_spinlock);
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
 
     // see why we have gotten an irq
     for (;;) {
@@ -93,12 +99,11 @@ static interrupt_eoi uart_irq_handler(void *arg) {
             uart_read(5); // read the LSR
             break;
         default:
-            spin_unlock(&uart_spinlock);
+            guard.Release();
             panic("UART: unhandled ident %#x\n", ident);
         }
     }
 
-    spin_unlock(&uart_spinlock);
     return IRQ_EOI_DEACTIVATE;
 }
 
@@ -114,7 +119,7 @@ static constexpr TimerSlack kSlack{ZX_MSEC(1), TIMER_SLACK_CENTER};
 // for devices where the uart rx interrupt doesn't seem to work
 static void uart_rx_poll(timer_t* t, zx_time_t now, void* arg) {
     const Deadline deadline(zx_time_add_duration(now, ZX_MSEC(10)), kSlack);
-    timer_set(t, deadline, uart_rx_poll, NULL);
+    timer_set(t, deadline, uart_rx_poll, nullptr);
     platform_drain_debug_uart_rx();
 }
 
@@ -128,7 +133,7 @@ void platform_debug_start_uart_timer(void) {
         started = true;
         timer_init(&uart_rx_poll_timer);
         const Deadline deadline(zx_time_add_duration(current_time(), ZX_MSEC(10)), kSlack);
-        timer_set(&uart_rx_poll_timer, deadline, uart_rx_poll, NULL);
+        timer_set(&uart_rx_poll_timer, deadline, uart_rx_poll, nullptr);
     }
 }
 
@@ -175,7 +180,7 @@ void pc_init_debug_default_early() {
 
 static void handle_serial_cmdline() {
     const char* serial_mode = cmdline_get("kernel.serial");
-    if (serial_mode == NULL) {
+    if (!serial_mode) {
         return;
     }
     if (!strcmp(serial_mode, "none")) {
@@ -300,7 +305,7 @@ void pc_init_debug(void) {
         platform_debug_start_uart_timer();
     } else {
         uart_irq = apic_io_isa_to_global(static_cast<uint8_t>(uart_irq));
-        zx_status_t status = register_int_handler(uart_irq, uart_irq_handler, NULL);
+        zx_status_t status = register_int_handler(uart_irq, uart_irq_handler, nullptr);
         DEBUG_ASSERT(status == ZX_OK);
         unmask_interrupt(uart_irq);
 
@@ -358,7 +363,7 @@ static char *debug_platform_tx_FIFO_bytes(const char *str, size_t *len,
         s++;
         (*len)--;
     }
-    if (wrote_bytes != NULL)
+    if (wrote_bytes)
         *wrote_bytes = i;
     return s;
 }
@@ -379,16 +384,15 @@ static char *debug_platform_tx_FIFO_bytes(const char *str, size_t *len,
  */
 static void platform_dputs(const char* str, size_t len,
                            bool block, bool map_NL) {
-    spin_lock_saved_state_t state;
     bool copied_CR = false;
-    size_t wrote;
 
     // drop strings if we haven't initialized the uart yet
     if (unlikely(!output_enabled))
         return;
     if (!uart_tx_irq_enabled)
         block = false;
-    spin_lock_irqsave(&uart_spinlock, state);
+
+    Guard<SpinLock, IrqSave> guard{uart_spinlock::Get()};
     while (len > 0) {
         // Is FIFO empty ?
         while (!(uart_read(5) & (1<<5))) {
@@ -398,16 +402,18 @@ static void platform_dputs(const char* str, size_t len,
                  * Tx interrupts before blocking.
                  */
                 uart_write(1, (1<<0)|(1<<1)); // rx and tx interrupt enable
-                spin_unlock_irqrestore(&uart_spinlock, state);
-                event_wait(&uart_dputc_event);
+                guard.CallUnlocked([]() {
+                    event_wait(&uart_dputc_event);
+                });
             } else {
-                spin_unlock_irqrestore(&uart_spinlock, state);
-                arch_spinloop_pause();
+                guard.CallUnlocked([]() {
+                    arch_spinloop_pause();
+                });
             }
-            spin_lock_irqsave(&uart_spinlock, state);
         }
         // Fifo is completely empty now, we can shove an entire
         // fifo's worth of Tx...
+        size_t wrote;
         str = debug_platform_tx_FIFO_bytes(str, &len, &copied_CR,
                                            &wrote, map_NL);
         if (block && wrote > 0) {
@@ -415,7 +421,6 @@ static void platform_dputs(const char* str, size_t len,
             uart_write(1, (1<<0)|(1<<1)); // rx and tx interrupt enable
         }
     }
-    spin_unlock_irqrestore(&uart_spinlock, state);
 }
 
 void platform_dputs_thread(const char* str, size_t len) {
