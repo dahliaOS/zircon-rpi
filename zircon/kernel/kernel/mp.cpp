@@ -41,10 +41,14 @@ struct mp_sync_context;
 static void mp_sync_task(void* context);
 
 void mp_init(void) {
-    mp.ipi_task_lock = SPIN_LOCK_INITIAL_VALUE;
-    for (uint i = 0; i < fbl::count_of(mp.ipi_task_list); ++i) {
-        list_initialize(&mp.ipi_task_list[i]);
-    }
+    // Initialize the linked lists outside of the spinlock
+    // that is supposed to protect them.
+    []() __TA_NO_THREAD_SAFETY_ANALYSIS
+    {
+        for (auto& list: mp.ipi_task_list) {
+            list_initialize(&list);
+        }
+    }();
 }
 
 void mp_prepare_current_cpu_idle_state(bool idle) {
@@ -150,17 +154,18 @@ void mp_sync_exec(mp_ipi_target_t target, cpu_mask_t mask, mp_sync_task_t task, 
     }
 
     // enqueue tasks
-    spin_lock(&mp.ipi_task_lock);
-    cpu_mask_t remaining = mask;
-    uint cpu_id = 0;
-    while (remaining && cpu_id < num_cpus) {
-        if (remaining & 1) {
-            list_add_tail(&mp.ipi_task_list[cpu_id], &sync_tasks[cpu_id].node);
+    {
+        Guard<SpinLock, NoIrqSave> guard{&mp.ipi_task_lock};
+        cpu_mask_t remaining = mask;
+        uint cpu_id = 0;
+        while (remaining && cpu_id < num_cpus) {
+            if (remaining & 1) {
+                list_add_tail(&mp.ipi_task_list[cpu_id], &sync_tasks[cpu_id].node);
+            }
+            remaining >>= 1;
+            cpu_id++;
         }
-        remaining >>= 1;
-        cpu_id++;
     }
-    spin_unlock(&mp.ipi_task_lock);
 
     // let CPUs know to begin executing
     __UNUSED zx_status_t status = arch_mp_send_ipi(MP_IPI_TARGET_MASK, mask, MP_IPI_GENERIC);
@@ -209,14 +214,13 @@ void mp_sync_exec(mp_ipi_target_t target, cpu_mask_t mask, mp_sync_task_t task, 
 
     // make sure the sync_tasks aren't in lists anymore, since they're
     // stack allocated
-    spin_lock_irqsave(&mp.ipi_task_lock, irqstate);
+    Guard<SpinLock, IrqSave> guard{&mp.ipi_task_lock};
     for (uint i = 0; i < num_cpus; ++i) {
         // If a task is still around, it's because the CPU went offline.
         if (list_in_list(&sync_tasks[i].node)) {
             list_delete(&sync_tasks[i].node);
         }
     }
-    spin_unlock_irqrestore(&mp.ipi_task_lock, irqstate);
 }
 
 static void mp_unplug_trampoline(void) TA_REQ(thread_lock) __NO_RETURN;
@@ -264,12 +268,11 @@ zx_status_t mp_hotplug_cpu_mask(cpu_mask_t cpu_mask) {
 
     zx_status_t status = ZX_OK;
 
-    mutex_acquire(&mp.hotplug_lock);
+    Guard<fbl::Mutex> guard{&mp.hotplug_lock};
 
     // Make sure all of the requested CPUs are offline
     if (cpu_mask & mp_get_online_mask()) {
-        status = ZX_ERR_BAD_STATE;
-        goto cleanup_mutex;
+        return status;
     }
 
     while (cpu_mask != 0) {
@@ -281,8 +284,7 @@ zx_status_t mp_hotplug_cpu_mask(cpu_mask_t cpu_mask) {
             break;
         }
     }
-cleanup_mutex:
-    mutex_release(&mp.hotplug_lock);
+
     return status;
 }
 
@@ -307,13 +309,13 @@ static zx_status_t mp_unplug_cpu_mask_single_locked(cpu_num_t cpu_id) {
     // thread and when the CPU is woken up).
     event_t unplug_done = EVENT_INITIAL_VALUE(unplug_done, false, 0);
     thread_t* t = thread_create_etc(
-        NULL,
+        nullptr,
         "unplug_thread",
-        NULL,
+        nullptr,
         &unplug_done,
         HIGHEST_PRIORITY,
         mp_unplug_trampoline);
-    if (t == NULL) {
+    if (!t) {
         return ZX_ERR_NO_MEMORY;
     }
 
@@ -367,12 +369,11 @@ zx_status_t mp_unplug_cpu_mask(cpu_mask_t cpu_mask) {
 
     zx_status_t status = ZX_OK;
 
-    mutex_acquire(&mp.hotplug_lock);
+    Guard<fbl::Mutex> guard{&mp.hotplug_lock};
 
     // Make sure all of the requested CPUs are online
     if (cpu_mask & ~mp_get_online_mask()) {
-        status = ZX_ERR_BAD_STATE;
-        goto cleanup_mutex;
+        return ZX_ERR_BAD_STATE;
     }
 
     while (cpu_mask != 0) {
@@ -385,8 +386,6 @@ zx_status_t mp_unplug_cpu_mask(cpu_mask_t cpu_mask) {
         }
     }
 
-cleanup_mutex:
-    mutex_release(&mp.hotplug_lock);
     return status;
 }
 
@@ -398,10 +397,11 @@ interrupt_eoi mp_mbx_generic_irq(void*) {
 
     while (1) {
         struct mp_ipi_task* task;
-        spin_lock(&mp.ipi_task_lock);
-        task = list_remove_head_type(&mp.ipi_task_list[local_cpu], struct mp_ipi_task, node);
-        spin_unlock(&mp.ipi_task_lock);
-        if (task == NULL) {
+        {
+            Guard<SpinLock, NoIrqSave> guard{&mp.ipi_task_lock};
+            task = list_remove_head_type(&mp.ipi_task_list[local_cpu], struct mp_ipi_task, node);
+        }
+        if (!task) {
             break;
         }
 

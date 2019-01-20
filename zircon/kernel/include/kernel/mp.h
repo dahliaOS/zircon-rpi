@@ -7,7 +7,9 @@
 
 #pragma once
 
+#include <fbl/mutex.h>
 #include <kernel/cpu.h>
+#include <kernel/lockdep.h>
 #include <kernel/mutex.h>
 #include <kernel/thread.h>
 #include <limits.h>
@@ -15,8 +17,6 @@
 #include <stdint.h>
 #include <zircon/compiler.h>
 #include <zircon/types.h>
-
-__BEGIN_CDECLS
 
 // NOTE(abdulla): This is located here to break a circular dependency.
 enum interrupt_eoi {
@@ -100,13 +100,14 @@ struct mp_state {
     cpu_mask_t idle_cpus TA_GUARDED(thread_lock);
     cpu_mask_t realtime_cpus TA_GUARDED(thread_lock);
 
-    spin_lock_t ipi_task_lock;
+    DECLARE_SPINLOCK(mp_state) ipi_task_lock;
+
     // list of outstanding tasks for CPUs to execute.  Should only be
     // accessed with the ipi_task_lock held
-    struct list_node ipi_task_list[SMP_MAX_CPUS];
+    struct list_node ipi_task_list[SMP_MAX_CPUS] TA_GUARDED(ipi_task_lock);
 
     // lock for serializing CPU hotplug/unplug operations
-    mutex_t hotplug_lock;
+    DECLARE_MUTEX(mp_state) hotplug_lock;
 };
 
 extern struct mp_state mp;
@@ -178,5 +179,3 @@ static inline cpu_mask_t mp_get_active_mask(void) {
 static inline int mp_is_cpu_active(cpu_num_t cpu) {
     return mp_get_active_mask() & cpu_num_to_mask(cpu);
 }
-
-__END_CDECLS
