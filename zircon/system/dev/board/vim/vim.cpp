@@ -97,10 +97,6 @@ int Vim::Thread() {
         return -1;
     }
 
-    if (info.pid == PDEV_PID_VIM2_MACHINA) {
-        return ZX_OK;
-    }
-
     // Start protocol drivers before adding platform devices.
     // Sysmem is started early so zx_vmo_create_contiguous() works.
     if ((status = SysmemInit()) != ZX_OK) {
@@ -164,7 +160,7 @@ int Vim::Thread() {
         return -1;
     }
 
-    if ((status = DisplayInit()) != ZX_OK) {
+    if (info.pid == PDEV_PID_VIM2 && (status = DisplayInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: DisplayInit failed: %d\n", status);
         return -1;
     }
@@ -176,12 +172,6 @@ int Vim::Thread() {
 
     if ((status = Led2472gInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: Led2472gInit failed: %d\n", status);
-        return -1;
-    }
-
-    // Remove this when not needed for testing any longer
-    if ((status = pbus_.DeviceAdd(&tee_dev)) != ZX_OK) {
-        zxlogf(ERROR, "vim_start_thread, could not add tee_dev: %d\n", status);
         return -1;
     }
 
