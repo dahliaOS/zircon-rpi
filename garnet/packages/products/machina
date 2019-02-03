@@ -1,0 +1,8 @@
+{
+  "imports": [
+    "garnet/packages/config/kernel_crash_checker",
+    "garnet/packages/prod/chrealm",
+    "garnet/packages/prod/guest_runner"
+  ]
+}
+
