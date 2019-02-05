@@ -505,8 +505,6 @@ zx_status_t HisiPcieDevice::kirin_pcie_power_on() {
 
     zx_nanosleep(zx_deadline_after(ZX_MSEC(20)));
 
-    // TODO(gkalsi): Make sure this is correct?
-    // TODO(gkalsi): Do we need to set gpio alternate functions.
     gpio_write(&gpio_, 1);
 
     zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
