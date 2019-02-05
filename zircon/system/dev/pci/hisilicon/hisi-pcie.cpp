@@ -425,49 +425,49 @@ zx_status_t HisiPcieDevice::InitMmios() {
     zx_status_t st;
     mmio_buffer_t mmio;
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_DBI, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_DBI, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map dbi buffer, st = %d\n", st);
         return st;
     }
     dbi_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_APB, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_APB, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map dbi buffer, st = %d\n", st);
         return st;
     }
     apb_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_PHY, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_PHY, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map dbi buffer, st = %d\n", st);
         return st;
     }
     phy_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_CFG, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_CFG, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map dbi buffer, st = %d\n", st);
         return st;
     }
     cfg_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_CRGCTRL, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_CRGCTRL, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map crgctrl buffer, st = %d\n", st);
         return st;
     }
     crgctrl_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_SCTRL, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_SCTRL, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map sctrl buffer, st = %d\n", st);
         return st;
     }
     sctrl_ = ddk::MmioBuffer(mmio);
 
-    st = pdev_map_mmio_buffer2(&pdev_, MMIO_CONFIG, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
+    st = pdev_map_mmio_buffer(&pdev_, MMIO_CONFIG, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to map config buffer, st = %d\n", st);
         return st;
