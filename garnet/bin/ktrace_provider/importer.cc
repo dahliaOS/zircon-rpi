@@ -29,6 +29,9 @@ constexpr uint64_t ToUInt64(uint32_t lo, uint32_t hi) {
 // The kernel reports different thread state values through ktrace.
 // These values must line up with those in "kernel/include/kernel/thread.h".
 constexpr trace_thread_state_t ToTraceThreadState(int value) {
+  return value;
+
+#if 0
   switch (value) {
     case 0:  // THREAD_INITIAL
     case 1:  // THREAD_READY
@@ -48,6 +51,7 @@ constexpr trace_thread_state_t ToTraceThreadState(int value) {
                        << value;
       return INT32_MAX;
   }
+#endif
 }
 
 }  // namespace
