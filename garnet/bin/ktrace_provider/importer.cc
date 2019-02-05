@@ -37,6 +37,9 @@ constexpr trace_ticks_t kKernelMutexOpPriorityDurationWidth = 50;
 // The kernel reports different thread state values through ktrace.
 // These values must line up with those in "kernel/include/kernel/thread.h".
 constexpr trace_thread_state_t ToTraceThreadState(int value) {
+  return value;
+
+#if 0
   switch (value) {
     case 0:  // THREAD_INITIAL
     case 1:  // THREAD_READY
@@ -55,6 +58,7 @@ constexpr trace_thread_state_t ToTraceThreadState(int value) {
       FXL_LOG(WARNING) << "Imported unknown thread state from ktrace: " << value;
       return INT32_MAX;
   }
+#endif
 }
 
 }  // namespace
