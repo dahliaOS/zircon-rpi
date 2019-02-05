@@ -8,7 +8,7 @@
 #include <zircon/hw/pci.h>
 #include <trace.h>
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 namespace {
 
@@ -72,6 +72,13 @@ zx_status_t DesignWarePcieAddressProvider::Init(const PciEcamRegion& root_bridge
         return st;
     }
 
+    printf("Init DesignwarePcieAddressProvider rb phys = 0x%016lx virt = 0x%016lx\n", root_bridge.phys_base, (long unsigned int)root_bridge_region_->vaddr());
+    printf("Init DesignwarePcieAddressProvider ds phys = 0x%016lx virt = 0x%016lx\n", downstream_device.phys_base, (long unsigned int)downstream_region_->vaddr());
+
+    void* rb_ecam_virt = root_bridge_region_->vaddr();
+
+    printf("rb_ecam_virtual address = 0x%016lx\n", (long unsigned int)rb_ecam_virt);
+
     return ZX_OK;
 }
 
@@ -114,14 +121,22 @@ zx_status_t DesignWarePcieAddressProvider::Translate(const uint8_t bus_id,
         if (phys) {
             *phys = root_bridge_region_->ecam().phys_base;
         }
+        TRACEF("DesignWarePcieAddressProvider::Translate(%u, %u, %u) - Root Bridge - Virt = 0x%016lx\n",
+               bus_id, device_id, function_id, *virt);
         return ZX_OK;
     } else if (isDownstream(bdf)) {
         *virt = reinterpret_cast<vaddr_t>(downstream_region_->vaddr());
         if (phys) {
             *phys = downstream_region_->ecam().phys_base;
         }
+        TRACEF("DesignWarePcieAddressProvider::Translate(%u, %u, %u) - Downstream\n",
+               bus_id, device_id, function_id);
         return ZX_OK;
     }
+
+    TRACEF("DesignWarePcieAddressProvider::Translate(%u, %u, %u) - Not Found\n",
+           bus_id, device_id, function_id);
+
     return ZX_ERR_NOT_FOUND;
 }
 
@@ -129,5 +144,15 @@ fbl::RefPtr<PciConfig> DesignWarePcieAddressProvider::CreateConfig(const uintptr
     // DesignWare has a strange translation mechanism from BDF->Memory Address
     // but at the end of the day it's still a memory mapped device which means
     // we can create an MMIO address space.
+
+    // TODO(gkalsi): conditionally return a PciHikeyConfig here.
+
+    printf("DesignWarePcieAddressProvider::CreateConfig(0x%016lx)\n", addr);
+
+    if (addr == (uintptr_t)(root_bridge_region_->vaddr())) {
+        return PciConfig::Create(addr, PciAddrSpace::HIKEY);
+    }
+
+
     return PciConfig::Create(addr, PciAddrSpace::MMIO);
 }

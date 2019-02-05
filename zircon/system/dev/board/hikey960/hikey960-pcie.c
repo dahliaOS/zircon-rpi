@@ -6,8 +6,8 @@
 #include <ddk/platform-defs.h>
 #include <soc/hi3660/hi3660-hw.h>
 
-#include "hikey960.h"
 #include "hikey960-hw.h"
+#include "hikey960.h"
 
 static const pbus_mmio_t mmios[] = {
     // DBI.
@@ -45,6 +45,13 @@ static const pbus_mmio_t mmios[] = {
         .base = 0xfff0a000,
         .length = 0x1000,
     },
+
+    // ATU config space.
+    {
+        .base =   0xf6000000,
+        .length = 0x02000000, // 32MiB
+    }
+
 };
 
 static const pbus_gpio_t gpios[] = {
@@ -87,7 +94,6 @@ static const pbus_clk_t clks[] = {
     {
         .clk = HI3660_ACLK_GATE_PCIE,
     },
-
 
 };
 

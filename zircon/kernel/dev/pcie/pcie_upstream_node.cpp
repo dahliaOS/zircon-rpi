@@ -24,7 +24,7 @@
 #include <dev/pcie_bridge.h>
 #include <dev/pcie_root.h>
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 PcieUpstreamNode::~PcieUpstreamNode() {
 #if LK_DEBUGLEVEL > 0
@@ -80,8 +80,10 @@ void PcieUpstreamNode::ScanDownstream() {
             }
 
             uint16_t vendor_id = cfg->Read(PciConfig::kVendorId);
+            printf("Read vendor id = 0x%x\n", vendor_id);
             bool good_device = cfg && (vendor_id != PCIE_INVALID_VENDOR_ID);
             if (good_device) {
+                TRACEF("%u:%u:%u is good!\n", managed_bus_id_, dev_id, func_id);
                 uint16_t device_id = cfg->Read(PciConfig::kDeviceId);
                 LTRACEF("found valid device %04x:%04x at %02x:%02x.%01x\n",
                         vendor_id, device_id, managed_bus_id_, dev_id, func_id);
@@ -106,6 +108,8 @@ void PcieUpstreamNode::ScanDownstream() {
                     static_cast<PcieUpstreamNode*>(
                     static_cast<PcieBridge*>(downstream_device.get()))->ScanDownstream();
                 }
+            } else {
+                TRACEF("%u:%u:%u is invalid! (vendor id = 0x%16x)\n", managed_bus_id_, dev_id, func_id, vendor_id);
             }
 
             /* If this was function zero, and there is either no device, or the

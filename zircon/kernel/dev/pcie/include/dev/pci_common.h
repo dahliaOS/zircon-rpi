@@ -160,7 +160,7 @@ __BEGIN_CDECLS
 __END_CDECLS
 
 #ifdef __cplusplus
-enum class PciAddrSpace { MMIO, PIO };
+enum class PciAddrSpace { MMIO, PIO, HIKEY };
 #if ARCH_X86
 constexpr bool PCIE_HAS_IO_ADDR_SPACE = true;
 constexpr uint64_t PCIE_PIO_ADDR_SPACE_MASK = 0xFFFF;

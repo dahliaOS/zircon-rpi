@@ -31,7 +31,7 @@
 
 #include "priv.h"
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 // If we were built with the GFX console, make sure that it is un-bound when
 // user mode takes control of PCI.  Note: there should probably be a cleaner way

@@ -14,6 +14,9 @@
 
 #include <fbl/alloc_checker.h>
 
+#include <arch/arm64/periphmap.h>
+#include <reg.h>
+
 #define LOCAL_TRACE 0
 
 // Storage for register constexprs
@@ -154,6 +157,123 @@ void PciMmioConfig::Write(PciReg32 addr, uint32_t val) const {
     *reg = LE32(val);
 }
 
+class PciHikeyConfig : public PciConfig {
+public:
+    PciHikeyConfig(uintptr_t base)
+        : PciConfig(base, PciAddrSpace::HIKEY) {
+            apb_base_ = periph_paddr_to_vaddr(0xff3fe000);
+            printf("PciHikeyConfig initialized apb_base_ = 0x%016lx\n", apb_base_);
+        }
+    uint8_t Read(const PciReg8 addr) const override;
+    uint16_t Read(const PciReg16 addr) const override;
+    uint32_t Read(const PciReg32 addr) const override;
+    void Write(const PciReg8 addr, uint8_t val) const override;
+    void Write(const PciReg16 addr, uint16_t val) const override;
+    void Write(const PciReg32 addr, uint32_t val) const override;
+
+private:
+    void sideband_dbi_r_mode(const bool enable) const;
+    void sideband_dbi_w_mode(const bool enable) const;
+    uint32_t kirin_elb_readl(uint32_t reg) const;
+    void kirin_elb_writel(uint32_t val, uint32_t reg) const;
+
+    vaddr_t apb_base_;
+
+    friend PciConfig;
+};
+
+#define SOC_PCIECTRL_CTRL0_ADDR (0x000)
+#define SOC_PCIECTRL_CTRL1_ADDR (0x004)
+#define PCIE_ELBI_SLV_DBI_ENABLE (0x1 << 21)
+
+uint32_t PciHikeyConfig::kirin_elb_readl(uint32_t reg) const {
+    return readl(apb_base_ + reg);
+}
+
+void PciHikeyConfig::kirin_elb_writel(uint32_t val, uint32_t reg) const {
+    writel(val, apb_base_ + reg);
+}
+
+void PciHikeyConfig::sideband_dbi_r_mode(const bool enable) const {
+    uint32_t val;
+
+    val = kirin_elb_readl(SOC_PCIECTRL_CTRL1_ADDR);
+
+    if (enable) {
+        val |= PCIE_ELBI_SLV_DBI_ENABLE;
+    } else {
+        val &= ~PCIE_ELBI_SLV_DBI_ENABLE;
+    }
+
+    kirin_elb_writel(val, SOC_PCIECTRL_CTRL1_ADDR);
+}
+
+void PciHikeyConfig::sideband_dbi_w_mode(const bool enable) const {
+    uint32_t val;
+
+    val = kirin_elb_readl(SOC_PCIECTRL_CTRL0_ADDR);
+
+    if (enable) {
+        val |= PCIE_ELBI_SLV_DBI_ENABLE;
+    } else {
+        val &= ~PCIE_ELBI_SLV_DBI_ENABLE;
+    }
+
+    kirin_elb_writel(val, SOC_PCIECTRL_CTRL0_ADDR);
+}
+
+uint8_t PciHikeyConfig::Read(const PciReg8 addr) const {
+    sideband_dbi_r_mode(true);
+    auto reg = reinterpret_cast<const volatile uint8_t*>(base_ + addr.offset());
+    uint8_t val = *reg;
+    sideband_dbi_r_mode(false);
+    return val;
+}
+
+uint16_t PciHikeyConfig::Read(const PciReg16 addr) const {
+    sideband_dbi_r_mode(true);
+    auto reg = reinterpret_cast<const volatile uint16_t*>(base_ + addr.offset());
+    uint16_t val = LE16(*reg);
+    // printf("PciHikeyConfig read16 reg @ 0x%x = 0x%x, ptr = %p\n", addr.offset(), LE16(*reg), reg);
+    sideband_dbi_r_mode(false);
+
+    // printf("PciHikeyConfig read16 = 0x%x\n", LE16(*reg));
+    return val;
+}
+
+uint32_t PciHikeyConfig::Read(const PciReg32 addr) const {
+    sideband_dbi_r_mode(true);
+    auto reg = reinterpret_cast<const volatile uint32_t*>(base_ + addr.offset());
+    uint32_t val = LE32(*reg);
+    // printf("PciHikeyConfig read32 reg @ 0x%x = 0x%x, ptr = %p\n", addr.offset(), *reg, reg);
+    sideband_dbi_r_mode(false);
+    return val;
+}
+
+void PciHikeyConfig::Write(const PciReg8 addr, uint8_t val) const {
+    sideband_dbi_w_mode(true);
+    auto reg = reinterpret_cast<volatile uint8_t*>(base_ + addr.offset());
+    *reg = val;
+    sideband_dbi_w_mode(false);
+    return;
+}
+
+void PciHikeyConfig::Write(const PciReg16 addr, uint16_t val) const {
+    sideband_dbi_w_mode(true);
+    auto reg = reinterpret_cast<volatile uint16_t*>(base_ + addr.offset());
+    *reg = LE16(val);
+    sideband_dbi_w_mode(false);
+    return;
+}
+
+void PciHikeyConfig::Write(const PciReg32 addr, uint32_t val) const {
+    sideband_dbi_w_mode(true);
+    auto reg = reinterpret_cast<volatile uint32_t*>(base_ + addr.offset());
+    *reg = LE32(val);
+    sideband_dbi_w_mode(false);
+    return;
+}
+
 } // anon namespace
 
 fbl::RefPtr<PciConfig> PciConfig::Create(uintptr_t base, PciAddrSpace addr_type) {
@@ -162,10 +282,21 @@ fbl::RefPtr<PciConfig> PciConfig::Create(uintptr_t base, PciAddrSpace addr_type)
 
     LTRACEF("base %#" PRIxPTR ", type %s\n", base, (addr_type == PciAddrSpace::PIO) ? "PIO" : "MIO");
 
-    if (addr_type == PciAddrSpace::PIO) {
+    switch (addr_type) {
+    case PciAddrSpace::PIO:
+        printf("Creating PIO PCI Config base = 0x%016lx\n", base);
         cfg = fbl::AdoptRef(new (&ac) PciPioConfig(base));
-    } else {
+        break;
+    case PciAddrSpace::MMIO:
+        printf("Creating MMIO PCI Config base = 0x%016lx\n", base);
         cfg = fbl::AdoptRef(new (&ac) PciMmioConfig(base));
+        break;
+    case PciAddrSpace::HIKEY:
+        printf("Creating Hikey PCI Config base = 0x%016lx\n", base);
+        cfg = fbl::AdoptRef(new (&ac) PciHikeyConfig(base));
+        break;
+    default:
+        PANIC_UNIMPLEMENTED;
     }
 
     if (!ac.check()) {
