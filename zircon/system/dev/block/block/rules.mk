@@ -10,6 +10,10 @@ MODULE_TYPE := driver
 
 MODULE_SRCS := \
     $(LOCAL_DIR)/block.cpp \
+    $(LOCAL_DIR)/io-scheduler.cpp \
+    $(LOCAL_DIR)/io-stream.cpp \
+    $(LOCAL_DIR)/io-queue.cpp \
+    $(LOCAL_DIR)/io-worker.cpp \
     $(LOCAL_DIR)/server.cpp \
     $(LOCAL_DIR)/server-manager.cpp \
     $(LOCAL_DIR)/txn-group.cpp \

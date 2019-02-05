@@ -3,101 +3,84 @@
 // found in the LICENSE file.
 
 #include <assert.h>
-
 #include <utility>
 
 #include <ddk/debug.h>
 
 #include "server-manager.h"
 
+constexpr uint32_t kDefaultStreamPriority = 0;
+
 ServerManager::ServerManager() = default;
 
 ServerManager::~ServerManager() {
-    CloseFifoServer();
+    Shutdown();
 }
 
-bool ServerManager::IsFifoServerRunning() {
-    switch (GetState()) {
-    case ThreadState::Running:
-        return true;
-    case ThreadState::Joinable:
-        // Joining the thread here is somewhat arbitrary -- as opposed to joining in
-        // |StartServer()| -- but it lets us avoid a second atomic load.
-        JoinServer();
-        break;
-    case ThreadState::None:
-        break;
-    }
-    return false;
-}
-
-zx_status_t ServerManager::StartServer(ddk::BlockProtocolClient* protocol, zx::fifo* out_fifo) {
-    if (IsFifoServerRunning()) {
+zx_status_t ServerManager::Start(ddk::BlockProtocolClient* protocol, zx::fifo* out_fifo) {
+    // printf("%s:%u\n", __FUNCTION__, __LINE__);
+    ServerManagerState state = state_.load();
+    if (state == SM_STATE_SERVING) {
         return ZX_ERR_ALREADY_BOUND;
+    } else if (state == SM_STATE_EXITED) {
+        Shutdown();
     }
     ZX_DEBUG_ASSERT(server_ == nullptr);
-    BlockServer* server;
+
+    fbl::unique_ptr<BlockServer> server;
     fzl::fifo<block_fifo_request_t, block_fifo_response_t> fifo;
-    zx_status_t status = BlockServer::Create(protocol, &fifo, &server);
+    zx_status_t status = BlockServer::Create(this, protocol, &fifo, &server);
     if (status != ZX_OK) {
         return status;
     }
-    server_ = server;
-    SetState(ThreadState::Running);
-    if (thrd_create(&thread_, &RunServer, this) != thrd_success) {
-        FreeServer();
+
+    fbl::AllocChecker ac;
+    fbl::unique_ptr<ioqueue::Queue> queue(new (&ac) ioqueue::Queue(server->GetOps()));
+    if (!ac.check()) {
+        printf("Failed to allocate queue\n");
         return ZX_ERR_NO_MEMORY;
+    }
+
+    for (uint32_t i = 0; i <= MAX_TXN_GROUP_COUNT; i++) {
+        if ((status = queue->OpenStream(kDefaultStreamPriority, i)) != ZX_OK) {
+            printf("Failed to open stream\n");
+            return status;
+        }
+    }
+
+    server_ = std::move(server);
+    queue_ = std::move(queue);
+    state_.store(SM_STATE_SERVING);
+    status = queue_->Serve(1);
+    if (status != ZX_OK) {
+        printf("Serve returned failure\n");
+        Shutdown();
+        return status;
     }
     *out_fifo = zx::fifo(fifo.release());
     return ZX_OK;
 }
 
-zx_status_t ServerManager::CloseFifoServer() {
-    switch (GetState()) {
-    case ThreadState::Running:
-        server_->ShutDown();
-        JoinServer();
-        break;
-    case ThreadState::Joinable:
-        zxlogf(ERROR, "block: Joining un-closed FIFO server\n");
-        JoinServer();
-        break;
-    case ThreadState::None:
-        break;
+void ServerManager::Shutdown() {
+    // printf("%s:%u\n", __FUNCTION__, __LINE__);
+    if (state_.load() == SM_STATE_SHUTDOWN) {
+        return;
     }
-    return ZX_OK;
+    queue_->Shutdown();
+    server_->Shutdown();
+    server_.reset();
+    queue_.reset();
+    state_.store(SM_STATE_SHUTDOWN);
 }
 
 zx_status_t ServerManager::AttachVmo(zx::vmo vmo, vmoid_t* out_vmoid) {
-    if (server_ == nullptr) {
+    // printf("%s:%u\n", __FUNCTION__, __LINE__);
+    if (state_.load() != SM_STATE_SERVING) {
         return ZX_ERR_BAD_STATE;
     }
     return server_->AttachVmo(std::move(vmo), out_vmoid);
 }
 
-void ServerManager::JoinServer() {
-    thrd_join(thread_, nullptr);
-    FreeServer();
-}
-
-void ServerManager::FreeServer() {
-    SetState(ThreadState::None);
-    delete server_;
-    server_ = nullptr;
-}
-
-int ServerManager::RunServer(void* arg) {
-    ServerManager* manager = reinterpret_cast<ServerManager*>(arg);
-
-    // The completion of "thrd_create" synchronizes-with the beginning of this thread, so
-    // we may assume that "manager->server_" is available for our usage.
-    //
-    // The "manager->server_" pointer shall not be modified by this thread.
-    //
-    // The "manager->server_" pointer will only be nullified after thrd_join, because join
-    // synchronizes-with the completion of this thread.
-    ZX_DEBUG_ASSERT(manager->server_);
-    manager->server_->Serve();
-    manager->SetState(ThreadState::Joinable);
-    return 0;
+void ServerManager::AsyncClientExited() {
+    state_.store(SM_STATE_EXITED);
 }

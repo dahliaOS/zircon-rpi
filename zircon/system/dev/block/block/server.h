@@ -27,7 +27,11 @@
 #include <zircon/thread_annotations.h>
 #include <zircon/types.h>
 
+#include "io-queue.h"
 #include "txn-group.h"
+
+class ServerManager;
+using io_op_t = ioqueue::io_op_t;
 
 // Represents the mapping of "vmoid --> VMO"
 class IoBuffer : public fbl::WAVLTreeContainable<fbl::RefPtr<IoBuffer>>,
@@ -55,24 +59,35 @@ private:
 };
 
 class BlockServer;
-
-typedef struct block_msg_extra block_msg_extra_t;
-typedef struct block_msg block_msg_t;
+struct BlockMessage;
 
 // All the C++ bits of a block message. This allows the block server to utilize
 // C++ libraries while also using "block_op_t"s, which may require extra space.
-struct block_msg_extra {
-    fbl::DoublyLinkedListNodeState<block_msg_t*> dll_node_state;
-    fbl::RefPtr<IoBuffer> iobuf;
-    BlockServer* server;
-    reqid_t reqid;
-    groupid_t group;
+struct BlockMessageHeader {
+    BlockMessageHeader(fbl::RefPtr<IoBuffer> iobuf, BlockServer* server,
+                       block_fifo_request_t* request) : iobuf_(iobuf), server_(server),
+                       reqid_(request->reqid), group_(request->group) {
+        iop_.flags = 0;
+        iop_.result = ZX_OK;
+        iop_.sid = request->group;
+    }
+
+    fbl::DoublyLinkedListNodeState<BlockMessage*> dll_node_state_;
+    fbl::RefPtr<IoBuffer> iobuf_;
+    BlockServer* server_;
+    reqid_t reqid_;
+    groupid_t group_;
+    io_op_t iop_;
 };
 
 // A single unit of work transmitted to the underlying block layer.
-struct block_msg {
-    block_msg_extra_t extra;
-    block_op_t op;
+struct BlockMessage {
+    static BlockMessage* FromIoOp(io_op_t* iop) {
+        return containerof(iop, BlockMessage, header.iop_);
+    }
+
+    BlockMessageHeader header;
+    block_op_t bop;
     // + Extra space for underlying block_op
 };
 
@@ -80,80 +95,69 @@ struct block_msg {
 // in C++ code, but may need to reference the "block_op_t" object, it uses
 // a custom type trait.
 struct DoublyLinkedListTraits {
-    static fbl::DoublyLinkedListNodeState<block_msg_t*>& node_state(block_msg_t& obj) {
-        return obj.extra.dll_node_state;
+    static fbl::DoublyLinkedListNodeState<BlockMessage*>& node_state(BlockMessage& obj) {
+        return obj.header.dll_node_state_;
     }
 };
 
-using BlockMsgQueue = fbl::DoublyLinkedList<block_msg_t*, DoublyLinkedListTraits>;
+using BlockMsgQueue = fbl::DoublyLinkedList<BlockMessage*, DoublyLinkedListTraits>;
 
-// C++ safe wrapper around block_msg_t.
+// C++ safe wrapper around BlockMessage.
 //
 // It's difficult to allocate a dynamic-length "block_op" as requested by the
 // underlying driver while maintaining valid object construction & destruction;
 // this class attempts to hide those details.
-class BlockMsg {
+class BlockMessageWrapper {
 public:
-    DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(BlockMsg);
+    DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(BlockMessageWrapper);
 
-    bool valid() { return bop_ != nullptr; }
+    static zx_status_t Create(size_t block_op_size, fbl::RefPtr<IoBuffer> iobuf,
+                              BlockServer* server, block_fifo_request_t* request,
+                              BlockMessageWrapper* out);
 
-    void reset(block_msg_t* bop = nullptr) {
-        if (bop_) {
-            bop_->extra.~block_msg_extra_t();
-            free(bop_);
+    bool valid() { return message_ != nullptr; }
+
+    void reset(BlockMessage* message = nullptr) {
+        if (message_) {
+            message_->header.~BlockMessageHeader();
+            free(message_);
         }
-        bop_ = bop;
+        message_ = message;
     }
 
-    block_msg_t* release() {
-        auto bop = bop_;
-        bop_ = nullptr;
-        return bop;
+    BlockMessage* release() {
+        auto message = message_;
+        message_ = nullptr;
+        return message;
     }
-    block_msg_extra_t* extra() { return &bop_->extra; }
-    block_op_t* op() { return &bop_->op; }
+    BlockMessageHeader* header() { return &message_->header; }
+    block_op_t* bop() { return &message_->bop; }
 
-    BlockMsg(block_msg_t* bop) : bop_(bop) {}
-    BlockMsg() : bop_(nullptr) {}
-    BlockMsg& operator=(BlockMsg&& o) {
+    BlockMessageWrapper(BlockMessage* message) : message_(message) {}
+    BlockMessageWrapper() : message_(nullptr) {}
+    BlockMessageWrapper& operator=(BlockMessageWrapper&& o) {
         reset(o.release());
         return *this;
     }
 
-
-    ~BlockMsg() {
+    ~BlockMessageWrapper() {
         reset();
     }
 
-    static zx_status_t Create(size_t block_op_size, BlockMsg* out) {
-        block_msg_t* bop = (block_msg_t*) calloc(block_op_size + sizeof(block_msg_t) -
-                                                 sizeof(block_op_t), 1);
-        if (bop == nullptr) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        // Placement constructor, followed by explicit destructor in ~BlockMsg();
-        new (&bop->extra) block_msg_extra_t();
-        BlockMsg msg(bop);
-        *out = std::move(msg);
-        return ZX_OK;
-    }
-
 private:
-    block_msg_t* bop_;
+    BlockMessage* message_;
 };
 
 class BlockServer {
 public:
     // Creates a new BlockServer.
-    static zx_status_t Create(
-        ddk::BlockProtocolClient* bp,
-        fzl::fifo<block_fifo_request_t, block_fifo_response_t>* fifo_out,
-        BlockServer** out);
+    static zx_status_t Create(ServerManager* manager, ddk::BlockProtocolClient* bp,
+                              fzl::fifo<block_fifo_request_t, block_fifo_response_t>* fifo_out,
+                              fbl::unique_ptr<BlockServer>* out);
 
     // Starts the BlockServer using the current thread
-    zx_status_t Serve() TA_EXCL(server_lock_);
     zx_status_t AttachVmo(zx::vmo vmo, vmoid_t* out) TA_EXCL(server_lock_);
+    ioqueue::QueueOps* GetOps() { return &ops_; }
 
     // Updates the total number of pending txns, possibly signals
     // the queue-draining thread to wake up if they are waiting
@@ -169,14 +173,16 @@ public:
     // (If appropriate) tells the client that their operation is done.
     void TxnComplete(zx_status_t status, reqid_t reqid, groupid_t group);
 
-    void ShutDown();
+    void AsyncBlockComplete(BlockMessage* msg, zx_status_t status);
+
+    void Shutdown();
     ~BlockServer();
 private:
     DISALLOW_COPY_ASSIGN_AND_MOVE(BlockServer);
-    BlockServer(ddk::BlockProtocolClient* bp);
+    BlockServer(ServerManager* manager, ddk::BlockProtocolClient* bp);
 
     // Helper for processing a single message read from the FIFO.
-    void ProcessRequest(block_fifo_request_t* request);
+    zx_status_t ProcessRequest(block_fifo_request_t* request);
     zx_status_t ProcessReadWriteRequest(block_fifo_request_t* request) TA_EXCL(server_lock_);
     zx_status_t ProcessCloseVmoRequest(block_fifo_request_t* request) TA_EXCL(server_lock_);
     zx_status_t ProcessFlushRequest(block_fifo_request_t* request);
@@ -189,15 +195,23 @@ private:
 
     // Functions that read from the fifo and invoke the queue drainer.
     // Should not be invoked concurrently.
-    zx_status_t Read(block_fifo_request_t* requests, size_t* count);
-    void TerminateQueue();
-
-    // Attempts to enqueue all operations on the |in_queue_|. Stops
-    // when either the queue is empty, or a BARRIER_BEFORE is reached and
-    // operations are in-flight.
-    void InQueueDrainer();
+    zx_status_t Read(block_fifo_request_t* requests, size_t max, size_t* actual);
+    size_t FillFromIntakeQueue(io_op_t** op_list, size_t max_ops);
 
     zx_status_t FindVmoIDLocked(vmoid_t* out) TA_REQ(server_lock_);
+
+    // Called indirectly by Queue ops.
+    zx_status_t Intake(io_op_t** op_list, size_t* op_count, bool wait);
+    zx_status_t Service(io_op_t* op);
+    void SignalFifoCancel();
+
+    // Queue ops
+    static zx_status_t OpAcquire(void* context, io_op_t** op_list, size_t* op_count, bool wait);
+    static zx_status_t OpIssue(void* context, io_op_t* op);
+    static void OpRelease(void* context, io_op_t* op);
+    static void OpCancelAcquire(void* context);
+    static void FatalFromQueue(void* context);
+
 
     fzl::fifo<block_fifo_response_t, block_fifo_request_t> fifo_;
     block_info_t info_;
@@ -206,8 +220,8 @@ private:
 
     // BARRIER_AFTER is implemented by sticking "BARRIER_BEFORE" on the
     // next operation that arrives.
-    bool deferred_barrier_before_ = false;
-    BlockMsgQueue in_queue_;
+    // bool deferred_barrier_before_ = false;
+    BlockMsgQueue intake_queue_;
     std::atomic<size_t> pending_count_;
     std::atomic<bool> barrier_in_progress_;
     TransactionGroup groups_[MAX_TXN_GROUP_COUNT];
@@ -215,4 +229,7 @@ private:
     fbl::Mutex server_lock_;
     fbl::WAVLTree<vmoid_t, fbl::RefPtr<IoBuffer>> tree_ TA_GUARDED(server_lock_);
     vmoid_t last_id_ TA_GUARDED(server_lock_);
+
+    ServerManager* manager_;
+    ioqueue::QueueOps ops_{};
 };

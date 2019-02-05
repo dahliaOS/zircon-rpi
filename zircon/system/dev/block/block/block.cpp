@@ -115,7 +115,7 @@ zx_status_t BlockDevice::GetFifos(zx_handle_t* out_buf, size_t out_len, size_t* 
         return ZX_ERR_INVALID_ARGS;
     }
     zx::fifo fifo;
-    zx_status_t status = server_manager_.StartServer(&self_protocol_, &fifo);
+    zx_status_t status = server_manager_.Start(&self_protocol_, &fifo);
     if (status != ZX_OK) {
         return status;
     }
@@ -177,9 +177,9 @@ zx_status_t BlockDevice::DdkIoctl(uint32_t op, const void* cmd, size_t cmd_len, 
         return GetFifos(reinterpret_cast<zx_handle_t*>(reply), reply_len, out_actual);
     case IOCTL_BLOCK_ATTACH_VMO:
         return AttachVmo(cmd, cmd_len, reinterpret_cast<vmoid_t*>(reply), reply_len, out_actual);
-    case IOCTL_BLOCK_FIFO_CLOSE: {
-        return server_manager_.CloseFifoServer();
-    }
+    case IOCTL_BLOCK_FIFO_CLOSE:
+        server_manager_.Shutdown();
+        return ZX_OK;
     case IOCTL_BLOCK_RR_PART:
         return Rebind();
     case IOCTL_BLOCK_GET_INFO: {
