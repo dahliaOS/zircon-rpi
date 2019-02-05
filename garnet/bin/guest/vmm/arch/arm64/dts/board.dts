@@ -39,7 +39,7 @@
   pclk: clock {
     compatible = "fixed-clock";
     clock-frequency = <0x16e3600>;
-    clock-output-names = "clk24mhz";
+    clock-output-names = "clk24mhz", "core";
     #clock-cells = <0>;
   };
 
@@ -92,4 +92,109 @@
     arm,primecell-periphid = <0x00041031>;
     reg = <0x8 0x08301000 0 0x1000>;
   };
+
+  apb {
+    compatible = "simple-bus";
+    reg = <0x0 0xd0000000 0x0 0x200000>;
+    #address-cells = <2>;
+    #size-cells = <2>;
+    ranges = <0x0 0x0 0x0 0xd0000000 0x0 0x200000>;
+
+    emmc@74000 {
+      compatible = "amlogic,meson-gx-mmc", "amlogic,meson-gxbb-mmc";
+      reg = <0x0 0x74000 0x0 0x800>;
+      interrupts = <0 218 1>;
+      status = "okay";
+
+      clocks = <&pclk>, <&pclk>, <&pclk>;
+	    clock-names = "core", "clkin0", "clkin1";
+
+      pinctrl-0 = <&emmc_pins>, <&emmc_ds_pins>;
+      pinctrl-names = "default";
+
+      bus-width = <8>;
+      cap-sd-highspeed;
+      cap-mmc-highspeed;
+      max-frequency = <200000000>;
+      non-removable;
+      disable-wp;
+      mmc-ddr-1_8v;
+      mmc-hs200-1_8v;
+      mmc-hs400-1_8v;
+
+      mmc-pwrseq = <&emmc_pwrseq>;
+      vmmc-supply = <&vcc_3v3>;
+      vqmmc-supply = <&vddio_boot>;
+    };
+  };
+
+  periphs {
+    compatible = "simple-bus";
+    reg = <0x0 0xc8834000 0x0 0x2000>;
+    #address-cells = <2>;
+    #size-cells = <2>;
+    ranges = <0x0 0x0 0x0 0xc8834000 0x0 0x2000>;
+
+    pinctrl_periphs: pinctrl {
+      compatible = "amlogic,meson-gxl-periphs-pinctrl";
+      #address-cells = <2>;
+      #size-cells = <2>;
+      ranges;
+
+      gpio: bank {
+        reg = <0x0 0x004b0 0x0 0x28>,
+              <0x0 0x004e8 0x0 0x14>,
+              <0x0 0x00520 0x0 0x14>,
+              <0x0 0x00430 0x0 0x40>;
+        reg-names = "mux", "pull", "pull-enable", "gpio";
+        gpio-controller;
+        #gpio-cells = <2>;
+        gpio-ranges = <&pinctrl_periphs 0 0 100>;
+      };
+
+      emmc_pins: emmc {
+        mux {
+          groups = "emmc_nand_d07", "emmc_cmd", "emmc_clk";
+          function = "emmc";
+        };
+      };
+
+      emmc_ds_pins: emmc-ds {
+        mux {
+          groups = "emmc_ds";
+          function = "emmc";
+        };
+      };
+
+      emmc_clk_gate_pins: emmc_clk_gate {
+        mux {
+          groups = "BOOT_8";
+          function = "gpio_periphs";
+        };
+        cfg-pull-down {
+          pins = "BOOT_8";
+          bias-pull-down;
+        };
+      };
+    };
+  };
+
+  emmc_pwrseq: emmc-pwrseq {
+		compatible = "mmc-pwrseq-emmc";
+		reset-gpios = <&gpio 35 1>;
+	};
+
+	vcc_3v3: regulator-vcc_3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC_3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	vddio_boot: regulator-vddio_boot {
+		compatible = "regulator-fixed";
+		regulator-name = "VDDIO_BOOT";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
 };
