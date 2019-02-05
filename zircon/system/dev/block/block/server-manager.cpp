@@ -27,7 +27,7 @@ zx_status_t ServerManager::Start(ddk::BlockProtocolClient* protocol, zx::fifo* o
     }
     ZX_DEBUG_ASSERT(server_ == nullptr);
 
-    fbl::unique_ptr<BlockServer> server;
+    std::unique_ptr<BlockServer> server;
     fzl::fifo<block_fifo_request_t, block_fifo_response_t> fifo;
     zx_status_t status = BlockServer::Create(this, protocol, &fifo, &server);
     if (status != ZX_OK) {
@@ -35,7 +35,7 @@ zx_status_t ServerManager::Start(ddk::BlockProtocolClient* protocol, zx::fifo* o
     }
 
     fbl::AllocChecker ac;
-    fbl::unique_ptr<ioqueue::Queue> queue(new (&ac) ioqueue::Queue(server->GetOps()));
+    std::unique_ptr<ioqueue::Queue> queue(new (&ac) ioqueue::Queue(server->GetOps()));
     if (!ac.check()) {
         printf("Failed to allocate queue\n");
         return ZX_ERR_NO_MEMORY;
