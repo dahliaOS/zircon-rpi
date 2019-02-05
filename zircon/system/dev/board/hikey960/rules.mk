@@ -12,6 +12,7 @@ MODULE_SRCS += \
     $(LOCAL_DIR)/hikey960.c \
     $(LOCAL_DIR)/hikey960-devices.c \
     $(LOCAL_DIR)/hikey960-i2c.c \
+    $(LOCAL_DIR)/hikey960-pcie.c \
     $(LOCAL_DIR)/hikey960-usb.c \
     $(LOCAL_DIR)/hikey960-sysmem.c \
 

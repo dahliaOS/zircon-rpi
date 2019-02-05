@@ -37,3 +37,6 @@ zx_status_t hikey960_i2c_init(hikey960_t* bus);
 
 // hikey960-usb.c
 zx_status_t hikey960_usb_init(hikey960_t* hikey);
+
+// hikey960-pcie.c
+zx_status_t hikey960_pcie_init(hikey960_t* hikey);

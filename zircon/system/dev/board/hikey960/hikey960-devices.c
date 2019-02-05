@@ -223,6 +223,11 @@ zx_status_t hikey960_add_devices(hikey960_t* hikey) {
         return status;
     }
 
+    if ((status = hikey960_pcie_init(hikey)) != ZX_OK) {
+        zxlogf(ERROR, "hikey960_pcie_init failed: %d\n", status);
+        return status;
+    }
+
     if ((status = pbus_device_add(&hikey->pbus, &mali_dev)) != ZX_OK) {
         zxlogf(ERROR, "hikey960_add_devices could not add mali_dev: %d\n", status);
         return status;
