@@ -210,6 +210,10 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
     if (upstream == nullptr)
         return ZX_ERR_UNAVAILABLE;
 
+    if (upstream->type() == PcieUpstreamNode::Type::ROOT) {
+        printf("Configuring root bridge regions\n");
+    }
+
     // We are configuring a bridge.  We need to be able to allocate the MMIO and
     // PIO regions this bridge is configured to manage.  Currently, we don't
     // support re-allocating a bridge's MMIO/PIO windows.
@@ -218,6 +222,7 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
     // going to be important when we need to support hot-plugging.  See ZX-322
     //
     if (io_base_ <= io_limit_) {
+        printf("io_base = 0x%x, io_limit_ = 0x%x\n", io_base_, io_limit_);
         uint64_t size = static_cast<uint64_t>(io_limit_) - io_base_ + 1;
         ret = upstream->pio_regions().GetRegion({ .base = io_base_, .size = size }, pio_window_);
 
@@ -235,6 +240,8 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
         ret = upstream->mmio_lo_regions().GetRegion({ .base = mem_base_, .size = size },
                                                     mmio_window_);
 
+        printf("Found mem region on bridge: base = 0x%08x, limit = 0x%08x, size = 0x%lx\n", mem_base_, mem_limit_, size);
+
         if (ret != ZX_OK) {
             TRACEF("Failed to allocate bridge MMIO window [0x%08x, 0x%08x]\n",
                     mem_base_, mem_limit_);
@@ -251,6 +258,9 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
         // Attempt to allocate out of the upstream's prefetchable region.
         ret = upstream->pf_mmio_regions().GetRegion({ .base = pf_mem_base_, .size = size },
                                                     pf_mmio_window_);
+
+        printf("Found pf mem region on bridge: base = 0x%08x, limit = 0x%08x, size = 0x%lx\n", mem_base_, mem_limit_, size);
+
         if (ret != ZX_OK) {
             // We failed. If it's the root bridge try to allocate from its MMIO regions.
             if (upstream->type() == PcieUpstreamNode::Type::ROOT) {
@@ -271,6 +281,7 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
         }
 
         DEBUG_ASSERT(pf_mmio_window_ != nullptr);
+        printf("Added pf mem region on bridge: base = 0x%08x, limit = 0x%08x, size = 0x%lx\n", mem_base_, mem_limit_, size);
         pf_mmio_regions().AddRegion(*pf_mmio_window_);
     }
 

@@ -32,7 +32,7 @@
 
 using fbl::AutoLock;
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 namespace {  // anon namespace.  Externals do not need to know about PcieDeviceImpl
 class PcieDeviceImpl : public PcieDevice {
@@ -525,6 +525,13 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
     DEBUG_ASSERT(dev_lock_.IsHeld());
     DEBUG_ASSERT(plugged_in_);
 
+    printf("AllocateBarLocked:\n");
+    printf("\tsize: 0x%016lx\n", info.size);
+    printf("\tbus_addr: 0x%016lx\n", info.bus_addr);
+    printf("\tis_mmio: %s\n", info.is_mmio ? "yes" : "no");
+    printf("\tis_64bit: %s\n", info.is_64bit ? "yes" : "no");
+    printf("\tis_prefetchable: %s\n", info.is_prefetchable ? "yes" : "no");
+
     // Do not attempt to remap if we are rescanning the bus and this BAR is
     // already allocated, or if it does not exist (size is zero)
     if ((info.size == 0) || (info.allocation != nullptr))
@@ -587,6 +594,18 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
                              ? &upstream->pio_regions()
                              : (info.is_64bit ? &upstream->mmio_hi_regions()
                                               : &upstream->mmio_lo_regions());
+
+
+    if (alloc == &upstream->pio_regions()) {
+        printf("Allocating from PIO region\n");
+    } else if (alloc == &upstream->mmio_hi_regions()) {
+        printf("Allocating from MMIO Hi regions\n");
+    } else if (alloc == &upstream->mmio_lo_regions()) {
+        printf("Allocating from mmio lo regions\n");
+    } else {
+        printf("Allocating from unknown regions\n");
+    }
+
     uint32_t addr_mask = info.is_mmio
                        ? PCI_BAR_MMIO_ADDR_MASK
                        : PCI_BAR_PIO_ADDR_MASK;
@@ -596,6 +615,10 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
      * the high-memory MMIO range, try the low memory range as well.
      */
     while (true) {
+        size_t available_region_count = alloc->AvailableRegionCount();
+        size_t allocated_region_count = alloc->AllocatedRegionCount(); 
+        printf("Region has %lu allocated and %lu free regions\n", allocated_region_count, available_region_count);
+
         /* MMIO windows and I/O windows on systems where I/O space is actually
          * memory mapped must be aligned to a page boundary, at least. */
         bool     is_io_space = PCIE_HAS_IO_ADDR_SPACE && !info.is_mmio;

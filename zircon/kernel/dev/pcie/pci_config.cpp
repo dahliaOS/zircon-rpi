@@ -226,6 +226,13 @@ uint8_t PciHikeyConfig::Read(const PciReg8 addr) const {
     sideband_dbi_r_mode(true);
     auto reg = reinterpret_cast<const volatile uint8_t*>(base_ + addr.offset());
     uint8_t val = *reg;
+
+    // if (addr.offset() == PciConfig::kIoBase.offset()) {
+    //     printf("PciHikeyConfig read8(kIoBase) = 0x%x\n", val);
+    // } else if (addr.offset() == PciConfig::kIoLimit.offset()) {
+    //     printf("PciHikeyConfig read8(kIoLimit) = 0x%x\n", val);
+    // }
+
     sideband_dbi_r_mode(false);
     return val;
 }
@@ -254,6 +261,13 @@ void PciHikeyConfig::Write(const PciReg8 addr, uint8_t val) const {
     sideband_dbi_w_mode(true);
     auto reg = reinterpret_cast<volatile uint8_t*>(base_ + addr.offset());
     *reg = val;
+
+    // if (addr.offset() == PciConfig::kIoBase.offset()) {
+    //     printf("PciHikeyConfig write8(kIoBase) = 0x%x\n", val);
+    // } else if (addr.offset() == PciConfig::kIoLimit.offset()) {
+    //     printf("PciHikeyConfig write8(kIoLimit) = 0x%x\n", val);
+    // }
+
     sideband_dbi_w_mode(false);
     return;
 }

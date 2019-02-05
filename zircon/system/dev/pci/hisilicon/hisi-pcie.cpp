@@ -86,6 +86,13 @@ private:
     std::optional<ddk::MmioBuffer> config_;
 };
 
+#define TOTAL_APP_SIZE (0x02000000)     // 32MiB
+#define CFG_ADDR_LEN   (0x100000)       // 1024KiB
+#define MEM_ADDR_BASE  (0xf6000000)
+#define MEM_ADDR_LEN   (TOTAL_APP_SIZE - CFG_ADDR_LEN)
+#define CFG_ADDR_BASE  (MEM_ADDR_BASE + MEM_ADDR_LEN)
+
+
 uint32_t HisiPcieDevice::kirin_phy_readl(uint32_t reg) {
     return phy_->Read32(reg);
 }
@@ -280,6 +287,21 @@ bool HisiPcieDevice::kirin_pcie_link_up() {
 #define  PCI_COMMAND_FAST_BACK  0x200   /* Enable back-to-back writes */
 #define  PCI_COMMAND_INTX_DISABLE 0x400 /* INTx Emulation Disable */
 
+#define PF_MEM_LEN (24 * 1024 * 1024)
+#define MEM_LEN    (MEM_ADDR_LEN - PF_MEM_LEN)
+
+static_assert(PF_MEM_LEN < MEM_ADDR_LEN);
+static_assert(MEM_LEN < MEM_ADDR_LEN);
+
+uint32_t getBaseLimitReg(uint32_t base, uint32_t len) {
+    uint32_t result = 0;
+
+    result |= ((base >> 16) & 0xFFF0);
+    result |= ((base + len - 1) & 0xFFF00000);
+
+    return result;
+}
+
 void HisiPcieDevice::dw_pcie_setup_rc() {
     uint32_t val;
 
@@ -300,8 +322,8 @@ void HisiPcieDevice::dw_pcie_setup_rc() {
     kirin_pcie_wr_own_conf(PCIE_LINK_WIDTH_SPEED_CONTROL, 4, val);
 
     // RC Bars
-    kirin_pcie_writel_rc(0x10, 0x00000004);
-    kirin_pcie_writel_rc(0x14, 0x00000000);
+    // kirin_pcie_writel_rc(0x10, 0x00000004);
+    // kirin_pcie_writel_rc(0x14, 0x00000000);
 
     // Interrupt pins
     val = kirin_pcie_readl_rc(0x3c);
@@ -315,12 +337,56 @@ void HisiPcieDevice::dw_pcie_setup_rc() {
     val |= 0x00ff0100;
     kirin_pcie_writel_rc(0x18, val);
 
+    // Setup memory base and limit registers.
+    kirin_pcie_rd_own_conf(0x20, 4, &val);
+    // Memory base  = 0xf610.0000
+    // Memory Limit = 0xf80f.ffff
+    // val = 0xf610f800;
+    // val = 0xf7f0f610;
+    // val = 0xf700f610;
+    val = getBaseLimitReg(MEM_ADDR_BASE + PF_MEM_LEN, MEM_LEN);
+    kirin_pcie_wr_own_conf(0x20, 4, val);
+
+        // Setup memory base and limit registers.
+    kirin_pcie_rd_own_conf(0x24, 4, &val);
+    // Memory base  = 0xf610.0000
+    // Memory Limit = 0xf80f.ffff
+    // val = 0xf610f800;
+    // val = 0xf7f0f710;
+    // val = getBaseLimitReg(MEM_ADDR_BASE, PF_MEM_LEN);
+    val = 0xF000FFFF;
+    kirin_pcie_wr_own_conf(0x24, 4, val);
+
+    val = 0;
+    kirin_pcie_wr_own_conf(0x28, 4, val);
+    kirin_pcie_wr_own_conf(0x2C, 4, val);
+
+
+    kirin_pcie_rd_own_conf(0x20, 4, &val);
+    printf("READ mem prefetch = 0x%08x\n", val);
+
     // Command register
     val = kirin_pcie_readl_rc(0x04);
     val &= 0xffff0000;
     val |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY |
            PCI_COMMAND_MASTER | PCI_COMMAND_SERR;
     kirin_pcie_writel_rc(0x04, val);
+
+    // Zero out the IO/Limit and IO Base registers
+    // kirin_pcie_rd_own_conf(0x1C, 4, &val);
+    // val &= 0xFFFF0000;
+    // val = 0;
+    // kirin_pcie_wr_own_conf(0x1C, 4, val);
+    val = kirin_pcie_readl_rc(0x1C);
+    // val &= 0xFFFF0000;
+    val = 0xF0;
+    kirin_pcie_writel_rc(0x1C, val);
+
+    kirin_pcie_rd_own_conf(0x8, 4, &val);
+    val &= 0x000000FF;
+    val |= 0x00040600;
+    kirin_pcie_wr_own_conf(0x8, 4, val);
+
 }
 
 #define PCIE_LTSSM_ENABLE_BIT (0x1 << 11)
@@ -459,8 +525,19 @@ zx_status_t HisiPcieDevice::Init() {
     printf("hisi_pcie: initialization complete!\n");
 
     uint32_t val;
-    kirin_pcie_rd_own_conf(0x0, 4, &val);
-    printf("hisi_pcie: rd own conf 0 = 0x%08x\n", val);
+    for (uint32_t i = 0; i < 256; i += 4) {
+        kirin_pcie_rd_own_conf(i, 4, &val);
+        printf("hisi_pcie: rd own conf %xh = 0x%08x\n", i, val);
+    }
+
+    // BAR requirements for the root bridge.
+    // kirin_pcie_wr_own_conf(0x10, 4, 0xffffffff);
+    // val = kirin_pcie_rd_own_conf(0x10, 4, &val);
+    // printf("Bridge BAR0 = 0x%08x\n", val);
+
+    // kirin_pcie_wr_own_conf(0x14, 4, 0xffffffff);
+    // val = kirin_pcie_rd_own_conf(0x14, 4, &val);
+    // printf("Bridge BAR1 = 0x%08x\n", val);
 
     return zx_init_pcie_driver();
 }
@@ -625,11 +702,14 @@ zx_status_t HisiPcieDevice::kirin_add_pcie_port() {
     return dw_pcie_host_init();
 }
 
-#define TOTAL_APP_SIZE (0x02000000)
-#define CFG_ADDR_BASE  (0xf6000000)
-#define CFG_ADDR_LEN   (0x100000)
-#define MEM_ADDR_BASE  (CFG_ADDR_BASE + CFG_ADDR_LEN)
-#define MEM_ADDR_LEN   (TOTAL_APP_SIZE - CFG_ADDR_LEN)
+
+// #define PIO_ADDR_LEN   (0x100000)       // 4KiB
+// #define MEM_ADDR_LEN   (TOTAL_APP_SIZE - CFG_ADDR_LEN)
+
+// #define CFG_ADDR_BASE  (0xf6000000)
+// #define PIO_ADDR_BASE  (CFG_ADDR_BASE + CFG_ADDR_LEN)
+// #define MEM_ADDR_BASE  (CFG_ADDR_BASE + CFG_ADDR_LEN)
+
 
 zx_status_t HisiPcieDevice::zx_init_pcie_driver() {
     zx_status_t st;
@@ -639,6 +719,9 @@ zx_status_t HisiPcieDevice::zx_init_pcie_driver() {
 
     dw_pcie_prog_outbound_atu(PCIE_ATU_REGION_INDEX1, PCIE_ATU_TYPE_CFG0,
                               CFG_ADDR_BASE, CFG_ADDR_BASE, CFG_ADDR_LEN);
+
+    // dw_pcie_prog_outbound_atu(PCIE_ATU_REGION_INDEX2, PCIE_ATU_TYPE_IO,
+    //                           PIO_ADDR_BASE, 0x0, PIO_ADDR_LEN);
 
     // Program ATU regions and add/sub IO ranges
     st = zx_pci_add_subtract_io_range(
@@ -652,6 +735,19 @@ zx_status_t HisiPcieDevice::zx_init_pcie_driver() {
         zxlogf(ERROR, "hisi_pcie: failed to add pcie mmio range, st = %d\n", st);
         return st;
     }
+
+    // Program ATU regions and add/sub IO ranges
+    // st = zx_pci_add_subtract_io_range(
+    //     get_root_resource(),
+    //     false,
+    //     PIO_ADDR_BASE,
+    //     PIO_ADDR_LEN,
+    //     true
+    // );
+    // if (st != ZX_OK) {
+    //     zxlogf(ERROR, "hisi_pcie: failed to add pcie mmio range, st = %d\n", st);
+    //     return st;
+    // }
 
     zx_pci_init_arg_t* arg;
     const size_t arg_size = sizeof(*arg) + sizeof(arg->addr_windows[0]) * 2;
@@ -671,8 +767,8 @@ zx_status_t HisiPcieDevice::zx_init_pcie_driver() {
     // Downstream Config Window.
     arg->addr_windows[1].cfg_space_type = PCI_CFG_SPACE_TYPE_DW_DS;
     arg->addr_windows[1].has_ecam = true;
-    arg->addr_windows[1].base = 0xf6000000;
-    arg->addr_windows[1].size = 0x100000;
+    arg->addr_windows[1].base = CFG_ADDR_BASE;
+    arg->addr_windows[1].size = CFG_ADDR_LEN;
     arg->addr_windows[1].bus_start = 1;
     arg->addr_windows[1].bus_end = 1;
 
