@@ -34,9 +34,29 @@ class HisiPcieDevice {
     void kirin_pcie_oe_enable();
     zx_status_t kirin_pcie_clk_ctrl(const bool enable);
     zx_status_t kirin_pcie_phy_init();
+    zx_status_t dw_pcie_host_init();
+
+    zx_status_t kirin_pcie_establish_link();
+    void kirin_pcie_host_init();
+
+    bool kirin_pcie_link_up();
 
     uint32_t kirin_phy_readl(uint32_t reg);
     void kirin_phy_writel(uint32_t val, uint32_t reg);
+
+    uint32_t kirin_pcie_readl_rc(uint32_t reg);
+    void kirin_pcie_writel_rc(uint32_t reg, uint32_t val);
+
+    void kirin_pcie_sideband_dbi_r_mode(bool enable);
+    void kirin_pcie_sideband_dbi_w_mode(bool enable);
+
+    uint32_t kirin_elb_readl(uint32_t reg);
+    void kirin_elb_writel(uint32_t val, uint32_t reg);
+
+    int kirin_pcie_rd_own_conf(uint32_t where, int size, uint32_t* val);
+    int kirin_pcie_wr_own_conf(uint32_t where, int size, uint32_t val);
+
+    void dw_pcie_setup_rc();
 
     zx_device_t* parent_;
     zx_device_t* dev_;
@@ -60,6 +80,41 @@ uint32_t HisiPcieDevice::kirin_phy_readl(uint32_t reg) {
 
 void HisiPcieDevice::kirin_phy_writel(uint32_t val, uint32_t reg) {
     phy_->Write32(val, reg);
+}
+
+uint32_t HisiPcieDevice::kirin_elb_readl(uint32_t reg) {
+    return apb_->Read32(reg);
+}
+
+void HisiPcieDevice::kirin_elb_writel(uint32_t val, uint32_t reg) {
+    return apb_->Write32(val, reg);
+}
+
+int HisiPcieDevice::kirin_pcie_rd_own_conf(uint32_t where, int size, uint32_t* val) {
+    kirin_pcie_sideband_dbi_r_mode(true);
+
+    *val = dbi_->Read32(where & ~0x3);
+    if (size != 4) {
+        ZX_PANIC("unimplemented");
+    }
+
+    kirin_pcie_sideband_dbi_r_mode(false);
+
+    return 0;
+}
+
+int HisiPcieDevice::kirin_pcie_wr_own_conf(uint32_t where, int size, uint32_t val) {
+    kirin_pcie_sideband_dbi_w_mode(true);
+
+    if (size == 4) {
+        dbi_->Write32(val, where & ~0x3u);
+    } else {
+        ZX_PANIC("unimplemented");
+    }
+
+    kirin_pcie_sideband_dbi_w_mode(false);
+
+    return 0;
 }
 
 
@@ -91,6 +146,115 @@ zx_status_t HisiPcieDevice::InitProtocols() {
     }
 
     return st;
+}
+
+#define SOC_PCIECTRL_CTRL0_ADDR     (0x000)
+#define SOC_PCIECTRL_CTRL1_ADDR     (0x004)
+#define PCIE_ELBI_SLV_DBI_ENABLE    (0x1 << 21)
+
+void HisiPcieDevice::kirin_pcie_sideband_dbi_r_mode(bool enable) {
+    uint32_t val;
+
+    val = kirin_elb_readl(SOC_PCIECTRL_CTRL1_ADDR);
+
+    if (enable) {
+        val |= PCIE_ELBI_SLV_DBI_ENABLE;
+    } else {
+        val &= ~PCIE_ELBI_SLV_DBI_ENABLE;
+    }
+
+    kirin_elb_writel(val, SOC_PCIECTRL_CTRL1_ADDR);
+}
+
+void HisiPcieDevice::kirin_pcie_sideband_dbi_w_mode(bool enable) {
+    uint32_t val;
+
+    val = kirin_elb_readl(SOC_PCIECTRL_CTRL0_ADDR);
+
+    if (enable) {
+        val |= PCIE_ELBI_SLV_DBI_ENABLE;
+    } else {
+        val &= ~PCIE_ELBI_SLV_DBI_ENABLE;
+    }
+
+    kirin_elb_writel(val, SOC_PCIECTRL_CTRL0_ADDR);
+}
+
+
+void HisiPcieDevice::kirin_pcie_host_init() {
+    zx_status_t st;
+
+    st = kirin_pcie_establish_link();
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: kirin_pcie_host_init failed, st = %d\n", st);
+        return;
+    }
+
+    printf("LINK ESTABLISHED!\n");
+
+    // TODO(gkalsi): kirin_pcie_enable_interrupts.
+}
+
+bool HisiPcieDevice::kirin_pcie_link_up() {
+    #define PCIE_ELBI_RDLH_LINKUP       (0x400)
+    #define PCIE_LINKUP_ENABLE          (0x8020)
+    uint32_t val = kirin_elb_readl(PCIE_ELBI_RDLH_LINKUP);
+
+    return (val & PCIE_LINKUP_ENABLE) == PCIE_LINKUP_ENABLE;
+}
+
+#define PCIE_PORT_LINK_CONTROL          (0x710)
+#define PORT_LINK_MODE_MASK             (0x3f << 16)
+#define PORT_LINK_MODE_1_LANES          (0x1 << 16)
+#define PCIE_LINK_WIDTH_SPEED_CONTROL   (0x80C)
+
+#define PORT_LOGIC_LINK_WIDTH_1_LANES   (0x1 << 8)
+#define PORT_LOGIC_SPEED_CHANGE     (0x1 << 17)
+#define PORT_LOGIC_LINK_WIDTH_MASK  (0x1f << 8)
+void HisiPcieDevice::dw_pcie_setup_rc() {
+    uint32_t val;
+
+    // Set the number of lanes
+    val = kirin_pcie_readl_rc(PCIE_PORT_LINK_CONTROL);
+    val &= ~PORT_LINK_MODE_MASK;
+    val |= PORT_LINK_MODE_1_LANES;
+    kirin_pcie_writel_rc(PCIE_PORT_LINK_CONTROL, val);
+
+
+    // Set the link width speed.
+    val = kirin_pcie_readl_rc(PCIE_LINK_WIDTH_SPEED_CONTROL);
+    val &= ~PORT_LOGIC_LINK_WIDTH_MASK;
+    val |= PORT_LOGIC_LINK_WIDTH_1_LANES;
+    kirin_pcie_writel_rc(PCIE_LINK_WIDTH_SPEED_CONTROL, val);
+
+    kirin_pcie_rd_own_conf(PCIE_LINK_WIDTH_SPEED_CONTROL, 4, &val);
+    val |= PORT_LOGIC_SPEED_CHANGE;
+    kirin_pcie_wr_own_conf(PCIE_LINK_WIDTH_SPEED_CONTROL, 4, val);
+}
+
+#define PCIE_LTSSM_ENABLE_BIT     (0x1 << 11)
+#define PCIE_APP_LTSSM_ENABLE       0x01c
+zx_status_t HisiPcieDevice::kirin_pcie_establish_link() {
+    if (kirin_pcie_link_up()) {
+        return ZX_OK;
+    }
+
+    dw_pcie_setup_rc();
+
+    // TODO(gkalsi): Assert LTSSM enable
+    kirin_elb_writel(PCIE_LTSSM_ENABLE_BIT, PCIE_APP_LTSSM_ENABLE);
+
+
+    for (uint32_t i = 0; i < 1000; i++) {
+        if (kirin_pcie_link_up()) {
+            return ZX_OK;
+        }
+
+        zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
+    }
+
+    zxlogf(ERROR, "hisi_pcie: link establishment timed out\n");
+    return ZX_ERR_TIMED_OUT;
 }
 
 #define MMIO_DBI     0
@@ -213,6 +377,27 @@ zx_status_t HisiPcieDevice::kirin_pcie_configure_gpios() {
     return ZX_OK;
 }
 
+uint32_t HisiPcieDevice::kirin_pcie_readl_rc(uint32_t reg) {
+    uint32_t val;
+
+    kirin_pcie_sideband_dbi_r_mode(true);
+
+    val = dbi_->Read32(reg);
+
+    kirin_pcie_sideband_dbi_r_mode(false);
+
+    return val;
+}
+
+void HisiPcieDevice::kirin_pcie_writel_rc(uint32_t reg, uint32_t val) {
+    kirin_pcie_sideband_dbi_w_mode(true);
+
+    dbi_->Write32(val, reg);
+
+    kirin_pcie_sideband_dbi_w_mode(false);
+}
+
+
 void HisiPcieDevice::kirin_pcie_oe_enable() {
     uint32_t val;
 
@@ -320,14 +505,27 @@ zx_status_t HisiPcieDevice::kirin_pcie_power_on() {
 
     zx_nanosleep(zx_deadline_after(ZX_MSEC(20)));
 
-    // TODO(gkalsi): Do something with the reset gpio here?
+    // TODO(gkalsi): Make sure this is correct?
+    // TODO(gkalsi): Do we need to set gpio alternate functions.
+    gpio_write(&gpio_, 1);
 
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
+
+    return ZX_OK;
+}
+
+zx_status_t HisiPcieDevice::dw_pcie_host_init() {
+    // TODO(gkalsi): Lots of shit happens here.
+
+    kirin_pcie_host_init();
 
     return ZX_OK;
 }
 
 zx_status_t HisiPcieDevice::kirin_add_pcie_port() {
-    return ZX_OK;
+    // TODO(gkalsi): Setup IRQs
+
+    return dw_pcie_host_init();
 }
 
 
