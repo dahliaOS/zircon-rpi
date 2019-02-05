@@ -9,6 +9,7 @@
 #define GPIO_PWRON_DET      34
 #define GPIO_HDMI_PD        41
 #define GPIO_HUB_VDD33_EN   46
+#define GPIO_PCIE_RST       89
 #define GPIO_USER_LED1      150
 #define GPIO_USER_LED2      151
 #define GPIO_HDMI_INT       180
