@@ -2,8 +2,8 @@
 
 extern crate wlan_reg;
 
-use log::{error, info};
 use failure::Error;
+use log::{error, info};
 use wlan_reg::*;
 
 fn main() {
@@ -20,7 +20,12 @@ fn main() {
 
     println!("\nFor jurisdiction: {}", jurisdiction);
     println!("  File: {}", filepath);
-    println!("  Parse result:\n{:?}\n", toml);
-    println!("   From file contents:");
-    utils::dump_file(&filepath);
+    //    println!("  Parse result:\n{:?}\n", toml);
+    //    println!("   From file contents:");
+    //    utils::dump_file(&filepath);
+
+    let channel_groups =
+        channel::build_channel_groups(&toml, &country::get_active_operating_classes());
+
+    println!("{}", channel_groups);
 }
