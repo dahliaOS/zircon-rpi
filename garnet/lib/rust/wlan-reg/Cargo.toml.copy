@@ -1,0 +1,20 @@
+[package]
+name = "wlan-reg"
+version = "0.1.0"
+authors = ["Jiwoong Lee <porce@google.com>"]
+edition = "2018"
+
+[dependencies]
+toml = ""
+failure = ""
+serde = ""
+serde_derive = ""
+log = ""
+
+[lib]
+name = "wlan_reg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "run_wlan_reg"
+path = "src/main.rs"
