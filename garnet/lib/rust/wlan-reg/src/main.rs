@@ -1,13 +1,10 @@
 #![allow(unused)]
+
+extern crate wlan_reg;
+
 use log::{error, info};
-
 use failure::Error;
-
-#[macro_use]
-
-mod loader;
-mod country;
-mod utils;
+use wlan_reg::*;
 
 fn main() {
     let jurisdiction = country::get_jurisdiction();
