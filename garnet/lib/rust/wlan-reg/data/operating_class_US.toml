@@ -8,7 +8,7 @@ jurisdiction = "US"
     start_freq = 5.000                 # GHz
     spacing = 20                       # MHz
     set = [36, 40, 44, 48]
-    center_freq_idx = [36, 40, 44, 48] # Channel index corresponding to the center frequency
+    center_freq_idx = [] # Channel index corresponding to the center frequency
 
     # Behavior limits set.
     # Optional. Absence is considered to be false.
@@ -26,12 +26,32 @@ jurisdiction = "US"
 
 
 # Two spaces between tables
+[US-2]
+    oper_class = 2
+    start_freq = 5.000
+    spacing = 20
+    set = [52, 56, 60, 64]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
 [US-3]
     oper_class = 3
     start_freq = 5.000
     spacing = 20
-    set = [52, 56, 60, 64]
-    center_freq_idx = [52, 56, 60, 64]
+    set = [149, 153, 157, 161]
+    center_freq_idx = []
 
     nomadic = true
     license_exempt = false
@@ -46,3 +66,627 @@ jurisdiction = "US"
     geo_db = false
 
 
+[US-4]
+    oper_class = 4
+    start_freq = 5.000
+    spacing = 20
+    set = [100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[US-5]
+    oper_class = 5
+    start_freq = 4.9375
+    spacing = 20
+    set = [149, 153, 157, 161, 165]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-6]
+    oper_class = 6
+    start_freq = 4.9375
+    spacing = 5
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-7]
+    oper_class = 7
+    start_freq = 4.9375
+    spacing = 5
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-8]
+    oper_class = 8
+    start_freq = 4.89
+    spacing = 10
+    set = [11, 13, 15, 17, 19]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-9]
+    oper_class = 9
+    start_freq = 4.89
+    spacing = 10
+    set = [11, 13, 15, 17, 19]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-10]
+    oper_class = 10
+    start_freq = 4.85
+    spacing = 20
+    set = [21, 25]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+[US-11]
+    oper_class = 11
+    start_freq = 4.85
+    spacing = 20
+    set = [21, 25]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+[US-12]
+    oper_class = 12
+    start_freq = 2.407
+    spacing = 25 # TODO(porce): Double check the spacing formula
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-13]
+    oper_class = 13
+    start_freq = 3.000
+    spacing = 20
+    set = [133, 137]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-14]
+    oper_class = 14
+    start_freq = 3.000
+    spacing = 10
+    set = [132, 134, 136, 138]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-15]
+    oper_class = 15
+    start_freq = 3.0025
+    spacing = 5
+    set = [131, 132, 133, 134, 135, 136, 137, 138]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-16]
+    oper_class = 16
+    start_freq = 5.0025
+    spacing = 5
+    set = [170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = true
+    its_mobiel = true
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-17]
+    oper_class = 17
+    start_freq = 5.000
+    spacing = 10
+    set = [171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = true
+    its_mobiel = true
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-18]
+    oper_class = 18
+    start_freq = 5.000
+    spacing = 20
+    set = [172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = true
+    its_mobiel = true
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Operating class 19-21 are reserved
+
+[US-22]
+    oper_class = 22
+    start_freq = 5.000
+    spacing = 40
+    set = [36, 44]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-23]
+    oper_class = 23
+    start_freq = 5.000
+    spacing = 40
+    set = [52, 60]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-24]
+    oper_class = 24
+    start_freq = 5.000
+    spacing = 40
+    set = [100, 108, 116, 124, 132, 140]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[US-25]
+    oper_class = 25
+    start_freq = 5.000
+    spacing = 40
+    set = [149, 157]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-26]
+    oper_class = 26
+    start_freq = 5.000
+    spacing = 40
+    set = [149, 157]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-27]
+    oper_class = 27
+    start_freq = 5.000
+    spacing = 40
+    set = [40, 48]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-28]
+    oper_class = 28
+    start_freq = 5.000
+    spacing = 40
+    set = [56, 64]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-29]
+    oper_class = 29
+    start_freq = 5.000
+    spacing = 40
+    set = [104, 112, 120, 128, 136, 144]
+    center_freq_idx = []
+
+    nomadic = true
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[US-30]
+    oper_class = 30
+    start_freq = 5.000
+    spacing = 40
+    set = [153, 161]
+    center_freq_idx = []
+
+    nomadic = true
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-31]
+    oper_class = 31
+    start_freq = 5.000
+    spacing = 40
+    set = [153, 161]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-32]
+    oper_class = 32
+    start_freq = 2.407
+    spacing = 40
+    set = [1, 2, 3, 4, 5, 6, 7]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-33]
+    oper_class = 33
+    start_freq = 2.407
+    spacing = 40
+    set = [5, 6, 7, 8, 9, 10, 11]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[US-34]
+    oper_class = 34
+    start_freq = 56.16
+    spacing = 2160
+    set = [1, 2, 3, 4, 5, 6]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Operating class 35-127 are reserved
+
+
+[US-128]
+    oper_class = 128
+    start_freq = 5.000
+    spacing = 80  # For one frequency segment
+    set = []
+    center_freq_idx = [42, 58, 106, 122, 138, 155]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[US-129]
+    oper_class = 129
+    start_freq = 5.000
+    spacing = 160  # For one frequency segment
+    set = []
+    center_freq_idx = [50, 114]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[US-130]
+    oper_class = 130
+    start_freq = 5.000
+    spacing = 80  # For one frequency segment
+    set = []
+    center_freq_idx = [42, 58, 106, 122, 138, 155]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = true
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+# Operating class 131 - 255 are served.
