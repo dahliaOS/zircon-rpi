@@ -1,12 +1,5 @@
-extern crate log;
-extern crate serde_derive;
-extern crate toml;
-
-use failure::{bail, Error};
-use log::{error, info};
-use std::{fs, fs::File, io::prelude::*, path::PathBuf};
-use toml::Value;
-use toml::Value::Table;
+use failure::Error;
+use std::{fs::File, io::prelude::*};
 
 pub fn dump_file(filepath: &String) -> Result<(), Error> {
     let mut file = File::open(&filepath)?;
