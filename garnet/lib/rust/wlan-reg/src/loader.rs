@@ -16,7 +16,7 @@ use toml::Value::Table;
 
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
-pub fn load_operating_class_toml(filepath: &String) -> Result<Value, Error> {
+pub fn load_operating_class_toml(filepath: &str) -> Result<Value, Error> {
     // TODO(porce): Is this conversion needed? Why do we want to test abs path?
     let rel_path = PathBuf::from(filepath);
     let abs_path = fs::canonicalize(&rel_path);
@@ -106,32 +106,34 @@ fn validate_operclass(v: &Value, operclass_idx: u8) -> Result<(), Error> {
     if !t["spacing"].is_integer() {
         bail!("Field 'spacing' has invalid value");
     }
-    {
-        if !t["set"].is_array() {
-            bail!("Field 'set' is not an array");
-        }
 
-        // Not universal test. Some operating classes miss set.
-        if t["set"].get(0).is_none() {
-            bail!("Field 'set' is empty");
-        }
-
-        // Not universal test. Some operating classes miss set.
-        // Testing the first index value only is sufficient.
-        if !t["set"][0].is_integer() {
-            bail!("Field 'set' is non-integer")
+    if !t["set"].is_array() {
+        bail!("Field 'set' is not an array");
+    } else {
+        if t["set"].get(0).is_some() && !t["set"][0].is_integer() {
+            bail!("Field 'set' is non-integer");
         }
     }
 
     if !t["center_freq_idx"].is_array() {
         bail!("Field 'center_freq_idx' has invalid value");
+    } else {
+        if t["center_freq_idx"].get(0).is_some() && !t["center_freq_idx"][0].is_integer() {
+            bail!("Field 'center_freq_idx' is non-integer");
+        }
+    }
+
+    // Cross-fields validation
+    // Not universal test. Some operating classes miss set.
+    if t["set"].get(0).is_none() && t["center_freq_idx"].get(0).is_none() {
+        bail!("Both fields 'set' and 'center_freq_idx' are empty");
     }
 
     Ok(())
 }
 
 /// Returns the TOML file name containing the Operating Classes of the jurisdiction of the operation
-pub fn get_operating_class_filename(jurisdiction: &String) -> String {
+pub fn get_operating_class_filename(jurisdiction: &str) -> String {
     const OPERATING_FLASS_FILENAME_DIR: &str = "./data/";
     const OPERATING_CLASS_FILENAME_PREFIX: &str = "operating_class_";
     const OPERATING_CLASS_FILENAME_SUFFIX: &str = ".toml";
@@ -152,5 +154,11 @@ mod tests {
     fn test_load_operating_class_toml() {
         const FILE_PATH: &str = "./data/operating_class_US.toml";
         assert!(load_operating_class_toml(FILE_PATH).is_ok());
+    }
+    #[test]
+    fn test_get_operating_class_filename() {
+        let got = get_operating_class_filename("XYZ");
+        let want = "./data/operating_class_XYZ.toml".to_string();
+        assert_eq!(got, want);
     }
 }
