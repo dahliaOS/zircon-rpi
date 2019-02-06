@@ -1,3 +1,4 @@
+pub mod channel;
 pub mod country;
 pub mod loader;
 pub mod utils;
