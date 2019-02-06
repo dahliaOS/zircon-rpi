@@ -3,7 +3,7 @@ extern crate serde_derive;
 extern crate toml;
 
 use failure::{bail, Error};
-use log::{error, info};
+use log::info;
 use std::{
     fs,
     fs::File,
