@@ -116,6 +116,9 @@ static void mp_sync_task(void* raw_context) {
 void mp_sync_exec(mp_ipi_target_t target, cpu_mask_t mask, mp_sync_task_t task, void* context) {
     uint num_cpus = arch_max_num_cpus();
 
+    LTRACEF("cpu %u target %d mask %#x task %p context %p %p\n", arch_curr_cpu_num(),
+            target, mask, task, context, lockdep::SystemGetThreadLockState());
+
     if (target == MP_IPI_TARGET_ALL) {
         mask = mp_get_online_mask();
     } else if (target == MP_IPI_TARGET_ALL_BUT_LOCAL) {

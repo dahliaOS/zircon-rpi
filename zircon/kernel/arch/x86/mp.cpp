@@ -61,7 +61,7 @@ struct x86_percpu bp_percpu = {
     .kernel_unsafe_sp = (uintptr_t)unsafe_kstack_end,
     .saved_user_sp = {},
 
-    .blocking_disallowed = {},
+    .blocking_disallowed = true,
     .monitor = &fake_monitor,
 
     // Start with an invalid ID until we know the local APIC is set up.
@@ -123,6 +123,7 @@ zx_status_t x86_allocate_ap_structures(uint32_t* apic_ids, uint8_t cpu_count) {
         ap_percpus[apic_idx].cpu_num = apic_idx + 1;
         ap_percpus[apic_idx].apic_id = apic_ids[i];
         ap_percpus[apic_idx].direct = &ap_percpus[apic_idx];
+        ap_percpus[apic_idx].blocking_disallowed = true;
         apic_idx++;
     }
 

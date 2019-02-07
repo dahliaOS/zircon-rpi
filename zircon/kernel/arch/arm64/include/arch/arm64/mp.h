@@ -35,10 +35,12 @@ __BEGIN_CDECLS
 // line sharing between cpus.
 struct arm64_percpu {
     // cpu number
-    uint32_t cpu_num;
+    uint32_t cpu_num = 0;
 
     // Whether blocking is disallowed.  See arch_blocking_disallowed().
-    uint32_t blocking_disallowed;
+    uint32_t blocking_disallowed = true;
+
+    constexpr arm64_percpu() = default; // initialize to a default value
 } __CPU_ALIGN;
 
 void arch_init_cpu_map(uint cluster_count, const uint* cluster_cpus);

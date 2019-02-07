@@ -61,7 +61,8 @@ static void dump_fault_frame(x86_iframe_t* frame) {
 
     if (frame->cs == CODE_64_SELECTOR) {
         dprintf(CRITICAL, "bottom of kernel stack at %p:\n", stack);
-        hexdump(stack, 128);
+        size_t length = ROUNDUP((uintptr_t)stack, PAGE_SIZE) - (uintptr_t)stack;
+        hexdump(stack, length);
     }
 }
 

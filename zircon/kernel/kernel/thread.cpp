@@ -985,8 +985,12 @@ void thread_construct_first(thread_t* t, const char* name) {
     arch_thread_construct_first(t);
     set_current_thread(t);
 
-    Guard<spin_lock_t, IrqSave> guard{ThreadLock::Get()};
+    // Acquire the spinlock without using an RAII guard because at
+    // this point in boot we're not in a thread context and the lockdep
+    // code requires this.
+    spin_lock(&thread_lock);
     list_add_head(&thread_list, &t->thread_list_node);
+    spin_unlock(&thread_lock);
 }
 
 /**
@@ -1000,6 +1004,10 @@ void thread_init_early(void) {
     // create a thread to cover the current running state
     thread_t* t = &percpu[0].idle_thread;
     thread_construct_first(t, "bootstrap");
+
+    // we're now in enough threading context to use mutexes as long
+    // as we don't actually block while the kernel is still single threaded
+    arch_set_blocking_disallowed(false);
 
 #if WITH_LOCK_DEP
     // Initialize the lockdep tracking state for irq context.
@@ -1114,6 +1122,9 @@ void thread_secondary_cpu_init_early(thread_t* t) {
 
     // Restore the stack.
     t->stack = stack;
+
+    // This secondary core is now in enough of a thread context to block
+    arch_set_blocking_disallowed(false);
 }
 
 /**
