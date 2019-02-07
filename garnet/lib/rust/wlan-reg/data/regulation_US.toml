@@ -7,21 +7,115 @@ jurisdiction = "US"
 # 47 CFR 15.205 Radiated emission limits; general requirements
 # 47 CFR 15.247 Operation within ISM bands
 # FCC CFR Subpart C 15.205
+# 47 CFR 15.401
+# 47 CFR 15.407(h)
+# FCC KDB 905462 D02, D03, D04, D06, D07. Esp, see the rule after Aug 8 2015, for 905462 15.401
+# FCC KDB 594280 D01
 
 # Subband
 # [{Beginning frequency in MHz}{dash}{Ending frequency in MHz}]
 [5350-5460]
     do_not_use = true # Corresponds to channel 68 - 96. FCC CFR Subpart C 15.205
 
-[2400-2483.5]
+
+# Two blank lines
+[2400-2483]  # Can't use 2483.5 in TOML.
     freq_beg = 2.400  # GHz
     freq_end = 2.4835 # GHz
-    chan_idx_beg = 1  # TODO(porce): 
-    chan_idx_end = 13
+    ieee_chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
+    ieee_chan_idx_end = 13
 
-    max_peak_conducted_power = 1.000 # Watts
+    # Summed across all antennas. 15.247.b.3. For up to 6 dBi antenna
+    # See 15.247.c for variations.
+    max_conduct_power = 30 # dBm. 1.000 Watts. Peak
+    max_ant_gain = 6 # dBi  # For the stated max conducted power
+
+
+# 15.407.a
+[5150-5250]
+    # Note the beginning frequency is _not_ 5.170 GHz, which corresponds to channel 36.
+    freq_beg = 5.150
+    freq_end = 5.250
+    ieee_chan_idx_beg = 34
+    ieee_chan_idx_end = 48
+
+    [5150-5250.role:indoor_ap]
+        role = "indoor_ap"
+        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_psd = 17 # dBm/MHz
+        max_ant_gain = 6 # dBi
+        max_eirp_30degree = 21 # dBm. 125 mW.
+
+    [5150-5250.role:outdoor_ap]
+        role = "outdoor_ap"
+        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_psd = 17 # dBm/MHz
+        max_ant_gain = 6 # dBi
+        max_eirp_30degree = 21 # dBm. Or 125 mW.
+
+    [5150-5250.role:fixed_p2p_ap] # Note. This is for AP.
+        role = "fixed_p2p_ap"        
+        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_psd = 17 # dBm/MHz
+        max_ant_gain = 23 # dBi
+
+    [5150-5250.role:client]
+        role = "client"
+        max_conduct_power = 24 # dBm. 250 mWatts
+        max_psd = 11 # dBm/MHz
+        max_ant_gain = 6 # dBi
+
+
+# FCC KDB905462 D02 v02
+[5250-5350]
+    is_dfs = true
+
+    freq_beg = 5.250
+    freq_end = 5.350
+    ieee_chan_idx_beg = 50
+    ieee_chan_idx_end = 68
+
+    # See FCC KDB905462 D02 v02 Table 3.
+    dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
+    dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+
+    dfs_channel_availability_check_time = 60 # sec
+    dfs_channel_move_time = 10 # sec
+    dfs_channel_closing_tx_time = 0.2 # sec
+    dfs_channel_closing_tx_time_leftover = 0.06 # sec for the remaining channel_move_time.
+    dfs_non_occupancy_period = 1800 # sec. 30 minutes
+
+    # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
+    # At least 6 dB below the mean EIRP of 30 dBm.
+    max_conduct_power = 24 # dBm. 250 mWatts
+    max_psd = 11 # dBm/MHz
+    max_ant_gain = 6 # dBi
+
+
+# FCC KDB905462 D02 v02
+[5470-5725]
+    is_dfs = true
+
+    freq_beg = 5.470
+    freq_end = 5.725
+    ieee_chan_idx_beg = 96
+    ieee_chan_idx_end = 144 # ish. TODO(porce); How do we handle overlapping frequency spectrum?
+
+    max_conduct_power = 24 # dBm. 250 mWatts or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
+    max_psd = 11 # dBm/MHz
+    max_ant_gain = 6 # dBi
+
 
 [5725-5850]
     freq_beg = 5.728 # GHz
     freq_end = 5.850 # GHz
-    max_peak_conducted_power = 1.000 # Watts. Summed across all antennas.
+    ieee_chan_idx_beg = 144  # TODO(porce):
+    ieee_chan_idx_end = 165
+
+    max_conduct_power = 30 # dBm. 1.000 Watts. 15.247.b.3. For up to 6 dBi antenna
+    max_psd = 33 # dBm/MHz. In the clause, 30 dBm in any 500 kHz band.
+    max_ant_gain = 6 # dBi
+
+    [5725-5850.role:fixed_p2p] # Note. Not necessarily for AP.
+        role = "fixed_p2p"
+        max_ant_gain = 100 # dBi. No limit in the regulation. 100 is chosen arbitrarily.
