@@ -48,3 +48,4 @@ vendor/
 tmp/
 # For storing local scripts and data files in a source tree.
 /local
+**/cmake-build-debug/
