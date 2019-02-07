@@ -212,6 +212,7 @@ impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Ty::UInt32 => write!(f, "UInt32"),
+            Ty::Int32 => write!(f, "Int32"),
             Ty::Identifier { .. } => write!(f, "<Ident>"),
             _ => Err(fmt::Error),
         }

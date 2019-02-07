@@ -135,6 +135,7 @@ fn main() -> Result<(), Error> {
         BackendName::C => Box::new(CBackend::new(&mut output)),
         BackendName::Cpp => Box::new(CppBackend::new(&mut output)),
         BackendName::CppInternal => Box::new(CppInternalBackend::new(&mut output)),
+        BackendName::Rust => Box::new(RustBackend::new(&mut output)),
         BackendName::Ast => Box::new(AstBackend::new(&mut output)),
         e => {
             eprintln!("{:?} backend is not yet implemented", e);

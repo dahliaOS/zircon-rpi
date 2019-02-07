@@ -21,7 +21,7 @@ impl<'a, W: io::Write> CBackend<'a, W> {
     }
 }
 
-fn to_c_name(name: &str) -> String {
+pub fn to_c_name(name: &str) -> String {
     // strip FQN
     let name = name.split(".").last().unwrap();
     let mut iter = name.chars().peekable();

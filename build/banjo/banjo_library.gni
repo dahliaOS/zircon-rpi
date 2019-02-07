@@ -255,6 +255,7 @@ template("banjo_library") {
         visibility = [ ":*" ]
 
         tool = "//zircon/public/tool/banjoc"
+#        tool = "//garnet/bin/banjo:banjo_bin"
 
         inputs = [
           response_file,

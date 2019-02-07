@@ -1,0 +1,39 @@
+# Copyright 2019 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/fuchsia/rules.gni")
+import("//build/package.gni")
+
+package("example") {
+  deprecated_system_image = true
+
+  deps = [
+    ":rust_example"
+  ]
+
+  drivers = [ {
+    name = "rust_example.so"
+  } ]
+}
+
+driver_module("rust_example") {
+  output_name = "rust_example"
+
+  sources = [
+    "example.c",
+  ]
+
+ # ldflags = [ "-L/usr/local/google/home/bwb/fuchsia/buildtools/linux-x64/rust/lib/rustlib/x86_64-fuchsia/lib" ]
+
+  configs -= [ "//build/config/fuchsia:no_cpp_standard_library" ]
+
+  deps = [
+    "//garnet/drivers/rust/rust",
+#    "//garnet/drivers/rust/:crust",
+#    "//zircon/public/banjo/ddk-protocol-ethernet",
+#    "//zircon/public/banjo/ddk-protocol-usb",
+    "//zircon/public/lib/ddk",
+    "//zircon/public/lib/driver",
+  ]
+}
