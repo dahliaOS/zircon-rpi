@@ -1,7 +1,7 @@
 version = "0.1.0" # Schema version
 jurisdiction = "US"
 
-# [{jurisdiction}{dash}{number in 1 to 255}]
+# [{jurisdiction}{dash}{operating class}]
 [US-1]
     # Mandatory fields
     oper_class = 1                     # Must match the table name suffix.
@@ -88,7 +88,7 @@ jurisdiction = "US"
 
 [US-5]
     oper_class = 5
-    start_freq = 4.9375
+    start_freq = 5.000
     spacing = 20
     set = [149, 153, 157, 161, 165]
     center_freq_idx = []
