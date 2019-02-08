@@ -118,3 +118,4 @@ jurisdiction = "US"
     [5725-5850.role:fixed_p2p] # Note. Not necessarily for AP.
         role = "fixed_p2p"
         max_ant_gain = 100 # dBi. No limit in the regulation. 100 is chosen arbitrarily.
+
