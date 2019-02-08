@@ -19,7 +19,7 @@ jurisdiction = "US"
 
 
 # Two blank lines
-[2400-2483]  # Can't use 2483.5 in TOML.
+[2400-2483]  # 2400 - 2483.5.
     freq_beg = 2.400  # GHz
     freq_end = 2.4835 # GHz
     ieee_chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
@@ -27,7 +27,7 @@ jurisdiction = "US"
 
     # Summed across all antennas. 15.247.b.3. For up to 6 dBi antenna
     # See 15.247.c for variations.
-    max_conduct_power = 30 # dBm. 1.000 Watts. Peak
+    max_conduct_power = 30 # dBm. 1000 mWatts. Peak
     max_ant_gain = 6 # dBi  # For the stated max conducted power
 
 
@@ -41,21 +41,21 @@ jurisdiction = "US"
 
     [5150-5250.role:indoor_ap]
         role = "indoor_ap"
-        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 6 # dBi
-        max_eirp_30degree = 21 # dBm. 125 mW.
+        max_eirp_30degree = 21 # dBm. 125 mWatts
 
     [5150-5250.role:outdoor_ap]
         role = "outdoor_ap"
-        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 6 # dBi
-        max_eirp_30degree = 21 # dBm. Or 125 mW.
+        max_eirp_30degree = 21 # dBm. 125 mWatts
 
     [5150-5250.role:fixed_p2p_ap] # Note. This is for AP.
         role = "fixed_p2p_ap"        
-        max_conduct_power = 30 # dBm. 1.000 Watts
+        max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 23 # dBi
 
@@ -72,18 +72,18 @@ jurisdiction = "US"
 
     freq_beg = 5.250
     freq_end = 5.350
-    ieee_chan_idx_beg = 50
+    ieee_chan_idx_beg = 50 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
     ieee_chan_idx_end = 68
 
     # See FCC KDB905462 D02 v02 Table 3.
     dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
     dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
 
-    dfs_channel_availability_check_time = 60 # sec
-    dfs_channel_move_time = 10 # sec
-    dfs_channel_closing_tx_time = 0.2 # sec
-    dfs_channel_closing_tx_time_leftover = 0.06 # sec for the remaining channel_move_time.
-    dfs_non_occupancy_period = 1800 # sec. 30 minutes
+    dfs_channel_availability_check_time = 60000 # msec. 60 sec
+    dfs_channel_move_time = 10000 # msec. 10 sec.
+    dfs_channel_closing_tx_time = 200 # msec
+    dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
+    dfs_non_occupancy_period = 1800000 # msec. 30 minutes
 
     # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
     # At least 6 dB below the mean EIRP of 30 dBm.
@@ -99,23 +99,24 @@ jurisdiction = "US"
     freq_beg = 5.470
     freq_end = 5.725
     ieee_chan_idx_beg = 96
-    ieee_chan_idx_end = 144 # ish. TODO(porce); How do we handle overlapping frequency spectrum?
+    ieee_chan_idx_end = 142 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
 
-    max_conduct_power = 24 # dBm. 250 mWatts or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
+    # 250 mWatts or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
+    max_conduct_power = 24 # dBm
     max_psd = 11 # dBm/MHz
     max_ant_gain = 6 # dBi
 
 
 [5725-5850]
-    freq_beg = 5.728 # GHz
+    freq_beg = 5.725 # GHz
     freq_end = 5.850 # GHz
-    ieee_chan_idx_beg = 144  # TODO(porce):
+    ieee_chan_idx_beg = 144 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
     ieee_chan_idx_end = 165
 
-    max_conduct_power = 30 # dBm. 1.000 Watts. 15.247.b.3. For up to 6 dBi antenna
+    max_conduct_power = 30 # dBm. 1000 mWatts. 15.247.b.3. For up to 6 dBi antenna
     max_psd = 33 # dBm/MHz. In the clause, 30 dBm in any 500 kHz band.
     max_ant_gain = 6 # dBi
 
     [5725-5850.role:fixed_p2p] # Note. Not necessarily for AP.
         role = "fixed_p2p"
-        max_ant_gain = 100 # dBi. No limit in the regulation. 100 is chosen arbitrarily.
+        max_ant_gain = 100 # dBi. No limit in the regulation. 100 is chosen arbitrarily large.
