@@ -171,6 +171,17 @@ impl Debug for EtherType {
     }
 }
 
+#[derive(Clone)]
+pub struct EthernetIpDeviceSocket<I: Ip> {
+    next_hop: I::Addr,
+}
+
+impl<I: Ip> EthernetIpDeviceSocket<I> {
+    pub fn new(next_hop: I::Addr) -> EthernetIpDeviceSocket<I> {
+        EthernetIpDeviceSocket { next_hop }
+    }
+}
+
 /// The state associated with an Ethernet device.
 pub struct EthernetDeviceState {
     mac: Mac,
@@ -203,29 +214,24 @@ impl EthernetIpExt for Ipv6 {
     const ETHER_TYPE: EtherType = EtherType::Ipv6;
 }
 
-/// Send an IP packet in an Ethernet frame.
-///
-/// `send_ip_frame` accepts a device ID, a local IP address, and a
-/// `SerializationRequest`. It computes the routing information and serializes
-/// the request in a new Ethernet frame and sends it.
-pub fn send_ip_frame<D: EventDispatcher, A, S>(
+pub fn send_ip_frame<D: EventDispatcher, I: Ip, S: Serializer>(
     ctx: &mut Context<D>,
     device_id: u64,
-    local_addr: A,
+    socket: &EthernetIpDeviceSocket<I>,
     body: S,
-) where
-    A: IpAddr,
-    S: Serializer,
-{
-    specialize_ip_addr!(
-        fn lookup_dst_mac<D>(ctx: &mut Context<D>, device_id: u64, local_addr: Self) -> Option<Mac>
+) {
+    specialize_ip!(
+        fn lookup_dst_mac<D>(ctx: &mut Context<D>, device_id: u64, socket: &EthernetIpDeviceSocket<Self>) -> Option<Mac>
         where
             D: EventDispatcher,
         {
-            Ipv4Addr => {
+            Ipv4 => {
                 let src_mac = get_device_state(ctx, device_id).mac;
                 if let Some(dst_mac) = crate::device::arp::lookup::<_, _, EthernetArpDevice>(
-                    ctx, device_id, src_mac, local_addr,
+                    ctx,
+                    device_id,
+                    src_mac,
+                    socket.next_hop,
                 ) {
                     Some(dst_mac)
                 } else {
@@ -235,14 +241,16 @@ pub fn send_ip_frame<D: EventDispatcher, A, S>(
                     )
                 }
             }
-            Ipv6Addr => { log_unimplemented!(None, "device::ethernet::send_ip_frame: IPv6 unimplemented") }
+            Ipv6 => { log_unimplemented!(None, "device::ethernet::send_ip_frame: IPv6 unimplemented") }
         }
     );
 
-    if let Some(dst_mac) = A::lookup_dst_mac(ctx, device_id, local_addr) {
+    if let Some(dst_mac) = I::lookup_dst_mac(ctx, device_id, socket) {
+        // TODO(joshlf): Don't look up the src_mac twice (we also look it up in
+        // lookup_dst_mac).
         let src_mac = get_device_state(ctx, device_id).mac;
         let buffer = body
-            .encapsulate(EthernetFrameBuilder::new(src_mac, dst_mac, A::Version::ETHER_TYPE))
+            .encapsulate(EthernetFrameBuilder::new(src_mac, dst_mac, I::ETHER_TYPE))
             .serialize_outer();
         ctx.dispatcher().send_frame(DeviceId::new_ethernet(device_id), buffer.as_ref());
     }
@@ -280,7 +288,7 @@ pub fn receive_frame<D: EventDispatcher>(ctx: &mut Context<D>, device_id: u64, b
             }
             EtherType::Ipv4 => crate::ip::receive_ip_packet::<D, _, Ipv4>(ctx, device, buffer),
             EtherType::Ipv6 => crate::ip::receive_ip_packet::<D, _, Ipv6>(ctx, device, buffer),
-            EtherType::Other(_) => {} // TODO(joshlf)
+            EtherType::Other(_) => {} // TODO(joshlf): Do something else here?
         }
     } else {
         // TODO(joshlf): Do something else?

@@ -9,6 +9,11 @@ use std::hash::Hash;
 use byteorder::{ByteOrder, NetworkEndian};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
+use crate::address::{
+    AddrVec, AllAddr, AutoAddr, AutoAllAddr, ConnAddr, PacketAddr, PacketAddress, SocketAddress,
+};
+use crate::device::DeviceId;
+
 /// An IP protocol version.
 #[allow(missing_docs)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -55,7 +60,7 @@ mod sealed {
 /// `Ip` encapsulates the details of a version of the IP protocol. It includes
 /// the `IpVersion` enum (`VERSION`) and address type (`Addr`). It is
 /// implemented by `Ipv4` and `Ipv6`.
-pub trait Ip: Sized + self::sealed::Sealed {
+pub trait Ip: Sized + Copy + Clone + self::sealed::Sealed {
     /// The IP version.
     ///
     /// `V4` for IPv4 and `V6` for IPv6.
@@ -82,7 +87,7 @@ pub trait Ip: Sized + self::sealed::Sealed {
 /// IPv4.
 ///
 /// `Ipv4` implements `Ip` for IPv4.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct Ipv4;
 
 impl Ip for Ipv4 {
@@ -107,7 +112,7 @@ impl Ipv4 {
 /// IPv6.
 ///
 /// `Ipv6` implements `Ip` for IPv6.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct Ipv6;
 
 impl Ip for Ipv6 {
@@ -124,7 +129,16 @@ impl Ip for Ipv6 {
 /// An IPv4 or IPv6 address.
 pub trait IpAddr
 where
-    Self: Sized + Eq + PartialEq + Hash + Copy + Display + Debug + self::sealed::Sealed,
+    Self: Sized
+        + Eq
+        + PartialEq
+        + Hash
+        + Copy
+        + Display
+        + Debug
+        + PacketAddress<SocketAddr = AllAddr<Self>>
+        + SocketAddress
+        + self::sealed::Sealed,
 {
     /// The number of bytes in an address of this type.
     ///
@@ -208,6 +222,9 @@ impl Debug for Ipv4Addr {
     }
 }
 
+impl_socket_address!(Ipv4Addr, builtins => []);
+impl_packet_address!(Ipv4Addr);
+
 /// An IPv6 address.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -283,6 +300,9 @@ impl Debug for Ipv6Addr {
         Display::fmt(self, f)
     }
 }
+
+impl_socket_address!(Ipv6Addr, builtins => []);
+impl_packet_address!(Ipv6Addr);
 
 /// An IP subnet.
 ///
@@ -425,6 +445,102 @@ impl Display for IpProto {
 impl Debug for IpProto {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         Display::fmt(self, f)
+    }
+}
+
+impl_socket_address!(IpProto, builtins => [IpProto::Icmp, IpProto::Tcp, IpProto::Udp, IpProto::Icmpv6]);
+impl_packet_address!(IpProto);
+
+impl<L, R, D> AddrVec<ConnAddr<L, R>, D> {
+    pub fn into_local_remote_device(self) -> (L, R, D) {
+        let (conn_addr, device) = self.into_head_rest();
+        let (local, remote) = conn_addr.into_local_remote();
+        (local, remote, device)
+    }
+}
+
+pub type IpPacketAddr<A> = AddrVec<PacketAddr<A, A>, DeviceId>;
+
+impl<A: IpAddr> IpPacketAddr<A> {
+    pub fn into_swap_src_dst(self) -> IpPacketAddr<A> {
+        let (ip, dev) = self.into_head_rest();
+        let (src, dst) = ip.into_src_dst();
+        AddrVec::new(PacketAddr::new(dst, src), dev)
+    }
+
+    pub fn src_ip(&self) -> A {
+        self.head().src()
+    }
+
+    pub fn dst_ip(&self) -> A {
+        self.head().dst()
+    }
+}
+
+pub type IpSocketAddr<A> = AddrVec<ConnAddr<AllAddr<A>, AllAddr<A>>, AllAddr<DeviceId>>;
+
+pub type IpConnSocketAddr<A> = AddrVec<ConnAddr<A, A>, AllAddr<DeviceId>>;
+
+impl<A: IpAddr> IpConnSocketAddr<A> {
+    pub fn local_ip(&self) -> A {
+        self.head().local()
+    }
+
+    pub fn remote_ip(&self) -> A {
+        self.head().remote()
+    }
+}
+
+pub type IpConnSocketRequestAddr<A> = AddrVec<ConnAddr<AutoAddr<A>, A>, AutoAllAddr<DeviceId>>;
+
+impl<A: IpAddr> IpConnSocketRequestAddr<A> {
+    pub fn local_ip(&self) -> AutoAddr<A> {
+        self.head().local()
+    }
+
+    pub fn remote_ip(&self) -> A {
+        self.head().remote()
+    }
+}
+
+pub type IpDeviceConnSocketAddr<A> = AddrVec<A, DeviceId>;
+
+impl<A: IpAddr> IpDeviceConnSocketAddr<A> {
+    pub fn remote_ip(&self) -> A {
+        self.head()
+    }
+}
+
+pub type IpDeviceConnSocketRequestAddr<A> = IpDeviceConnSocketAddr<A>;
+
+impl<A> From<IpConnSocketAddr<A>> for IpSocketAddr<A> {
+    fn from(addr: IpConnSocketAddr<A>) -> IpSocketAddr<A> {
+        let (local, remote, device) = addr.into_local_remote_device();
+        AddrVec::new(ConnAddr::new(AllAddr::Addr(local), AllAddr::Addr(remote)), device)
+    }
+}
+
+impl<A> From<IpDeviceConnSocketAddr<A>> for IpSocketAddr<A> {
+    fn from(addr: IpDeviceConnSocketAddr<A>) -> IpSocketAddr<A> {
+        let (remote, device) = addr.into_head_rest();
+        AddrVec::new(ConnAddr::new(AllAddr::All, AllAddr::Addr(remote)), AllAddr::Addr(device))
+    }
+}
+
+pub type IpListenerSocketAddr<L> = AddrVec<AllAddr<L>, AllAddr<DeviceId>>;
+
+pub type IpListenerSocketRequestAddr<L> = IpListenerSocketAddr<L>;
+
+impl<A> IpListenerSocketAddr<A> {
+    pub fn into_local_device(self) -> (AllAddr<A>, AllAddr<DeviceId>) {
+        self.into_head_rest()
+    }
+}
+
+impl<A> Into<IpSocketAddr<A>> for IpListenerSocketAddr<A> {
+    fn into(self) -> IpSocketAddr<A> {
+        let (local, device) = self.into_local_device();
+        AddrVec::new(ConnAddr::new(AllAddr::from(local), AllAddr::All), device)
     }
 }
 

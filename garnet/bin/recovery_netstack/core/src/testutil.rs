@@ -13,6 +13,9 @@ use byteorder::{ByteOrder, NativeEndian};
 use rand::{SeedableRng, XorShiftRng};
 
 use crate::device::{DeviceId, DeviceLayerEventDispatcher};
+use crate::ip::raw::RawIpEventDispatcher;
+use crate::ip::IpLayerEventDispatcher;
+use crate::transport::tcp::TcpEventDispatcher;
 use crate::transport::udp::UdpEventDispatcher;
 use crate::transport::TransportLayerEventDispatcher;
 use crate::{handle_timeout, Context, EventDispatcher, TimerId};
@@ -128,8 +131,22 @@ impl Default for DummyEventDispatcher {
     }
 }
 
+impl RawIpEventDispatcher for DummyEventDispatcher {
+    type IpConn = ();
+    type IpDeviceConn = ();
+    type IpListener = ();
+}
+
+impl IpLayerEventDispatcher for DummyEventDispatcher {}
+
+impl TcpEventDispatcher for DummyEventDispatcher {
+    type TcpConn = ();
+    type TcpListener = ();
+}
+
 impl UdpEventDispatcher for DummyEventDispatcher {
     type UdpConn = ();
+    type UdpDeviceConn = ();
     type UdpListener = ();
 }
 

@@ -13,12 +13,12 @@ use std::fmt::{self, Debug, Display, Formatter};
 use log::debug;
 use packet::Serializer;
 
-use crate::device::ethernet::{EthernetDeviceState, Mac};
-use crate::ip::{IpAddr, Ipv4Addr, Subnet};
+use crate::device::ethernet::{EthernetDeviceState, EthernetIpDeviceSocket, Mac};
+use crate::ip::{Ip, IpAddr, Ipv4Addr, Subnet};
 use crate::{Context, EventDispatcher};
 
 /// An ID identifying a device.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DeviceId {
     id: u64,
     protocol: DeviceProtocol,
@@ -47,7 +47,32 @@ impl Debug for DeviceId {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+impl_socket_address!(DeviceId, builtins => []);
+impl_packet_address!(DeviceId);
+
+#[derive(Clone)]
+pub struct IpDeviceSocket<I: Ip> {
+    id: u64,
+    inner: IpDeviceSocketInner<I>,
+}
+
+#[derive(Clone)]
+enum IpDeviceSocketInner<I: Ip> {
+    Ethernet(EthernetIpDeviceSocket<I>),
+}
+
+impl<I: Ip> IpDeviceSocket<I> {
+    pub fn new(device: DeviceId, next_hop: I::Addr) -> IpDeviceSocket<I> {
+        match device.protocol {
+            DeviceProtocol::Ethernet => IpDeviceSocket {
+                id: device.id,
+                inner: IpDeviceSocketInner::Ethernet(EthernetIpDeviceSocket::new(next_hop)),
+            },
+        }
+    }
+}
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 enum DeviceProtocol {
     Ethernet,
 }
@@ -119,22 +144,16 @@ pub trait DeviceLayerEventDispatcher {
     fn send_frame(&mut self, device: DeviceId, frame: &[u8]);
 }
 
-/// Send an IP packet in a device layer frame.
-///
-/// `send_ip_frame` accepts a device ID, a local IP address, and a
-/// `SerializationRequest`. It computes the routing information and serializes
-/// the request in a new device layer frame and sends it.
-pub fn send_ip_frame<D: EventDispatcher, A, S>(
+pub fn send_ip_frame<D: EventDispatcher, I: Ip, S: Serializer>(
     ctx: &mut Context<D>,
-    device: DeviceId,
-    local_addr: A,
+    socket: &IpDeviceSocket<I>,
     body: S,
-) where
-    A: IpAddr,
-    S: Serializer,
-{
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::send_ip_frame(ctx, device.id, local_addr, body),
+) {
+    let id = socket.id;
+    match &socket.inner {
+        IpDeviceSocketInner::Ethernet(socket) => {
+            self::ethernet::send_ip_frame(ctx, id, socket, body)
+        }
     }
 }
 

@@ -13,7 +13,6 @@
 ///
 /// [Wikipedia]: https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure
 /// [RFC 793]: https://tools.ietf.org/html/rfc793#page-17
-#[allow(missing_docs)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TcpOption<'a> {
     /// A Maximum Segment Size (MSS) option.
@@ -40,6 +39,7 @@ pub enum TcpOption<'a> {
 ///
 /// [RFC 2018]: https://tools.ietf.org/html/rfc2018
 #[derive(Copy, Clone, Default, Eq, PartialEq, Debug)]
+#[repr(C)]
 pub struct TcpSackBlock {
     /// The sequence number of the first byte in this block.
     pub left_edge: u32,

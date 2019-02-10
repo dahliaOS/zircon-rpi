@@ -511,6 +511,75 @@ macro_rules! increment_counter {
     };
 }
 
+/// Implement the [`socket::SocketAddress`] trait for a type.
+///
+/// `impl_socket_address!` implements the `SocketAddress` trait for the given
+/// type. It sets the `HAS_BUILTIN` associated constant to `$has_builtin`, and
+/// sets the implementation's iterator to `std::option::IntoIter<Self>`. If more
+/// exotic iteration is required, implement the trait by hand.
+macro_rules! impl_socket_address {
+    ($type:ty, builtins => []) => {
+        impl_socket_address!(@inner $type, false,);
+    };
+    ($type:ty, builtins => [$($builtin:expr),*]) => {
+        impl_socket_address!(@inner $type, true, $($builtin),*);
+    };
+    (@inner $type:ty, $has_builtin:expr, $($builtin:expr),*) => {
+        impl crate::address::SocketAddress for $type {
+            type Iter = std::option::IntoIter<Self>;
+
+            const HAS_BUILTIN: bool = $has_builtin;
+
+            fn into_iter(self) -> std::option::IntoIter<Self> {
+                Some(self).into_iter()
+            }
+
+            fn builtin(&self) -> bool {
+                $(
+                    if self == &$builtin {
+                        return true;
+                    }
+                )*
+                false
+            }
+        }
+    };
+}
+
+/// Implement the [`socket::PacketAddress`] trait for a type.
+///
+/// `impl_packet_address!` implements the `PacketAddress` trait for the given
+/// type, and sets the `SocketAddr` type to `SocketAddr<Self>`. If a different
+/// `SocketAddr` type is required, implement the trait by hand.
+macro_rules! impl_packet_address {
+    ($type:ty) => {
+        impl crate::address::PacketAddress for $type {
+            type SocketAddr = crate::address::AllAddr<Self>;
+
+            fn into_socket_addr_incoming(self) -> crate::address::AllAddr<Self> {
+                crate::address::AllAddr::Addr(self)
+            }
+        }
+    };
+}
+
+/// Implement [`TryFrom<AllAddr<$type>>`] for a type `$type`.
+///
+/// `impl_try_from_socket_addr!` implements `TryFrom` by mapping `Addr(addr)` to
+/// `Some(addr)` and `All` to `None`.
+macro_rules! impl_try_from_socket_addr {
+    ($type:ty) => {
+        impl<$ty> std::convert::TryFrom<AllAddr<$ty>> for $ty {
+            fn try_from(self) -> Option<$ty> {
+                match self {
+                    AllAddr::Addr(addr) => Some(addr),
+                    AllAddr::All => None,
+                }
+            }
+        }
+    };
+}
+
 mod test {
     // don't 'use' anything from the ip module so we can be sure that the
     // absolute paths used in the definitions of these macros work properly

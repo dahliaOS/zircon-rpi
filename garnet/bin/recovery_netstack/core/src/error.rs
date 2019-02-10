@@ -15,6 +15,9 @@ pub enum NetstackError {
     // Add error types here as we add more to the stack
 }
 
+// TODO(joshlf): If we start converting b/w ParseError and NetstackError a lot,
+// impl From<ParseError> for NetstackError.
+
 /// Error type for packet parsing.
 #[derive(Fail, Debug, PartialEq)]
 #[allow(missing_docs)]

@@ -9,28 +9,30 @@ use std::mem;
 use log::trace;
 use packet::{BufferMut, BufferSerializer, Serializer};
 
-use crate::ip::{send_ip_packet, IpAddr, IpProto, Ipv4, Ipv6};
+use crate::ip::{send_ip_packet_no_socket, IpAddr, IpPacketAddr, IpProto, Ipv4, Ipv6};
 use crate::wire::icmp::{IcmpPacketBuilder, IcmpParseArgs, Icmpv4Packet, Icmpv6Packet};
 use crate::{Context, EventDispatcher};
 
 /// Receive an ICMP message in an IP packet.
 pub fn receive_icmp_packet<D: EventDispatcher, A: IpAddr, B: BufferMut>(
     ctx: &mut Context<D>,
-    src_ip: A,
-    dst_ip: A,
+    addr: IpPacketAddr<A>,
     buffer: B,
-) -> bool {
-    trace!("receive_icmp_packet({}, {})", src_ip, dst_ip);
+) {
+    // trace!("receive_icmp_packet({})", addr);
 
     specialize_ip_addr!(
-        fn receive_icmp_packet<D, B>(ctx: &mut Context<D>, src_ip: Self, dst_ip: Self, buffer: B) -> bool
+        fn receive_icmp_packet<D, B>(ctx: &mut Context<D>, addr: IpPacketAddr<Self>, buffer: B) -> bool
         where
             D: EventDispatcher,
             B: BufferMut,
         {
             Ipv4Addr => {
                 let mut buffer = buffer;
-                let packet = match buffer.parse_with::<_, Icmpv4Packet<_>>(IcmpParseArgs::new(src_ip, dst_ip)) {
+                let packet = match buffer.parse_with::<_, Icmpv4Packet<_>>(IcmpParseArgs::new(
+                    addr.src_ip(),
+                    addr.dst_ip(),
+                )) {
                     Ok(packet) => packet,
                     Err(err) => return false,
                 };
@@ -45,12 +47,21 @@ pub fn receive_icmp_packet<D: EventDispatcher, A: IpAddr, B: BufferMut>(
                         increment_counter!(ctx, "receive_icmp_packet::echo_request");
 
                         // we're responding to the sender, so these are flipped
-                        let (src_ip, dst_ip) = (dst_ip, src_ip);
-                        send_ip_packet(
+                        let addr = addr.into_swap_src_dst();
+                        send_ip_packet_no_socket(
                             ctx,
-                            dst_ip,
+                            &addr,
                             IpProto::Icmp,
-                            |src_ip| BufferSerializer::new_vec(buffer).encapsulate(IcmpPacketBuilder::<Ipv4, &[u8], _>::new(src_ip, dst_ip, code, req.reply())),
+                            BufferSerializer::new_vec(buffer).encapsulate(IcmpPacketBuilder::<
+                                Ipv4,
+                                &[u8],
+                                _,
+                            >::new(
+                                addr.src_ip(),
+                                addr.dst_ip(),
+                                code,
+                                req.reply(),
+                            )),
                         );
                         true
                     }
@@ -67,7 +78,10 @@ pub fn receive_icmp_packet<D: EventDispatcher, A: IpAddr, B: BufferMut>(
             }
             Ipv6Addr => {
                 let mut buffer = buffer;
-                let packet = match buffer.parse_with::<_, Icmpv6Packet<_>>(IcmpParseArgs::new(src_ip, dst_ip)) {
+                let packet = match buffer.parse_with::<_, Icmpv6Packet<_>>(IcmpParseArgs::new(
+                    addr.src_ip(),
+                    addr.dst_ip(),
+                )) {
                     Ok(packet) => packet,
                     Err(err) => return false,
                 };
@@ -82,12 +96,21 @@ pub fn receive_icmp_packet<D: EventDispatcher, A: IpAddr, B: BufferMut>(
                         increment_counter!(ctx, "receive_icmp_packet::echo_request");
 
                         // we're responding to the sender, so these are flipped
-                        let (src_ip, dst_ip) = (dst_ip, src_ip);
-                        send_ip_packet(
+                        let addr = addr.into_swap_src_dst();
+                        send_ip_packet_no_socket(
                             ctx,
-                            dst_ip,
+                            &addr,
                             IpProto::Icmp,
-                            |src_ip| BufferSerializer::new_vec(buffer).encapsulate(IcmpPacketBuilder::<Ipv6, &[u8], _>::new(src_ip, dst_ip, code, req.reply())),
+                            BufferSerializer::new_vec(buffer).encapsulate(IcmpPacketBuilder::<
+                                Ipv6,
+                                &[u8],
+                                _,
+                            >::new(
+                                addr.src_ip(),
+                                addr.dst_ip(),
+                                code,
+                                req.reply(),
+                            )),
                         );
                         true
                     }
@@ -99,13 +122,13 @@ pub fn receive_icmp_packet<D: EventDispatcher, A: IpAddr, B: BufferMut>(
                     _ => log_unimplemented!(
                         false,
                         "ip::icmp::receive_icmp_packet: Not implemented for this packet type"
-                    )
+                    ),
                 }
             }
         }
     );
 
-    A::receive_icmp_packet(ctx, src_ip, dst_ip, buffer)
+    A::receive_icmp_packet(ctx, addr, buffer);
 }
 
 #[cfg(test)]
@@ -113,6 +136,7 @@ mod tests {
     use packet::Buf;
 
     use super::*;
+    use crate::address::PacketAddr;
     use crate::ip::{Ip, Ipv4, Ipv4Addr, Ipv6, Ipv6Addr};
     use crate::testutil::DummyEventDispatcher;
     use crate::Context;
@@ -126,7 +150,8 @@ mod tests {
         let dst = Ipv4Addr::new([192, 168, 1, 5]);
         let mut bytes = REQUEST_IP_PACKET_BYTES.to_owned();
 
-        receive_icmp_packet(&mut ctx, src, dst, Buf::new(&mut bytes[20..], ..));
+        let addr = IpPacketAddr::new(PacketAddr::new(src, dst), unimplemented!());
+        receive_icmp_packet(&mut ctx, addr, Buf::new(&mut bytes[20..], ..));
         assert_eq!(ctx.state().test_counters.get("receive_icmp_packet::echo_request"), &1);
 
         // Check that the echo request was replied to.
@@ -145,7 +170,8 @@ mod tests {
         let dst = Ipv6Addr::new([0xfe, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         let mut bytes = REQUEST_IP_PACKET_BYTES.to_owned();
 
-        receive_icmp_packet(&mut ctx, src, dst, Buf::new(&mut bytes[40..], ..));
+        let addr = IpPacketAddr::new(PacketAddr::new(src, dst), unimplemented!());
+        receive_icmp_packet(&mut ctx, addr, Buf::new(&mut bytes[40..], ..));
         assert_eq!(ctx.state().test_counters.get("receive_icmp_packet::echo_request"), &1);
 
         // Check that the echo request was replied to.

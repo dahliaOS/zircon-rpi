@@ -4,7 +4,7 @@
 
 use std::fmt::{self, Debug, Formatter};
 
-use crate::device::DeviceId;
+use crate::device::{DeviceId, IpDeviceSocket};
 use crate::ip::*;
 
 // TODO(joshlf):
@@ -26,9 +26,16 @@ use crate::ip::*;
 /// not necessarily the destination IP address of the IP packet. In particular,
 /// if the destination is not on the local network, the `next_hop` will be the
 /// IP address of the next IP router on the way to the destination.
+#[derive(Copy, Clone)]
 pub struct Destination<I: Ip> {
     pub next_hop: I::Addr,
     pub device: DeviceId,
+}
+
+impl<I: Ip> Destination<I> {
+    pub fn into_ip_device_socket(self) -> IpDeviceSocket<I> {
+        IpDeviceSocket::new(self.device, self.next_hop)
+    }
 }
 
 impl<I: Ip> Debug for Destination<I> {

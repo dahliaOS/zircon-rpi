@@ -4,7 +4,9 @@
 
 //! A networking stack.
 
-#![feature(async_await, await_macro)]
+// TODO(joshlf): If this feature isn't stabilized by the time this code needs to
+// be merged, we can do without.
+#![feature(map_get_key_value)]
 #![feature(never_type)]
 #![feature(specialization)]
 #![feature(try_from)]
@@ -26,6 +28,7 @@
 #[macro_use]
 mod macros;
 
+mod address;
 mod device;
 mod error;
 mod ip;
@@ -37,6 +40,7 @@ mod wire;
 pub mod types;
 
 use crate::device::{ethernet::Mac, DeviceId, DeviceLayerEventDispatcher, DeviceLayerTimerId};
+use crate::ip::IpLayerEventDispatcher;
 use crate::transport::{TransportLayerEventDispatcher, TransportLayerTimerId};
 
 use crate::device::DeviceLayerState;
@@ -46,7 +50,7 @@ use crate::transport::TransportLayerState;
 /// The state associated with the network stack.
 pub struct StackState<D: EventDispatcher> {
     transport: TransportLayerState<D>,
-    ip: IpLayerState,
+    ip: IpLayerState<D>,
     device: DeviceLayerState,
     #[cfg(test)]
     test_counters: testutil::TestCounters,
@@ -138,7 +142,9 @@ pub fn handle_timeout<D: EventDispatcher>(ctx: &mut Context<D>, id: TimerId) {
 /// provides its own event dispatcher trait which specifies the types of actions
 /// that must be supported in order to support that layer of the stack. The
 /// `EventDispatcher` trait is a sub-trait of all of these traits.
-pub trait EventDispatcher: DeviceLayerEventDispatcher + TransportLayerEventDispatcher {
+pub trait EventDispatcher:
+    DeviceLayerEventDispatcher + IpLayerEventDispatcher + TransportLayerEventDispatcher
+{
     /// Schedule a callback to be invoked after a timeout.
     ///
     /// `schedule_timeout` schedules `f` to be invoked after `duration` has elapsed, overwriting any
