@@ -43,7 +43,16 @@ fn play_regulation() {
         Ok(t) => t,
     };
 
-    println!("{:#?}", toml);
+    // println!("{:#?}", toml);
+    let budget_by_range = power::build_power_budget(&toml, "client".to_string());
+    match budget_by_range {
+        Err(e) => error!("{:?}", e),
+        Ok(r) => {
+            for e in r.iter() {
+                println!("{:?}", e)
+            }
+        }
+    }
 }
 
 fn main() {
