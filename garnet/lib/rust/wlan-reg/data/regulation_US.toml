@@ -22,8 +22,8 @@ jurisdiction = "US"
 [2400-2483]  # 2400 - 2483.5.
     freq_beg = 2.400  # GHz
     freq_end = 2.4835 # GHz
-    ieee_chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
-    ieee_chan_idx_end = 13
+    chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
+    chan_idx_end = 13
 
     [2400-2483.role-any]
         role = "any"
@@ -38,8 +38,8 @@ jurisdiction = "US"
     # Note the beginning frequency is _not_ 5.170 GHz, which corresponds to channel 36.
     freq_beg = 5.150
     freq_end = 5.250
-    ieee_chan_idx_beg = 34
-    ieee_chan_idx_end = 48
+    chan_idx_beg = 34
+    chan_idx_end = 48
 
     [5150-5250.role-indoor_ap]
         role = "indoor_ap"
@@ -74,8 +74,8 @@ jurisdiction = "US"
 
     freq_beg = 5.250
     freq_end = 5.350
-    ieee_chan_idx_beg = 50 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
-    ieee_chan_idx_end = 68
+    chan_idx_beg = 50 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
+    chan_idx_end = 68
 
     # See FCC KDB905462 D02 v02 Table 3.
     dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
@@ -103,8 +103,8 @@ jurisdiction = "US"
 
     freq_beg = 5.470
     freq_end = 5.725
-    ieee_chan_idx_beg = 96
-    ieee_chan_idx_end = 142 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
+    chan_idx_beg = 96
+    chan_idx_end = 142 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
 
     [5470-5725.role-any]
         role = "any"
@@ -117,8 +117,8 @@ jurisdiction = "US"
 [5725-5850]
     freq_beg = 5.725 # GHz
     freq_end = 5.850 # GHz
-    ieee_chan_idx_beg = 144 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
-    ieee_chan_idx_end = 165
+    chan_idx_beg = 144 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
+    chan_idx_end = 165
 
     [5725-5850.role-any]
         role = "any"
