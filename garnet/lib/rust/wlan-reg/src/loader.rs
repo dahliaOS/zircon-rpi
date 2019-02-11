@@ -202,7 +202,7 @@ fn validate_subband(v: &Value) -> Result<(), Error> {
         bail!("freq_beg {} is greater than freq_end {}", freq_beg, freq_end);
     }
 
-    const MANDATORY_FIELDS2: &'static [&'static str] = &["ieee_chan_idx_beg", "ieee_chan_idx_end"];
+    const MANDATORY_FIELDS2: &'static [&'static str] = &["chan_idx_beg", "chan_idx_end"];
     for f in MANDATORY_FIELDS2.iter() {
         if v.get(f).is_none() {
             bail!("mandatory field missing: {}", f);
@@ -211,8 +211,8 @@ fn validate_subband(v: &Value) -> Result<(), Error> {
             bail!("field {} is non-integer: {} ", f, v[f]);
         }
     }
-    let chan_idx_beg = v["ieee_chan_idx_beg"].as_integer().unwrap() as u64;
-    let chan_idx_end = v["ieee_chan_idx_end"].as_integer().unwrap() as u64;
+    let chan_idx_beg = v["chan_idx_beg"].as_integer().unwrap() as u64;
+    let chan_idx_end = v["chan_idx_end"].as_integer().unwrap() as u64;
     if chan_idx_beg > chan_idx_end {
         bail!("chan_idx_beg {} is greater than chan_idx_end {}", chan_idx_beg, chan_idx_end);
     }
