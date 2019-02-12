@@ -301,7 +301,7 @@ ahcinum=1
 for ahcifile in ${AHCI[@]}; do
     ARGS+=" -drive file=${ahcifile},format=raw,if=none,id=ahcidisk${ahcinum}"
     ARGS+=" -device ich9-ahci,id=ahci${ahcinum}"
-    ARGS+=" -device ide-drive,drive=ahcidisk${ahcinum},bus=ahci.${ahcinum}"
+    ARGS+=" -device ide-drive,drive=ahcidisk${ahcinum},bus=ahci1.${ahcinum}"
     ahcinum=$((ahcinum + 1))
 done
 
