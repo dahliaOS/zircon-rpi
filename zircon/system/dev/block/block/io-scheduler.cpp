@@ -29,7 +29,6 @@ Scheduler::~Scheduler() {
     for ( ; ; ) {
         StreamRef stream = stream_map_.pop_front();
         if (stream == nullptr) break;
-        fbl::AutoLock stream_lock(&stream->lock_);
         assert(stream->flags_ & kIoStreamFlagClosed);
         assert((stream->flags_ & kIoStreamFlagScheduled) == 0);
     }
@@ -56,22 +55,31 @@ StreamRef Scheduler::FindStreamLocked(uint32_t id) {
     return iter.CopyPointer();
 }
 
-void Scheduler::RemoveStream(StreamRef stream) {
+zx_status_t Scheduler::RemoveStream(uint32_t id) {
     fbl::AutoLock lock(&lock_);
-    RemoveStreamLocked(std::move(stream));
-}
+    StreamRef stream = FindStreamLocked(id);
+    if (stream == nullptr) {
+        return ZX_ERR_INVALID_ARGS;
+    }
 
-void Scheduler::RemoveStreamLocked(StreamRef stream) {
-    stream_map_.erase(stream->id_);
+    stream->flags_ |= kIoStreamFlagClosed;
+    // Once closed, the stream cannot transition from idle to scheduled.
+    if ((stream->flags_ & kIoStreamFlagScheduled) == 0) {
+        stream_map_.erase(stream->id_);
+        return ZX_OK;
+    }
+
+    // Wait until all commands have completed.
+    {
+        fbl::AutoLock stream_lock(&stream->lock_);
+        stream->event_unscheduled_.Wait(&stream->lock_);
+    }
+    assert((stream->flags_ & kIoStreamFlagScheduled) == 0);
+    return ZX_OK;
 }
 
 zx_status_t Scheduler::InsertOps(io_op_t** op_list, size_t op_count, size_t* out_num_ready) {
-    bool was_empty = true;
-    bool stream_added = false;
     fbl::AutoLock lock(&lock_);
-    if (num_streams_ > 0) {
-        was_empty = false;
-    }
     zx_status_t status = ZX_OK;
     for (size_t i = 0; i < op_count; i++) {
         io_op_t* op = op_list[i];
@@ -83,9 +91,7 @@ zx_status_t Scheduler::InsertOps(io_op_t** op_list, size_t op_count, size_t* out
             status = ZX_ERR_INVALID_ARGS;
             continue;
         }
-        fbl::AutoLock stream_lock(&stream->lock_);
         if (stream->flags_ & kIoStreamFlagClosed) {
-            stream_lock.release();
             fprintf(stderr, "Error: attempted to enqueue op for closed stream\n");
             op->result = ZX_ERR_INVALID_ARGS;
             status = ZX_ERR_INVALID_ARGS;
@@ -93,18 +99,15 @@ zx_status_t Scheduler::InsertOps(io_op_t** op_list, size_t op_count, size_t* out
         }
         op_list[i] = nullptr; // Clear out inserted ops.
         list_clear_node(&op->node);
+        fbl::AutoLock stream_lock(&stream->lock_);
         list_add_tail(&stream->ready_op_list_, &op->node);
         if ((stream->flags_ & kIoStreamFlagScheduled) == 0) {
             stream->flags_ |= kIoStreamFlagScheduled;
             pri_list_[stream->priority_].push_back(std::move(stream));
             num_streams_++;
-            stream_added = true;
         }
         num_ready_ops_++;
     }
-    // if (was_empty && stream_added) {
-    //     cnd_broadcast(&event_issue_available_);
-    // }
     if (out_num_ready) {
         *out_num_ready = num_ready_ops_;
     }
@@ -199,7 +202,6 @@ void Scheduler::CompleteOp(io_op_t* op, zx_status_t result) {
 void Scheduler::CloseAll() {
     fbl::AutoLock lock(&lock_);
     for (auto& stream : stream_map_) {
-        fbl::AutoLock stream_lock(&stream.lock_);
         stream.flags_ |= kIoStreamFlagClosed;
     }
 }

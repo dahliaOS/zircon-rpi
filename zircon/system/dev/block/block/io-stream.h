@@ -53,19 +53,18 @@ public:
 
     using ListUnsorted = fbl::DoublyLinkedList<StreamRef, ListTraitsUnsorted>;
 
-    // friend struct KeyTraitsSortById;
-    // friend struct WAVLTreeNodeTraitsSortById;
-    // friend struct ListNodeState;
+    friend struct KeyTraitsSortById;
+    friend struct WAVLTreeNodeTraitsSortById;
 
     // These fields are protected by the scheduler lock.
     WAVLTreeNodeState map_node_;
     ListNodeState list_node_;
     uint32_t id_;
     uint32_t priority_;
+    uint32_t flags_ = 0;
 
     fbl::Mutex lock_;
     // These fields are protected by the above stream lock.
-    uint32_t flags_ = 0;         // TODO: move flags to the sched lock domain.
     fbl::ConditionVariable event_unscheduled_;
     list_node_t ready_op_list_;
     list_node_t issued_op_list_;
