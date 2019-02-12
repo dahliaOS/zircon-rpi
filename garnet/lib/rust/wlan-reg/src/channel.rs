@@ -11,18 +11,20 @@ pub struct ChannelGroups {
     pub cbw40below: Vec<u8>,
     pub cbw80center: Vec<u8>,
     pub cbw160center: Vec<u8>,
+    pub all: Vec<u8>,
 }
 
 impl fmt::Display for ChannelGroups {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Channel Groups\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n",
+        write!(f, "Channel Groups\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n",
             "2 GHz", self.band_2ghz,
             "5 GHz", self.band_5ghz,
             "DFS", self.dfs,
             "CBW40 Above", self.cbw40above,
             "CBW40 Below", self.cbw40below,
             "CBW80 Center", self.cbw80center,
-            "CBW16 0Center", self.cbw160center,
+            "CBW160 Center", self.cbw160center,
+            "All", self.all,
         )
     }
 }
@@ -55,6 +57,8 @@ pub fn build_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> ChannelG
     let mut cbw80center = vec![];
     let mut cbw160center = vec![];
 
+    // TODO(porce): Improve the walk by walking on the BTreeMap.
+    let mut operclass_cnt = 0;
     const OPERCLASS_IDX_MIN: u8 = 1;
     const OPERCLASS_IDX_MAX: u8 = 255;
     for idx in OPERCLASS_IDX_MIN..=OPERCLASS_IDX_MAX {
@@ -66,6 +70,8 @@ pub fn build_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> ChannelG
         if v.get(&key).is_none() {
             continue;
         }
+
+        operclass_cnt += 1;
 
         let channel_set = get_chanlist(&v[&key]["set"]);
         let center_channel_set = get_chanlist(&v[&key]["center_freq_idx"]);
@@ -98,6 +104,11 @@ pub fn build_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> ChannelG
         }
     }
 
+    if operclass_cnt == 0 {
+        // error!("The input Value carries no operating class. Are you sure?");
+        println!("The input Value carries no operating class. Are you sure?");
+    }
+
     band_2ghz.sort();
     band_2ghz.dedup();
 
@@ -119,5 +130,28 @@ pub fn build_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> ChannelG
     cbw160center.sort();
     cbw160center.dedup();
 
-    ChannelGroups { band_2ghz, band_5ghz, dfs, cbw40above, cbw40below, cbw80center, cbw160center }
+    let mut all: Vec<u8> = [
+        band_2ghz.as_slice(),
+        band_5ghz.as_slice(),
+        dfs.as_slice(),
+        cbw40above.as_slice(),
+        cbw40below.as_slice(),
+        cbw80center.as_slice(),
+        cbw160center.as_slice(),
+    ]
+    .concat();
+
+    all.sort();
+    all.dedup();
+
+    ChannelGroups {
+        band_2ghz,
+        band_5ghz,
+        dfs,
+        cbw40above,
+        cbw40below,
+        cbw80center,
+        cbw160center,
+        all,
+    }
 }
