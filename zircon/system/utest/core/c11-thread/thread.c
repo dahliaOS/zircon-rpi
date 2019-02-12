@@ -113,8 +113,41 @@ bool detach_self_test(void) {
     END_TEST;
 }
 
+static volatile int done = 0;
+
+int signal_thread(void* unused) {
+    zx_handle_t event;
+    zx_status_t status = zx_event_create(0u, &event);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    while (!done) {
+        status = zx_object_signal(event, ZX_EVENT_SIGNALED, 0u);
+        if (status != ZX_OK) {
+            return status;
+        }
+    }
+
+    return zx_handle_close(event);
+}
+
+bool create_many(void) {
+    BEGIN_TEST;
+
+    const unsigned kNumThreads = 500;
+    thrd_t threads[kNumThreads];
+    for (unsigned i = 0; i < kNumThreads; ++i) {
+        ASSERT_EQ(thrd_create(&threads[i], &signal_thread, NULL), thrd_success, "");
+        printf("created thread %i\n", i);
+    }
+
+    END_TEST;
+}
+
 BEGIN_TEST_CASE(c11_thread_tests)
-RUN_TEST(c11_thread_test)
-RUN_TEST(long_name_succeeds)
-RUN_TEST(detach_self_test)
+// RUN_TEST(c11_thread_test)
+// RUN_TEST(long_name_succeeds)
+// RUN_TEST(detach_self_test)
+RUN_TEST(create_many)
 END_TEST_CASE(c11_thread_tests)
