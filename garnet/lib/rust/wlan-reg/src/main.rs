@@ -44,7 +44,7 @@ fn play_regulation() {
     };
 
     // println!("{:#?}", toml);
-    let budget_by_range = power::build_power_budget(&toml, "client".to_string());
+    let budget_by_range = power::build_power_budget_by_range(&toml, "client");
     match budget_by_range {
         Err(e) => error!("{:?}", e),
         Ok(r) => {
@@ -55,6 +55,18 @@ fn play_regulation() {
     }
 }
 
+fn get_power_budget() {
+    let budget = power::get_power_budget_for_client();
+    match budget {
+        Err(e) => {
+            error!("{:?}", e);
+            println!("{:?}", e)
+        }
+        Ok(b) => {
+            println!("Power Budget By Channel Index\n{:#?}", b);
+        }
+    }
+}
 fn main() {
-    play_regulation();
+    get_power_budget();
 }
