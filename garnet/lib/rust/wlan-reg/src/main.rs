@@ -20,12 +20,12 @@ fn play_operating_class() {
 
     println!("\nFor jurisdiction: {}", jurisdiction);
     println!("  File: {}", filepath);
-    println!("  Parse result:\n{:?}\n", toml);
-    println!("   From file contents:");
-    utils::dump_file(&filepath);
+    //    println!("  Parse result:\n{:?}\n", toml);
+    //    println!("   From file contents:");
+    //    utils::dump_file(&filepath);
 
     let channel_groups =
-        channel::build_channel_groups(&toml, &country::get_active_operating_classes());
+        channel::build_legit_channel_groups(&toml, &country::get_active_operating_classes());
 
     println!("{}", channel_groups);
 }
@@ -55,7 +55,33 @@ fn play_regulation() {
     }
 }
 
-fn get_power_budget() {
+fn main() {
+    let legit_chan_group = channel::get_legit_chan_groups();
+    match legit_chan_group {
+        Err(e) => {
+            error!("{:?}", e);
+            println!("{:?}", e);
+        }
+        Ok(l) => {
+            println!("\nLegit Channel Group\n{}", l);
+        }
+    }
+
+    println!("Device capable channels   {:?}", channel::get_device_capable_chanidx_list());
+    println!("Planned non-oper channels {:?}", channel::get_planned_non_operation_chanidx_list());
+    println!("Blocked channels          {:?}", channel::get_blocked_chanidx_list());
+
+    let oper_chan_group = channel::get_oper_chan_groups();
+    match oper_chan_group {
+        Err(e) => {
+            error!("{:?}", e);
+            println!("{:?}", e);
+        }
+        Ok(l) => {
+            println!("\nOperation Channel Group\n{}", l);
+        }
+    }
+
     let budget = power::get_power_budget_for_client();
     match budget {
         Err(e) => {
@@ -63,10 +89,7 @@ fn get_power_budget() {
             println!("{:?}", e)
         }
         Ok(b) => {
-            println!("Power Budget By Channel Index\n{:#?}", b);
+            println!("Power Budget By Channel Index\n{:?}", b);
         }
     }
-}
-fn main() {
-    get_power_budget();
 }
