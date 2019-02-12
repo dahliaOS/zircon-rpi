@@ -149,24 +149,25 @@ pub fn get_operating_class_filename(jurisdiction: &str) -> String {
 /// returns TOML Value if validated, otherwise, error.
 pub fn load_regulation_toml(filepath: &str) -> Result<Value, Error> {
     let toml = load_toml(filepath)?;
-    match validate_regulation(&toml) {
-        Ok(()) => Ok(toml),
-        Err(e) => {
-            bail!("{}", e);
-        }
-    }
+    validate_regulation(toml)
+    //        Err(e) => {
+    //            bail!("{}", e);
+    //        }
+    //        _ => (),
+    //    };
+    //    Ok(toml)
 }
 
 /// Passes the validation if mandatory fields are present.
 /// Optional fields, or unidentifiable fields are don't care ones.
-pub fn validate_regulation(v: &Value) -> Result<(), Error> {
+pub fn validate_regulation(v: Value) -> Result<Value, Error> {
     const MANDATORY_FIELDS: &'static [&'static str] = &["version", "jurisdiction"];
     for f in MANDATORY_FIELDS.iter() {
         if v.get(f).is_none() {
             bail!("mandatory field missing: {}", f);
         };
     }
-    let table = match v {
+    let table = match &v {
         Table(t) => t,
         _ => {
             bail!("not a table! : {}", v);
@@ -179,7 +180,7 @@ pub fn validate_regulation(v: &Value) -> Result<(), Error> {
             }
         }
     }
-    Ok(())
+    Ok(v)
 }
 
 fn validate_subband(v: &Value) -> Result<(), Error> {
