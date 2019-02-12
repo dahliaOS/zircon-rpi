@@ -18,8 +18,9 @@ use packet::BufferMut;
 use zerocopy::ByteSlice;
 
 use crate::address::{AddrVec, AllAddr, ConnAddr, PacketAddr};
-use crate::ip::socket::{TransportSocketImpl, TransportSocketMap};
+use crate::ip::socket::TransportSocketImpl;
 use crate::ip::{Ip, IpAddr, IpPacketAddr, Ipv4, Ipv6};
+use crate::transport::PortBasedSocketMap;
 use crate::wire::tcp::{TcpParseArgs, TcpSegment};
 use crate::{Context, EventDispatcher};
 
@@ -32,14 +33,14 @@ pub struct TcpState<D: TcpEventDispatcher> {
 impl<D: TcpEventDispatcher> Default for TcpState<D> {
     fn default() -> TcpState<D> {
         TcpState {
-            ipv4: TcpStateInner { sockets: TransportSocketMap::default() },
-            ipv6: TcpStateInner { sockets: TransportSocketMap::default() },
+            ipv4: TcpStateInner { sockets: PortBasedSocketMap::default() },
+            ipv6: TcpStateInner { sockets: PortBasedSocketMap::default() },
         }
     }
 }
 
 struct TcpStateInner<D: TcpEventDispatcher, I: Ip> {
-    sockets: TransportSocketMap<I, TcpSocketImpl<D>>,
+    sockets: PortBasedSocketMap<I, TcpSocketImpl<D>>,
 }
 
 /// The identifier for timer events in the TCP layer.
@@ -59,11 +60,9 @@ impl<D: TcpEventDispatcher> TransportSocketImpl for TcpSocketImpl<D> {
     type ListenerKey = D::TcpListener;
 
     type ConnAddr = ConnAddr<NonZeroU16, NonZeroU16>;
-    type DeviceConnAddr = !;
     type ListenerAddr = AllAddr<NonZeroU16>;
 
     type ConnSocket = ();
-    type DeviceConnSocket = !;
     type ListenerSocket = ();
 }
 

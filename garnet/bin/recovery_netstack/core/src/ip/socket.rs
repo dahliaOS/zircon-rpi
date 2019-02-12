@@ -5,9 +5,8 @@
 use crate::address::{AddrVec, PacketAddress, SocketAddress, SocketMap};
 use crate::error::NetstackError;
 use crate::ip::{
-    Ip, IpConnSocket, IpConnSocketAddr, IpConnSocketRequestAddr, IpDeviceConnSocket,
-    IpDeviceConnSocketAddr, IpDeviceConnSocketRequestAddr, IpListenerSocket, IpListenerSocketAddr,
-    IpListenerSocketRequestAddr, IpSocketAddr,
+    Ip, IpConnSocket, IpConnSocketAddr, IpDeviceConnSocket, IpDeviceConnSocketAddr,
+    IpListenerSocket, IpListenerSocketAddr, IpSocketAddr,
 };
 
 pub trait TransportSocketImpl {
@@ -19,11 +18,9 @@ pub trait TransportSocketImpl {
     type ListenerKey: Clone;
 
     type ConnAddr: SocketAddress + Into<Self::Addr>;
-    type DeviceConnAddr: SocketAddress + Into<Self::Addr>;
     type ListenerAddr: SocketAddress + Into<Self::Addr>;
 
     type ConnSocket;
-    type DeviceConnSocket;
     type ListenerSocket;
 }
 
@@ -37,7 +34,7 @@ pub struct TransportSocket<Addr, Key, Sock, IpSock> {
 pub enum Bar<I: Ip, T: TransportSocketImpl> {
     Conn(
         TransportSocket<
-            TransportConnSocketAddr<T::ConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpConnSocketAddr<I::Addr>>,
             T::ConnKey,
             T::ConnSocket,
             IpConnSocket<I>,
@@ -45,15 +42,15 @@ pub enum Bar<I: Ip, T: TransportSocketImpl> {
     ),
     DeviceConn(
         TransportSocket<
-            TransportDeviceConnSocketAddr<T::DeviceConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpDeviceConnSocketAddr<I::Addr>>,
             T::DeviceConnKey,
-            T::DeviceConnSocket,
+            T::ConnSocket,
             IpDeviceConnSocket<I>,
         >,
     ),
     Listener(
         TransportSocket<
-            TransportListenerSocketAddr<T::ListenerAddr, I::Addr>,
+            AddrVec<T::ListenerAddr, IpListenerSocketAddr<I::Addr>>,
             T::ListenerKey,
             T::ListenerSocket,
             IpListenerSocket<I>,
@@ -65,7 +62,7 @@ impl<I: Ip, T: TransportSocketImpl> Bar<I, T> {
     fn unwrap_conn(
         &mut self,
     ) -> &mut TransportSocket<
-        TransportConnSocketAddr<T::ConnAddr, I::Addr>,
+        AddrVec<T::ConnAddr, IpConnSocketAddr<I::Addr>>,
         T::ConnKey,
         T::ConnSocket,
         IpConnSocket<I>,
@@ -79,9 +76,9 @@ impl<I: Ip, T: TransportSocketImpl> Bar<I, T> {
     fn unwrap_device_conn(
         &mut self,
     ) -> &mut TransportSocket<
-        TransportDeviceConnSocketAddr<T::DeviceConnAddr, I::Addr>,
+        AddrVec<T::ConnAddr, IpDeviceConnSocketAddr<I::Addr>>,
         T::DeviceConnKey,
-        T::DeviceConnSocket,
+        T::ConnSocket,
         IpDeviceConnSocket<I>,
     > {
         match self {
@@ -93,7 +90,7 @@ impl<I: Ip, T: TransportSocketImpl> Bar<I, T> {
     fn unwrap_listener(
         &mut self,
     ) -> &mut TransportSocket<
-        TransportListenerSocketAddr<T::ListenerAddr, I::Addr>,
+        AddrVec<T::ListenerAddr, IpListenerSocketAddr<I::Addr>>,
         T::ListenerKey,
         T::ListenerSocket,
         IpListenerSocket<I>,
@@ -105,37 +102,23 @@ impl<I: Ip, T: TransportSocketImpl> Bar<I, T> {
     }
 }
 
-pub type TransportSocketAddr<T, A> = AddrVec<T, IpSocketAddr<A>>;
-
-pub type TransportConnSocketAddr<T, A> = AddrVec<T, IpConnSocketAddr<A>>;
-
-pub type TransportConnSocketRequestAddr<T, A> = AddrVec<T, IpConnSocketRequestAddr<A>>;
-
-pub type TransportDeviceConnSocketAddr<T, A> = AddrVec<T, IpDeviceConnSocketAddr<A>>;
-
-pub type TransportDeviceConnSocketRequestAddr<T, A> = AddrVec<T, IpDeviceConnSocketRequestAddr<A>>;
-
-pub type TransportListenerSocketAddr<T, A> = AddrVec<T, IpListenerSocketAddr<A>>;
-
-pub type TransportListenerSocketRequestAddr<T, A> = AddrVec<T, IpListenerSocketRequestAddr<A>>;
-
 fn conn_addr_to_addr<I: Ip, T: TransportSocketImpl>(
-    addr: TransportConnSocketAddr<T::ConnAddr, I::Addr>,
-) -> TransportSocketAddr<T::Addr, I::Addr> {
+    addr: AddrVec<T::ConnAddr, IpConnSocketAddr<I::Addr>>,
+) -> AddrVec<T::Addr, IpSocketAddr<I::Addr>> {
     let (foo, ip) = addr.into_head_rest();
     AddrVec::new(foo.into(), ip.into())
 }
 
 fn device_conn_addr_to_addr<I: Ip, T: TransportSocketImpl>(
-    addr: TransportDeviceConnSocketAddr<T::DeviceConnAddr, I::Addr>,
-) -> TransportSocketAddr<T::Addr, I::Addr> {
+    addr: AddrVec<T::ConnAddr, IpDeviceConnSocketAddr<I::Addr>>,
+) -> AddrVec<T::Addr, IpSocketAddr<I::Addr>> {
     let (foo, ip) = addr.into_head_rest();
     AddrVec::new(foo.into(), ip.into())
 }
 
 fn listener_addr_to_addr<I: Ip, T: TransportSocketImpl>(
-    addr: TransportListenerSocketAddr<T::ListenerAddr, I::Addr>,
-) -> TransportSocketAddr<T::Addr, I::Addr> {
+    addr: AddrVec<T::ListenerAddr, IpListenerSocketAddr<I::Addr>>,
+) -> AddrVec<T::Addr, IpSocketAddr<I::Addr>> {
     let (foo, ip) = addr.into_head_rest();
     AddrVec::new(foo.into(), ip.into())
 }
@@ -170,7 +153,7 @@ impl<T: TransportSocketImpl> Key<T> {
 }
 
 pub struct TransportSocketMap<I: Ip, T: TransportSocketImpl> {
-    map: SocketMap<Key<T>, TransportSocketAddr<T::Addr, I::Addr>, Bar<I, T>>,
+    map: SocketMap<Key<T>, AddrVec<T::Addr, IpSocketAddr<I::Addr>>, Bar<I, T>>,
 }
 
 impl<I: Ip, T: TransportSocketImpl> Default for TransportSocketMap<I, T> {
@@ -200,8 +183,8 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
     pub fn insert_device_conn(
         &mut self,
         key: T::DeviceConnKey,
-        addr: T::DeviceConnAddr,
-        sock: T::DeviceConnSocket,
+        addr: T::ConnAddr,
+        sock: T::ConnSocket,
         ip_sock: IpDeviceConnSocket<I>,
     ) -> Result<(), NetstackError> {
         let addr = AddrVec::new(addr, ip_sock.addr());
@@ -236,7 +219,7 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
         key: &T::ConnKey,
     ) -> Option<
         &mut TransportSocket<
-            TransportConnSocketAddr<T::ConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpConnSocketAddr<I::Addr>>,
             T::ConnKey,
             T::ConnSocket,
             IpConnSocket<I>,
@@ -250,9 +233,9 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
         key: &T::DeviceConnKey,
     ) -> Option<
         &mut TransportSocket<
-            TransportDeviceConnSocketAddr<T::DeviceConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpDeviceConnSocketAddr<I::Addr>>,
             T::DeviceConnKey,
-            T::DeviceConnSocket,
+            T::ConnSocket,
             IpDeviceConnSocket<I>,
         >,
     > {
@@ -266,7 +249,7 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
         key: &T::ListenerKey,
     ) -> Option<
         &mut TransportSocket<
-            TransportListenerSocketAddr<T::ListenerAddr, I::Addr>,
+            AddrVec<T::ListenerAddr, IpListenerSocketAddr<I::Addr>>,
             T::ListenerKey,
             T::ListenerSocket,
             IpListenerSocket<I>,
@@ -278,7 +261,7 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
     }
 
     pub fn get_by_incoming_packet_addr<
-        P: PacketAddress<SocketAddr = TransportSocketAddr<T::Addr, I::Addr>>,
+        P: PacketAddress<SocketAddr = AddrVec<T::Addr, IpSocketAddr<I::Addr>>>,
     >(
         &mut self,
         addr: &P,

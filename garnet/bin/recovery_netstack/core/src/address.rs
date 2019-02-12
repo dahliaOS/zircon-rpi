@@ -203,15 +203,6 @@ impl<L, R> From<ConnAddr<L, AllAddr<R>>> for ConnAddr<AllAddr<L>, AllAddr<R>> {
     }
 }
 
-// Needed for TCP, which uses ! for certain unused address types in the
-// ip::socket::TransportSocketImpl trait.
-
-impl<L, R> From<!> for ConnAddr<L, R> {
-    fn from(never: !) -> ConnAddr<L, R> {
-        never
-    }
-}
-
 impl<L, R> Into<!> for ConnAddr<L, R> {
     fn into(self) -> ! {
         panic!("Into<!>::into")

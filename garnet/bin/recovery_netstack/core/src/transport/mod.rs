@@ -9,13 +9,13 @@ pub mod udp;
 
 use std::num::NonZeroU16;
 
-use crate::address::{AllAddr, AutoAddr, ConnAddr, PacketAddress};
+use crate::address::{AddrVec, AllAddr, AutoAddr, ConnAddr, PacketAddress};
 use crate::error::NetstackError;
-use crate::ip::socket::{
-    Bar, TransportConnSocketAddr, TransportDeviceConnSocketAddr, TransportSocket,
-    TransportSocketAddr, TransportSocketImpl, TransportSocketMap,
+use crate::ip::socket::{Bar, TransportSocket, TransportSocketImpl, TransportSocketMap};
+use crate::ip::{
+    Ip, IpConnSocket, IpConnSocketAddr, IpDeviceConnSocket, IpDeviceConnSocketAddr,
+    IpListenerSocket, IpSocketAddr,
 };
-use crate::ip::{Ip, IpConnSocket, IpDeviceConnSocket, IpListenerSocket};
 use crate::transport::tcp::TcpEventDispatcher;
 use crate::transport::udp::UdpEventDispatcher;
 use crate::{Context, EventDispatcher};
@@ -66,8 +66,17 @@ type ConnSocketPortPair = ConnAddr<NonZeroU16, NonZeroU16>;
 
 type ConnSocketRequestPortPair = ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>;
 
+const PORT_MAP_RETRY: usize = 256;
+
 struct PortBasedSocketMap<I: Ip, T: TransportSocketImpl> {
     map: TransportSocketMap<I, T>,
+}
+
+fn random_port_pair(remote_port: NonZeroU16) -> ConnSocketPortPair {
+    use rand::Rng;
+    let distr = rand::distributions::Uniform::new_inclusive(1, u16::max_value());
+    let sample = rand::thread_rng().sample(distr);
+    ConnAddr::new(NonZeroU16::new(sample).unwrap(), remote_port)
 }
 
 impl<I: Ip, T: TransportSocketImpl> Default for PortBasedSocketMap<I, T> {
@@ -81,7 +90,6 @@ impl<
         T: TransportSocketImpl<
             Addr = ConnAddr<AllAddr<NonZeroU16>, AllAddr<NonZeroU16>>,
             ConnAddr = ConnSocketPortPair,
-            DeviceConnAddr = ConnSocketPortPair,
             ListenerAddr = AllAddr<NonZeroU16>,
         >,
     > PortBasedSocketMap<I, T>
@@ -93,14 +101,15 @@ impl<
         sock: T::ConnSocket,
         ip_sock: IpConnSocket<I>,
     ) -> Result<ConnSocketPortPair, NetstackError> {
-        unimplemented!()
+        for _ in 0..PORT_MAP_RETRY {}
+        unimplemented!();
     }
 
     fn insert_device_conn(
         &mut self,
         key: T::DeviceConnKey,
         port_pair: ConnSocketRequestPortPair,
-        sock: T::DeviceConnSocket,
+        sock: T::ConnSocket,
         ip_sock: IpDeviceConnSocket<I>,
     ) -> Result<ConnSocketPortPair, NetstackError> {
         unimplemented!()
@@ -121,7 +130,7 @@ impl<
         key: &T::ConnKey,
     ) -> Option<
         &mut TransportSocket<
-            TransportConnSocketAddr<T::ConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpConnSocketAddr<I::Addr>>,
             T::ConnKey,
             T::ConnSocket,
             IpConnSocket<I>,
@@ -135,9 +144,9 @@ impl<
         key: &T::DeviceConnKey,
     ) -> Option<
         &mut TransportSocket<
-            TransportDeviceConnSocketAddr<T::DeviceConnAddr, I::Addr>,
+            AddrVec<T::ConnAddr, IpDeviceConnSocketAddr<I::Addr>>,
             T::DeviceConnKey,
-            T::DeviceConnSocket,
+            T::ConnSocket,
             IpDeviceConnSocket<I>,
         >,
     > {
@@ -145,7 +154,7 @@ impl<
     }
 
     pub fn get_by_incoming_packet_addr<
-        P: PacketAddress<SocketAddr = TransportSocketAddr<T::Addr, I::Addr>>,
+        P: PacketAddress<SocketAddr = AddrVec<T::Addr, IpSocketAddr<I::Addr>>>,
     >(
         &mut self,
         addr: &P,

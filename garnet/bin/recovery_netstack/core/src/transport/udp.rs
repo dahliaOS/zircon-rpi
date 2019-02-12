@@ -13,13 +13,11 @@ use zerocopy::ByteSlice;
 
 use crate::address::{AddrVec, AllAddr, AutoAddr, ConnAddr, PacketAddr};
 use crate::error::NetstackError;
-use crate::ip::socket::{
-    Bar, TransportConnSocketAddr, TransportConnSocketRequestAddr, TransportDeviceConnSocketAddr,
-    TransportDeviceConnSocketRequestAddr, TransportListenerSocketRequestAddr, TransportSocketImpl,
-};
+use crate::ip::socket::{Bar, TransportSocketImpl};
 use crate::ip::{
-    Ip, IpAddr, IpConnSocket, IpDeviceConnSocket, IpListenerSocket, IpPacketAddr, IpProto, Ipv4,
-    Ipv6,
+    Ip, IpAddr, IpConnSocket, IpConnSocketAddr, IpConnSocketRequestAddr, IpDeviceConnSocket,
+    IpDeviceConnSocketAddr, IpDeviceConnSocketRequestAddr, IpListenerSocket,
+    IpListenerSocketRequestAddr, IpPacketAddr, IpProto, Ipv4, Ipv6,
 };
 use crate::transport::PortBasedSocketMap;
 use crate::wire::udp::{UdpPacket, UdpPacketBuilder, UdpParseArgs};
@@ -55,11 +53,9 @@ impl<D: UdpEventDispatcher> TransportSocketImpl for UdpSocketImpl<D> {
     type ListenerKey = D::UdpListener;
 
     type ConnAddr = ConnAddr<NonZeroU16, NonZeroU16>;
-    type DeviceConnAddr = ConnAddr<NonZeroU16, NonZeroU16>;
     type ListenerAddr = AllAddr<NonZeroU16>;
 
     type ConnSocket = ();
-    type DeviceConnSocket = ();
     type ListenerSocket = ();
 }
 
@@ -123,19 +119,19 @@ pub trait UdpEventDispatcher {
     }
 }
 
-pub type UdpConnSocketAddr<A> = TransportConnSocketAddr<ConnAddr<NonZeroU16, NonZeroU16>, A>;
+pub type UdpConnSocketAddr<A> = AddrVec<ConnAddr<NonZeroU16, NonZeroU16>, IpConnSocketAddr<A>>;
 
 pub type UdpConnSocketRequestAddr<A> =
-    TransportConnSocketRequestAddr<ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>, A>;
+    AddrVec<ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>, IpConnSocketRequestAddr<A>>;
 
 pub type UdpDeviceConnSocketAddr<A> =
-    TransportDeviceConnSocketAddr<ConnAddr<NonZeroU16, NonZeroU16>, A>;
+    AddrVec<ConnAddr<NonZeroU16, NonZeroU16>, IpDeviceConnSocketAddr<A>>;
 
 pub type UdpDeviceConnSocketRequestAddr<A> =
-    TransportDeviceConnSocketRequestAddr<ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>, A>;
+    AddrVec<ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>, IpDeviceConnSocketRequestAddr<A>>;
 
 pub type UdpListenerSocketRequestAddr<A> =
-    TransportListenerSocketRequestAddr<AllAddr<NonZeroU16>, A>;
+    AddrVec<AllAddr<NonZeroU16>, IpListenerSocketRequestAddr<A>>;
 
 type UdpPacketAddr<A> = AddrVec<PacketAddr<Option<NonZeroU16>, NonZeroU16>, IpPacketAddr<A>>;
 

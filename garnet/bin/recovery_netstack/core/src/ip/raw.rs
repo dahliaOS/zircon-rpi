@@ -9,12 +9,12 @@ use packet::{BufferMut, BufferSerializer};
 
 use crate::address::{AddrVec, AllAddr};
 use crate::error::NetstackError;
-use crate::ip::socket::{
-    Bar, TransportConnSocketAddr, TransportConnSocketRequestAddr, TransportDeviceConnSocketAddr,
-    TransportDeviceConnSocketRequestAddr, TransportListenerSocketRequestAddr, TransportSocketImpl,
-    TransportSocketMap,
+use crate::ip::socket::{Bar, TransportSocketImpl, TransportSocketMap};
+use crate::ip::{
+    Ip, IpAddr, IpConnSocket, IpConnSocketAddr, IpConnSocketRequestAddr, IpDeviceConnSocket,
+    IpDeviceConnSocketAddr, IpDeviceConnSocketRequestAddr, IpListenerSocketRequestAddr,
+    IpPacketAddr, IpProto, Ipv4, Ipv6,
 };
-use crate::ip::{Ip, IpAddr, IpConnSocket, IpDeviceConnSocket, IpPacketAddr, IpProto, Ipv4, Ipv6};
 use crate::{Context, EventDispatcher, StackState};
 
 pub struct RawIpState<D: RawIpEventDispatcher> {
@@ -46,11 +46,9 @@ impl<D: RawIpEventDispatcher> TransportSocketImpl for IpSocketImpl<D> {
     type ListenerKey = D::IpListener;
 
     type ConnAddr = IpProto;
-    type DeviceConnAddr = IpProto;
     type ListenerAddr = IpProto;
 
     type ConnSocket = ();
-    type DeviceConnSocket = ();
     type ListenerSocket = ();
 }
 
@@ -118,15 +116,15 @@ pub trait RawIpEventDispatcher {
     }
 }
 
-pub type RawIpConnSocketAddr<A> = TransportConnSocketAddr<IpProto, A>;
+pub type RawIpConnSocketAddr<A> = AddrVec<IpProto, IpConnSocketAddr<A>>;
 
-pub type RawIpConnSocketRequestAddr<A> = TransportConnSocketRequestAddr<IpProto, A>;
+pub type RawIpConnSocketRequestAddr<A> = AddrVec<IpProto, IpConnSocketRequestAddr<A>>;
 
-pub type RawIpDeviceConnSocketAddr<A> = TransportDeviceConnSocketAddr<IpProto, A>;
+pub type RawIpDeviceConnSocketAddr<A> = AddrVec<IpProto, IpDeviceConnSocketAddr<A>>;
 
-pub type RawIpDeviceConnSocketRequestAddr<A> = TransportDeviceConnSocketRequestAddr<IpProto, A>;
+pub type RawIpDeviceConnSocketRequestAddr<A> = AddrVec<IpProto, IpDeviceConnSocketRequestAddr<A>>;
 
-pub type RawIpListenerSocketRequestAddr<A> = TransportListenerSocketRequestAddr<IpProto, A>;
+pub type RawIpListenerSocketRequestAddr<A> = AddrVec<IpProto, IpListenerSocketRequestAddr<A>>;
 
 type RawIpPacketAddr<A> = AddrVec<IpProto, IpPacketAddr<A>>;
 
