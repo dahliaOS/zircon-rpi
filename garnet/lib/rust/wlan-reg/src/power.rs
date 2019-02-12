@@ -71,6 +71,7 @@ pub fn build_power_budget_by_chan_idx(
     budget_by_chan_idx
 }
 
+
 pub fn get_power_budget_for_client() -> Result<HashMap<u8, i8>, Error> {
     get_power_budget("client")
 }
@@ -80,12 +81,12 @@ pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {
 
     let operclass_filepath = loader::get_operating_class_filename(&juris);
     let operclass_toml = loader::load_operating_class_toml(&operclass_filepath)?;
-    let chan_groups = channel::build_channel_groups(&operclass_toml, &oper_classes);
+    let oper_classes = country::get_active_operating_classes();
+    let chan_groups = channel::build_legit_channel_groups(&operclass_toml, &oper_classes);
 
     let reg_filepath = loader::get_regulation_filename(&juris);
     let reg_toml = loader::load_regulation_toml(&reg_filepath)?;
     let budget_by_range = build_power_budget_by_range(&reg_toml, role)?;
-    let oper_classes = country::get_active_operating_classes();
 
     Ok(build_power_budget_by_chan_idx(budget_by_range, chan_groups.all))
 }
