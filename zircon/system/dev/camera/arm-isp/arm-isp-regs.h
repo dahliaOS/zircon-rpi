@@ -19,12 +19,16 @@
 #define HHI_CSI_PHY_CNTL0 (0xD3 << 2)
 #define HHI_CSI_PHY_CNTL1 (0x114 << 2)
 
+#define HHI_MIPI_ISP_CLK_CNTL               (0x70 << 2)
+
 // Reset
 #define RESET4_LEVEL 0x90
 
 namespace camera {
 
 // Product ID
+#define PRODUCT_ID_DEFAULT (2658)
+
 class ISP_PRODUCT_ID : public hwreg::RegisterBase<ISP_PRODUCT_ID, uint32_t> {
 public:
     DEF_FIELD(31, 0, product_id);
