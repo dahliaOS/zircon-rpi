@@ -1,7 +1,7 @@
 extern crate toml;
 
 use super::country;
-use super::loader;
+use super::operclass;
 use super::utils;
 
 use failure::Error;
@@ -41,7 +41,7 @@ impl fmt::Display for ChannelGroups {
 /// A Legitimate Channel Groups is a set of channel lists
 /// defined in the jurisdiction of the device operation.
 /// See also A Operation Channel Groups for comparison.
-pub fn build_legit_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> ChannelGroups {
+pub fn build_legitimate_group(v: &Value, active_operclasses: &Vec<u8>) -> ChannelGroups {
     let mut dfs = vec![];
     let mut band_2ghz = vec![];
     let mut band_5ghz = vec![];
@@ -153,7 +153,7 @@ pub fn build_legit_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> Ch
 /// Conceptually, it is an intersection of legitimate channels and device-capable channels,
 /// excluding Planned Non-Operation (PNO) channels and dynamically blocked channels
 /// (eg. blocked due to radar / incombent higher priority radio transmitter presence).
-pub fn build_oper_channel_groups(
+pub fn build_operation_group(
     legit: ChannelGroups,
     capable: Vec<u8>,
     pno: Vec<u8>,
@@ -268,20 +268,20 @@ pub fn get_blocked_chanidx_list() -> Vec<u8> {
     vec![100]
 }
 
-pub fn get_legit_chan_groups() -> Result<ChannelGroups, Error> {
+pub fn get_legitimate_group() -> Result<ChannelGroups, Error> {
     let juris = country::get_jurisdiction();
-    let operclass_filepath = loader::get_operating_class_filename(&juris);
-    let operclass_toml = loader::load_operating_class_toml(&operclass_filepath)?;
+    let operclass_filepath = operclass::get_filepath(&juris);
+    let operclass_toml = operclass::load_toml(&operclass_filepath)?;
     let oper_classes = country::get_active_operating_classes();
-    Ok(build_legit_channel_groups(&operclass_toml, &oper_classes))
+    Ok(build_legitimate_group(&operclass_toml, &oper_classes))
 }
 
-pub fn get_oper_chan_groups() -> Result<ChannelGroups, Error> {
+pub fn get_operation_group() -> Result<ChannelGroups, Error> {
     let capable = get_device_capable_chanidx_list();
     let pno = get_planned_non_operation_chanidx_list();
     let blocked = get_blocked_chanidx_list();
-    let legit_chan_groups = get_legit_chan_groups()?;
-    Ok(build_oper_channel_groups(legit_chan_groups, capable, pno, blocked))
+    let legit_chan_groups = get_legitimate_group()?;
+    Ok(build_operation_group(legit_chan_groups, capable, pno, blocked))
 }
 
 #[cfg(test)]
@@ -289,7 +289,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_oper_channel_groups() {
+    fn test_build_operation_group() {
         let legit = ChannelGroups {
             band_2ghz: vec![1, 2, 3, 4, 5, 6, 7, 9, 10, 11],
             band_5ghz: vec![
@@ -325,7 +325,7 @@ mod tests {
             ],
         };
 
-        let got = build_oper_channel_groups(legit, capable, pno, blocked);
+        let got = build_operation_group(legit, capable, pno, blocked);
         assert_eq!(want, got);
     }
 }
