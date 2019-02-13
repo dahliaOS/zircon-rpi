@@ -9,7 +9,8 @@ use {
     banjo_ddk_protocol_platform_device::*,
  //   banjo_ddk_protocol_serial::*,
     std::ffi::CString,
-    fuchsia_ddk_sys::*,
+    fuchsia_ddk::Device,
+    fuchsia_ddk::sys::*,
     fuchsia_zircon::{
         self as zx,
         sys::{zx_status_t, ZX_ERR_NOT_SUPPORTED, ZX_OK},

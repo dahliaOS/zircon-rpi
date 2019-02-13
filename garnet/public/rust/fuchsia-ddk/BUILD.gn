@@ -1,4 +1,4 @@
-# Copyright 2017 The Fuchsia Authors. All rights reserved.
+# Copyright 2019 The Fuchsia Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,10 +6,10 @@ import("//build/rust/rustc_library.gni")
 
 rustc_library("fuchsia-ddk") {
   with_unit_tests = true
-  edition = "2015"
+  edition = "2018"
   deps = [
     "//garnet/public/rust/fuchsia-ddk/fuchsia-ddk-sys",
     "//garnet/public/rust/fuchsia-zircon",
-    "//third_party/rust-crates/rustc_deps:byteorder",
+#    "//third_party/rust-crates/rustc_deps:byteorder",
   ]
 }

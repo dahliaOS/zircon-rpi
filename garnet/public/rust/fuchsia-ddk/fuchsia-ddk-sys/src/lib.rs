@@ -1,103 +1,12 @@
-// Copyright 2017 The Fuchsia Authors. All rights reserved.
+// Copyright 2019 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #![allow(non_camel_case_types,non_snake_case)]
-#![deny(warnings)]
+#![allow(warnings)]
+//#![no_std]
 
 extern crate fuchsia_zircon as zircon;
-
-use std::ffi::{CStr, CString};
-pub mod protocols;
-
-// use zircon::sys as sys;
-// use std::os::raw::c_char;
-
-#[no_mangle]
-pub static mut DEVICE_OPS: zx_protocol_device_t =  zx_protocol_device_t {
-    version: 0xc4640f7115d2ee49, // DEVICE_OPS_VERSION,
-    close: None,
-    get_protocol: None,
-    ioctl: None,
-    message: None,
-    get_size: None,
-    open: None,
-    open_at: None,
-    read: None,
-    release: None,
-    resume: None,
-    rxrpc: None,
-    suspend: None,
-    unbind: None,
-    write: None,
-};
-
-// bindgeny things
-
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct Device(*mut zx_device_t); // sys:: prefix this?
-
-// TODO check this dear god
-// unsafe impl Send for Device {}
-
-impl Device {
-    // TODO(bwb): Unowned stuff like channel does?
-    pub unsafe fn from_raw_ptr(raw: *mut zx_device_t) -> Device {
-        Device(raw)
-    }
-
-    pub fn get_ptr(&self) -> *mut zx_device_t {
-        self.0 as *mut _
-    }
-
-    pub fn add_device<T: Into<Vec<u8>>>(&self, name: T, ) -> Result<Device, ()> {
-        let name_cstring = CString::new(name).unwrap(); // TODO ?
-
-        // device_add_args_t values are copied, so device_add_args_t can be stack allocated.
-        let mut args = device_add_args_t {
-                name: name_cstring.as_ptr(),
-                version: 0x96a64134d56e88e3, // DEVICE_ADD_ARGS_VERSION,
-                ops: unsafe { &mut DEVICE_OPS } as *mut _, // std::ptr::null_mut(),
-
-                ctx: std::ptr::null_mut(),
-                props: std::ptr::null_mut(),
-                flags: 1,
-                prop_count: 0,
-                proto_id: 0,
-                proto_ops: std::ptr::null_mut(),
-                proxy_args: std::ptr::null_mut(),
-                client_remote: 0 //handle
-        };
-
-        let mut out: zx_device_t = zx_device_t::default();
-        let mut out_ptr = &mut out as *mut _;
-        unsafe {
-            let resp = device_add_from_driver(__zircon_driver_rec__.driver, self.get_ptr(), &mut args, &mut out_ptr);
-            if resp != fuchsia_zircon::sys::ZX_OK {
-                return Err(()); // TODO actual errors
-            }
-            Ok(Device(out_ptr))
-        }
-    }
-
-    pub fn get_name(&self) -> &CStr {
-        unsafe {
-            let resp = device_get_name(self.0);
-            // TODO validate
-            CStr::from_ptr(resp)
-        }
-    }
-}
-
-//pub struct DeviceAddArg(device_a
-//
-//impl DeviceAddArg {
-//    pub fn new() -> Self {
-//
-//    }
-//
-//}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -115,17 +24,6 @@ pub struct device_add_args_t {
     pub client_remote: zircon::sys::zx_handle_t,
 }
 
-
-//// References to Zircon DDK's driver.h
-//
-//// Copied from fuchsia-zircon-sys.
-
-
-
-
-// driver below
-
-#[link(name = "ddk")]
 extern "C" {
     pub static __zircon_driver_rec__: zx_driver_rec_t;
 
