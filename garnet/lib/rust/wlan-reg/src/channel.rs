@@ -2,6 +2,7 @@ extern crate toml;
 
 use super::country;
 use super::loader;
+use super::utils;
 
 use failure::Error;
 use std::fmt;
@@ -37,24 +38,6 @@ impl fmt::Display for ChannelGroups {
     }
 }
 
-fn is_set(v: &Value, key1: &String, key2: &str) -> bool {
-    if v.get(key1).is_none() || v[key1].get(key2).is_none() {
-        return false;
-    }
-    v[key1][key2].as_bool().unwrap()
-}
-
-/// Converts TOML integer array into Vec<u8>
-/// TODO(porce): Many assumptions are made on the input parameter.
-fn get_chanlist(v: &Value) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![];
-
-    for e in v.as_array().unwrap() {
-        result.push(e.as_integer().unwrap() as u8);
-    }
-    result
-}
-
 /// A Legitimate Channel Groups is a set of channel lists
 /// defined in the jurisdiction of the device operation.
 /// See also A Operation Channel Groups for comparison.
@@ -83,8 +66,8 @@ pub fn build_legit_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> Ch
 
         operclass_cnt += 1;
 
-        let channel_set = get_chanlist(&v[&key]["set"]);
-        let center_channel_set = get_chanlist(&v[&key]["center_freq_idx"]);
+        let channel_set = utils::get_chanlist(&v[&key]["set"]);
+        let center_channel_set = utils::get_chanlist(&v[&key]["center_freq_idx"]);
 
         let start_freq = v[&key]["start_freq"].as_float().unwrap() as f64;
         let spacing = v[&key]["spacing"].as_integer().unwrap() as u8;
@@ -96,14 +79,14 @@ pub fn build_legit_channel_groups(v: &Value, active_operclasses: &Vec<u8>) -> Ch
         if start_freq == 2.407 {
             band_2ghz.extend(&channel_set);
         }
-        if is_set(v, &key, "dfs_50_100") {
+        if utils::is_set(v, &key, "dfs_50_100") {
             dfs.extend(&channel_set);
         }
 
-        if is_set(v, &key, "primary_chan_lower") {
+        if utils::is_set(v, &key, "primary_chan_lower") {
             cbw40above.extend(&channel_set);
         }
-        if is_set(v, &key, "primary_chan_upper") {
+        if utils::is_set(v, &key, "primary_chan_upper") {
             cbw40below.extend(&channel_set);
         }
         if spacing == 80 {
@@ -275,7 +258,7 @@ pub fn get_device_capable_chanidx_list() -> Vec<u8> {
 /// Returns what user configured not to use
 pub fn get_planned_non_operation_chanidx_list() -> Vec<u8> {
     // Stub
-    vec![2,3,4,5,7,8,9,10,144]
+    vec![2, 3, 4, 5, 7, 8, 9, 10, 144]
 }
 
 /// Returns a list of channel indexes that are dynamically blocked to use

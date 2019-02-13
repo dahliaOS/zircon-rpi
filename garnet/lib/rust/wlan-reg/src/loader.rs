@@ -2,38 +2,16 @@ extern crate log;
 extern crate serde_derive;
 extern crate toml;
 
+use super::utils;
 use failure::{bail, Error};
 use log::info;
-use std::{
-    fs,
-    fs::File,
-    io::prelude::*,
-    //path::Path,
-    path::PathBuf,
-};
 use toml::Value;
 use toml::Value::Table;
-
-pub fn load_toml(filepath: &str) -> Result<Value, Error> {
-    let rel_path = PathBuf::from(filepath);
-    let _abs_path = fs::canonicalize(&rel_path)?;
-    let mut file = File::open(filepath)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    let value = contents.parse::<Value>()?;
-
-    match value {
-        Table(_) => Ok(value),
-        _ => {
-            bail!("Parsed TOML file is not a Table: {}", filepath);
-        }
-    }
-}
 
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
 pub fn load_operating_class_toml(filepath: &str) -> Result<Value, Error> {
-    let toml = load_toml(filepath)?;
+    let toml = utils::load_toml(filepath)?;
     match validate_operclasses(&toml) {
         Ok(()) => Ok(toml),
         Err(e) => {
@@ -148,7 +126,7 @@ pub fn get_operating_class_filename(jurisdiction: &str) -> String {
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
 pub fn load_regulation_toml(filepath: &str) -> Result<Value, Error> {
-    let toml = load_toml(filepath)?;
+    let toml = utils::load_toml(filepath)?;
     validate_regulation(toml)
     //        Err(e) => {
     //            bail!("{}", e);
