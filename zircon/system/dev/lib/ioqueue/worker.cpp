@@ -49,10 +49,10 @@ void Worker::ThreadMain() {
 void Worker::WorkerLoop() {
     // printf("%s:%u\n", __FUNCTION__, __LINE__);
 
-    zx_status_t status;
-    size_t num_ready;
     Scheduler* sched = q_->GetScheduler();
     do {
+        zx_status_t status;
+        size_t num_ready = 0;
         // Drain completed ops.
         for ( ; ; ) {
             size_t op_count = 0;
@@ -128,11 +128,12 @@ void Worker::WorkerLoop() {
 // }
 
 zx_status_t Worker::AcquireOps(bool wait, size_t* out_num_ready) {
-    io_op_t* op_list[32];
+    const size_t op_list_length = 32;
+    io_op_t* op_list[op_list_length];
     zx_status_t status;
-    size_t op_count;
+    size_t op_count = op_list_length;
     do {
-        op_count = (sizeof(op_list) / sizeof(io_op_t*));
+        op_count = 32;
         status = q_->AcquireOps(op_list, &op_count, wait);
         if (status == ZX_ERR_CANCELED) {
             cancelled_ = true;
@@ -142,12 +143,11 @@ zx_status_t Worker::AcquireOps(bool wait, size_t* out_num_ready) {
         }
     } while (op_count == 0);
     Scheduler* sched = q_->GetScheduler();
-    if ((status = sched->InsertOps(op_list, op_count, out_num_ready)) != ZX_OK) {
-        for (uint32_t i = 0; i < op_count; i++) {
-            // Non-null ops encountered errors, release them.
-            if (op_list[i] != NULL) {
-                q_->ReleaseOp(op_list[i]);
-            }
+    sched->InsertOps(op_list, op_count, out_num_ready);
+    for (uint32_t i = 0; i < op_count; i++) {
+        // Non-null ops encountered errors, release them.
+        if (op_list[i] != NULL) {
+            q_->ReleaseOp(op_list[i]);
         }
     }
     return ZX_OK;

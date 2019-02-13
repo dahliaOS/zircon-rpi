@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <fbl/auto_lock.h>
 #include <fbl/condition_variable.h>
@@ -18,12 +19,11 @@ struct TestOp {
 class IoQueueTest {
 public:
     IoQueueTest();
-    // ~IoQueueTest();
 
     void Enqueue(TestOp* top);
     void SetQueue(IoQueue* q) { q_ = q; }
     IoQueue* GetQueue() { return q_; }
-    void WaitReleasedAll();
+    void CloseInput() { CancelAcquire(); }
 
     // Callbacks
     static zx_status_t cb_acquire(void* context, io_op_t** op_list, size_t* op_count, bool wait) {
@@ -51,7 +51,6 @@ public:
         test->Fatal();
     }
 
-    // zx_status_t Init(IoQueue* q);
 private:
     zx_status_t AcquireOps(io_op_t** op_list, size_t* op_count, bool wait);
     void CancelAcquire();
@@ -81,15 +80,9 @@ void IoQueueTest::Enqueue(TestOp* top) {
     enqueued_count_++;
 }
 
-void IoQueueTest::WaitReleasedAll() {
-    fbl::AutoLock lock(&lock_);
-    released_all_.Wait(&lock_);
-}
-
 zx_status_t IoQueueTest::AcquireOps(io_op_t** op_list, size_t* op_count, bool wait) {
     fbl::AutoLock lock(&lock_);
     printf("cb: acquire\n");
-
     if (closed_) {
         printf("cb:   closed\n");
         return ZX_ERR_CANCELED;   // Input source closed.
@@ -134,6 +127,7 @@ void IoQueueTest::ReleaseOp(io_op_t* op) {
     fbl::AutoLock lock(&lock_);
     released_count_++;
     if (released_count_ == enqueued_count_) {
+        printf("%s:%u\n", __FUNCTION__, __LINE__);
         released_all_.Broadcast();
     }
 }
@@ -159,11 +153,11 @@ IoQueueCallbacks cb = {
     .fatal = IoQueueTest::cb_fatal,
 };
 
-uint32_t num_workers = 1;
+uint32_t num_workers;
 
 void op_test(IoQueueTest* test, int depth) {
     printf("%s\n", __FUNCTION__);
-    const size_t num_ops = 5;
+    const size_t num_ops = 10;
     TestOp tops[num_ops];
     memset(tops, 0, sizeof(TestOp) * num_ops);
 
@@ -190,7 +184,7 @@ void op_test(IoQueueTest* test, int depth) {
     test->Enqueue(&tops[3]);
     test->Enqueue(&tops[4]);
 
-    test->WaitReleasedAll();
+    test->CloseInput();
     printf("%s done\n", __FUNCTION__);
 }
 
@@ -203,9 +197,8 @@ void serve_test(IoQueueTest* test, int depth) {
     assert(status == ZX_OK);
 
     if (depth) {
-        op_test(test, depth);
+        op_test(test, depth - 1);
     }
-
     IoQueueShutdown(q);
     printf("%s done\n", __FUNCTION__);
 }
@@ -261,9 +254,18 @@ void create_test(int depth) {
 }
 
 void do_tests() {
-    create_test(0);
-    create_test(1);
-    create_test(3);
+    const int max_depth = 3;
+    num_workers = 1;
+    printf("num workers = %u\n", num_workers);
+    for (int i = 0; i <= max_depth; i++) {
+        create_test(i);
+    }
+
+    num_workers = 2;
+    printf("\nnum workers = %u\n", num_workers);
+    for (int i = 0; i <= max_depth; i++) {
+        create_test(i);
+    }
 }
 
 int main(int argc, char* argv[]) {
