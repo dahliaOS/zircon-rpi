@@ -7,6 +7,8 @@
 
 #include <lib/fit/function.h>
 
+#include <optional>
+
 #include "src/connectivity/bluetooth/core/bt-host/sm/smp.h"
 #include "src/connectivity/bluetooth/core/bt-host/sm/status.h"
 
@@ -32,10 +34,13 @@ class PairingDelegate {
   // |id| and confirm or reject by calling |confirm|.
   virtual void ConfirmPairing(PeerId peer_id, ConfirmCallback confirm) = 0;
 
-  // Ask the user to confirm the 6-digit |passkey| and report status by invoking
-  // |confirm|.
+  // Show the user the 6-digit |passkey| that should be compared to the peer's
+  // passkey or entered into the peer. If |local_consent| is true, the user
+  // accepts the pairing through this delegate by calling |confirm| with a true
+  // value. |confirm| will be called with a false value if the local user
+  // rejects or cancels pairing.
   virtual void DisplayPasskey(PeerId peer_id, uint32_t passkey,
-                              ConfirmCallback confirm) = 0;
+                              bool local_consent, ConfirmCallback confirm) = 0;
 
   // Ask the user to enter a 6-digit passkey or reject pairing. Report the
   // result by invoking |respond|.

@@ -84,9 +84,14 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
   bt::sm::IOCapability io_capability() const override;
   void CompletePairing(bt::PeerId id, bt::sm::Status status) override;
   void ConfirmPairing(bt::PeerId id, ConfirmCallback confirm) override;
-  void DisplayPasskey(bt::PeerId id, uint32_t passkey,
+  void DisplayPasskey(bt::PeerId id, uint32_t passkey, bool local_consent,
                       ConfirmCallback confirm) override;
   void RequestPasskey(bt::PeerId id, PasskeyResponseCallback respond) override;
+
+  // Common code used for showing a user intent (except passkey request).
+  void DisplayPairingRequest(bt::PeerId id, std::optional<uint32_t> passkey,
+                             fuchsia::bluetooth::control::PairingMethod method,
+                             ConfirmCallback confirm);
 
   // Called by |adapter()->peer_cache()| when a peer is updated.
   void OnPeerUpdated(const bt::gap::Peer& peer);

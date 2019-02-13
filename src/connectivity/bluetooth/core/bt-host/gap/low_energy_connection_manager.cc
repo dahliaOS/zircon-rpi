@@ -284,7 +284,7 @@ class LowEnergyConnection final : public sm::PairingState::Delegate {
       zx_cprng_draw(&passkey, sizeof(passkey));
       passkey = passkey % 1000000;
       delegate->DisplayPasskey(
-          peer_id(), passkey,
+          peer_id(), passkey, false /* local_consent */,
           [passkey, responder = std::move(responder)](bool confirm) {
             responder(confirm, passkey);
           });
