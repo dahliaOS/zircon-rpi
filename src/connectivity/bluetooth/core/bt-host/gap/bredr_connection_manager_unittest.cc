@@ -668,7 +668,7 @@ TEST_F(GAP_BrEdrConnectionManagerTest, IncommingConnectionFailedInterrogation) {
   EXPECT_EQ(5, transaction_count());
 }
 
-const auto kCapabilitiesRequest =
+const auto kIoCapabilityRequest =
     CreateStaticByteBuffer(hci::kIOCapabilityRequestEventCode,
                            0x06,  // parameter_total_size (6 bytes)
                            TEST_DEV_ADDR_BYTES_LE  // address
@@ -692,14 +692,28 @@ const auto kCapabilitiesRequestReplyRsp =
                            TEST_DEV_ADDR_BYTES_LE  // peer address
     );
 
-// Test: sends replies to Capability Requests
-// TODO(jamuraa): returns correct capabilities when we have different
-// requirements.
-TEST_F(GAP_BrEdrConnectionManagerTest, CapabilityRequest) {
-  test_device()->QueueCommandTransaction(kCapabilitiesRequestReply,
-                                         {&kCapabilitiesRequestReplyRsp});
+const auto kIoCapabilityRequestNegativeReply =
+    CreateStaticByteBuffer(LowerBits(hci::kIOCapabilityRequestNegativeReply),
+                           UpperBits(hci::kIOCapabilityRequestNegativeReply),
+                           0x07,  // parameter_total_size (7 bytes)
+                           TEST_DEV_ADDR_BYTES_LE,  // peer address
+                           hci::StatusCode::kPairingNotAllowed);
 
-  test_device()->SendCommandChannelPacket(kCapabilitiesRequest);
+const auto kIoCapabilityRequestNegativeReplyRsp =
+    CreateStaticByteBuffer(hci::kCommandCompleteEventCode, 0x0A, 0xF0,
+                           LowerBits(hci::kIOCapabilityRequestNegativeReply),
+                           UpperBits(hci::kIOCapabilityRequestNegativeReply),
+                           hci::kSuccess,          // status
+                           TEST_DEV_ADDR_BYTES_LE  // peer address
+    );
+
+// Test: sends replies to Capability Requests
+TEST_F(GAP_BrEdrConnectionManagerTest, CapabilityRequest) {
+  test_device()->QueueCommandTransaction(
+      kIoCapabilityRequestNegativeReply,
+      {&kIoCapabilityRequestNegativeReplyRsp});
+
+  test_device()->SendCommandChannelPacket(kIoCapabilityRequest);
 
   RunLoopUntilIdle();
 

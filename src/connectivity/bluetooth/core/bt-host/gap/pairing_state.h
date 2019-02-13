@@ -73,6 +73,8 @@ class PairingState final {
   //
   // |link| must be valid for the lifetime of this object.
   PairingState(PeerId peer_id, hci::Connection* link, StatusCallback status_cb);
+  PairingState(PairingState&&) = default;
+  PairingState& operator=(PairingState&&) = default;
   ~PairingState() = default;
 
   // True if there is currently a pairing procedure in progress that the local
@@ -255,10 +257,10 @@ class PairingState final {
   // Capability and write it to |current_pairing_| (which must exist).
   void WritePairingData();
 
-  const PeerId peer_id_;
+  PeerId peer_id_;
 
   // The BR/EDR link whose pairing is being driven by this object.
-  hci::Connection* const link_;
+  hci::Connection* link_;
 
   fxl::WeakPtr<PairingDelegate> pairing_delegate_;
 

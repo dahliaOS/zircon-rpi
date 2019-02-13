@@ -57,6 +57,19 @@ void SetPageScanEnabled(bool enabled, fxl::RefPtr<hci::Transport> hci,
 
 }  // namespace
 
+BrEdrConnection::BrEdrConnection(BrEdrConnectionManager* connection_manager,
+                                 PeerId peer_id,
+                                 std::unique_ptr<hci::Connection> link)
+    : peer_id_(peer_id),
+      link_(std::move(link)),
+      pairing_state_(
+          peer_id, link_.get(),
+          [peer_id, mgr = connection_manager](auto, hci::Status status) {
+            if (!status) {
+              mgr->Disconnect(peer_id);
+            }
+          }) {}
+
 hci::CommandChannel::EventHandlerId BrEdrConnectionManager::AddEventHandler(
     const hci::EventCode& code, hci::CommandChannel::EventCallback cb) {
   auto self = weak_ptr_factory_.GetWeakPtr();
@@ -97,28 +110,44 @@ BrEdrConnectionManager::BrEdrConnectionManager(
       std::make_unique<hci::SequentialCommandRunner>(dispatcher_, hci_);
 
   // Register event handlers
+  AddEventHandler(hci::kAuthenticationCompleteEventCode,
+                  fit::bind_member(
+                      this, &BrEdrConnectionManager::OnAuthenticationComplete));
   AddEventHandler(
       hci::kConnectionCompleteEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnConnectionComplete));
+      fit::bind_member(this, &BrEdrConnectionManager::OnConnectionComplete));
   AddEventHandler(
       hci::kConnectionRequestEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnConnectionRequest));
+      fit::bind_member(this, &BrEdrConnectionManager::OnConnectionRequest));
   AddEventHandler(
       hci::kDisconnectionCompleteEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnDisconnectionComplete));
-  AddEventHandler(
-      hci::kLinkKeyRequestEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnLinkKeyRequest));
-  AddEventHandler(
-      hci::kLinkKeyNotificationEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnLinkKeyNotification));
+      fit::bind_member(this, &BrEdrConnectionManager::OnDisconnectionComplete));
   AddEventHandler(
       hci::kIOCapabilityRequestEventCode,
-      fbl::BindMember(this, &BrEdrConnectionManager::OnIOCapabilitiesRequest));
+      fit::bind_member(this, &BrEdrConnectionManager::OnIoCapabilityRequest));
+  AddEventHandler(
+      hci::kIOCapabilityResponseEventCode,
+      fit::bind_member(this, &BrEdrConnectionManager::OnIoCapabilityResponse));
+  AddEventHandler(
+      hci::kLinkKeyRequestEventCode,
+      fit::bind_member(this, &BrEdrConnectionManager::OnLinkKeyRequest));
+  AddEventHandler(
+      hci::kLinkKeyNotificationEventCode,
+      fit::bind_member(this, &BrEdrConnectionManager::OnLinkKeyNotification));
+  AddEventHandler(
+      hci::kSimplePairingCompleteEventCode,
+      fit::bind_member(this, &BrEdrConnectionManager::OnSimplePairingComplete));
   AddEventHandler(
       hci::kUserConfirmationRequestEventCode,
-      fbl::BindMember(this,
-                      &BrEdrConnectionManager::OnUserConfirmationRequest));
+      fit::bind_member(this,
+                       &BrEdrConnectionManager::OnUserConfirmationRequest));
+  AddEventHandler(
+      hci::kUserPasskeyRequestEventCode,
+      fit::bind_member(this, &BrEdrConnectionManager::OnUserPasskeyRequest));
+  AddEventHandler(
+      hci::kUserPasskeyNotificationEventCode,
+      fit::bind_member(this,
+                       &BrEdrConnectionManager::OnUserPasskeyNotification));
 }
 
 BrEdrConnectionManager::~BrEdrConnectionManager() {
@@ -172,7 +201,10 @@ void BrEdrConnectionManager::SetConnectable(bool connectable,
 
 void BrEdrConnectionManager::SetPairingDelegate(
     fxl::WeakPtr<PairingDelegate> delegate) {
-  // TODO(armansito): implement
+  pairing_delegate_ = std::move(delegate);
+  for (auto& [handle, connection] : connections_) {
+    connection.pairing_state().SetPairingDelegate(pairing_delegate_);
+  }
 }
 
 PeerId BrEdrConnectionManager::GetPeerId(hci::ConnectionHandle handle) const {
@@ -198,41 +230,38 @@ bool BrEdrConnectionManager::OpenL2capChannel(PeerId peer_id, l2cap::PSM psm,
   auto& [handle, connection] = *conn_pair;
 
   if (!connection->link().ltk()) {
-    // Connection doesn't have a key, initiate an authentication request.
-    auto auth_request = hci::CommandPacket::New(
-        hci::kAuthenticationRequested,
-        sizeof(hci::AuthenticationRequestedCommandParams));
-    auth_request->mutable_view()
-        ->mutable_payload<hci::AuthenticationRequestedCommandParams>()
-        ->connection_handle = htole16(handle);
-
+    // Connection doesn't have a key, initiate pairing.
     auto self = weak_ptr_factory_.GetWeakPtr();
     auto retry_cb = [peer_id, psm, cb = std::move(cb), dispatcher, self](
-                        auto, const auto& event) mutable {
-      if (hci_is_error(event, SPEW, "gap-bredr", "auth request failed")) {
-        async::PostTask(dispatcher,
-                        [cb = std::move(cb)]() { cb(zx::socket()); });
-        if (self) {
-          self->Disconnect(peer_id);
-        }
+                        auto, hci::Status status) mutable {
+      bt_log(SPEW, "gap-bredr",
+             "got pairing status %s, %sretrying socket to %s", bt_str(status),
+             status ? "" : "not ", bt_str(peer_id));
+      if (!status) {
         return;
       }
-
-      if (event.event_code() == hci::kCommandStatusEventCode) {
-        return;
-      }
-
       if (self) {
         // We should now have an LTK so try again.
         self->OpenL2capChannel(peer_id, psm, std::move(cb), dispatcher);
       }
     };
 
-    bt_log(SPEW, "gap-bredr", "sending auth request to peer %s",
-           bt_str(peer_id));
-    hci_->command_channel()->SendCommand(std::move(auth_request), dispatcher_,
-                                         std::move(retry_cb),
-                                         hci::kAuthenticationCompleteEventCode);
+    if (connection->pairing_state().InitiatePairing(std::move(retry_cb)) ==
+        PairingState::InitiatorAction::kSendAuthenticationRequest) {
+      auto auth_request = hci::CommandPacket::New(
+          hci::kAuthenticationRequested,
+          sizeof(hci::AuthenticationRequestedCommandParams));
+      auth_request->mutable_view()
+          ->mutable_payload<hci::AuthenticationRequestedCommandParams>()
+          ->connection_handle = htole16(handle);
+      bt_log(SPEW, "gap-bredr", "sending auth request to peer %s",
+             bt_str(peer_id));
+      hci_->command_channel()->SendCommand(std::move(auth_request), dispatcher_,
+                                           nullptr);
+    } else {
+      bt_log(SPEW, "gap-bredr",
+             "pairing ongoing to peer %s, waiting for result", bt_str(peer_id));
+    }
     return true;
   }
 
@@ -351,6 +380,35 @@ BrEdrConnectionManager::FindConnectionById(PeerId peer_id) {
   ZX_ASSERT(conn.link().ll_type() != hci::Connection::LinkType::kLE);
 
   return std::pair(handle, &conn);
+}
+
+std::optional<std::pair<hci::ConnectionHandle, BrEdrConnection*>>
+BrEdrConnectionManager::FindConnectionByAddress(
+    const DeviceAddressBytes& bd_addr) {
+  auto* const peer = cache_->FindByAddress(
+      DeviceAddress(DeviceAddress::Type::kBREDR, bd_addr));
+  if (!peer) {
+    return std::nullopt;
+  }
+
+  return FindConnectionById(peer->identifier());
+}
+
+void BrEdrConnectionManager::OnAuthenticationComplete(
+    const hci::EventPacket& event) {
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kAuthenticationCompleteEventCode);
+  const auto& params = event.params<hci::AuthenticationCompleteEventParams>();
+
+  auto iter = connections_.find(params.connection_handle);
+  if (iter == connections_.end()) {
+    bt_log(SPEW, "gap-bredr", "ignoring authentication complete for %#.04x",
+           params.connection_handle);
+    return;
+  }
+
+  hci::StatusCode status_code;
+  event.ToStatusCode(&status_code);
+  iter->second.pairing_state().OnAuthenticationComplete(status_code);
 }
 
 void BrEdrConnectionManager::OnConnectionRequest(
@@ -503,9 +561,10 @@ void BrEdrConnectionManager::EstablishConnection(
 
   auto conn =
       connections_
-          .try_emplace(handle, peer->identifier(), std::move(connection))
+          .try_emplace(handle, this, peer->identifier(), std::move(connection))
           .first;
   peer->MutBrEdr().SetConnectionState(ConnectionState::kConnected);
+  conn->second.pairing_state().SetPairingDelegate(pairing_delegate_);
 
   if (discoverer_.search_count()) {
     data_domain_->OpenL2capChannel(
@@ -575,6 +634,57 @@ void BrEdrConnectionManager::CleanUpConnection(hci::ConnectionHandle handle,
   }
 
   // |conn| is destroyed when it goes out of scope.
+}
+
+void BrEdrConnectionManager::OnIoCapabilityRequest(
+    const hci::EventPacket& event) {
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kIOCapabilityRequestEventCode);
+  const auto& params = event.params<hci::IOCapabilityRequestEventParams>();
+
+  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  if (!conn_pair) {
+    bt_log(ERROR, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+    SendIoCapabilityRequestNegativeReply(params.bd_addr,
+                                         hci::StatusCode::kPairingNotAllowed);
+    return;
+  }
+  auto [handle, conn_ptr] = *conn_pair;
+  auto reply = conn_ptr->pairing_state().OnIoCapabilityRequest();
+
+  if (!reply) {
+    SendIoCapabilityRequestNegativeReply(params.bd_addr,
+                                         hci::StatusCode::kPairingNotAllowed);
+    return;
+  }
+
+  const hci::IOCapability io_capability = *reply;
+
+  // TODO(BT-8): Add OOB status from PeerCache.
+  const uint8_t oob_data_present = 0x00;  // None present.
+
+  // TODO(BT-656): Determine this based on the service requirements.
+  const hci::AuthRequirements auth_requirements =
+      io_capability == hci::IOCapability::kNoInputNoOutput
+          ? hci::AuthRequirements::kGeneralBonding
+          : hci::AuthRequirements::kMITMGeneralBonding;
+
+  SendIoCapabilityRequestReply(params.bd_addr, io_capability, oob_data_present,
+                               auth_requirements);
+}
+
+void BrEdrConnectionManager::OnIoCapabilityResponse(
+    const hci::EventPacket& event) {
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kIOCapabilityResponseEventCode);
+  const auto& params = event.params<hci::IOCapabilityResponseEventParams>();
+
+  if (auto conn_pair = FindConnectionByAddress(params.bd_addr)) {
+    conn_pair->second->pairing_state().OnIoCapabilityResponse(
+        params.io_capability);
+  } else {
+    bt_log(INFO, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+  }
 }
 
 void BrEdrConnectionManager::OnLinkKeyRequest(const hci::EventPacket& event) {
@@ -688,6 +798,7 @@ void BrEdrConnectionManager::OnLinkKeyNotification(
            bt_str(peer_id));
   } else {
     handle->second->link().set_link_key(hci_key);
+    handle->second->pairing_state().OnLinkKeyNotification(key_value, key_type);
   }
 
   if (!cache_->StoreBrEdrBond(addr, key)) {
@@ -696,28 +807,17 @@ void BrEdrConnectionManager::OnLinkKeyNotification(
   }
 }
 
-void BrEdrConnectionManager::OnIOCapabilitiesRequest(
+void BrEdrConnectionManager::OnSimplePairingComplete(
     const hci::EventPacket& event) {
-  ZX_DEBUG_ASSERT(event.event_code() == hci::kIOCapabilityRequestEventCode);
-  const auto& params = event.params<hci::IOCapabilityRequestEventParams>();
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kSimplePairingCompleteEventCode);
+  const auto& params = event.params<hci::SimplePairingCompleteEventParams>();
 
-  auto reply = hci::CommandPacket::New(
-      hci::kIOCapabilityRequestReply,
-      sizeof(hci::IOCapabilityRequestReplyCommandParams));
-  auto reply_params =
-      reply->mutable_view()
-          ->mutable_payload<hci::IOCapabilityRequestReplyCommandParams>();
-
-  reply_params->bd_addr = params.bd_addr;
-  // TODO(jamuraa, BT-169): ask the PairingDelegate if it's set what the IO
-  // capabilities it has.
-  reply_params->io_capability = hci::IOCapability::kNoInputNoOutput;
-  // TODO(BT-8): Add OOB status from PeerCache.
-  reply_params->oob_data_present = 0x00;  // None present.
-  // TODO(BT-656): Determine this based on the service requirements.
-  reply_params->auth_requirements = hci::AuthRequirements::kGeneralBonding;
-
-  hci_->command_channel()->SendCommand(std::move(reply), dispatcher_, nullptr);
+  if (auto conn_pair = FindConnectionByAddress(params.bd_addr)) {
+    conn_pair->second->pairing_state().OnSimplePairingComplete(params.status);
+  } else {
+    bt_log(INFO, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+  }
 }
 
 void BrEdrConnectionManager::OnUserConfirmationRequest(
@@ -725,22 +825,73 @@ void BrEdrConnectionManager::OnUserConfirmationRequest(
   ZX_DEBUG_ASSERT(event.event_code() == hci::kUserConfirmationRequestEventCode);
   const auto& params = event.params<hci::UserConfirmationRequestEventParams>();
 
-  bt_log(INFO, "gap-bredr", "auto-confirming pairing from %s (%u)",
-         bt_str(params.bd_addr), params.numeric_value);
+  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  if (!conn_pair) {
+    bt_log(INFO, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+    SendUserConfirmationRequestNegativeReply(params.bd_addr);
+    return;
+  }
 
-  // TODO(jamuraa, BT-169): if we are not NoInput/NoOutput then we need to ask
-  // the pairing delegate.  This currently will auto accept any pairing
-  // (JustWorks)
-  auto reply = hci::CommandPacket::New(
-      hci::kUserConfirmationRequestReply,
-      sizeof(hci::UserConfirmationRequestReplyCommandParams));
-  auto reply_params =
-      reply->mutable_view()
-          ->mutable_payload<hci::UserConfirmationRequestReplyCommandParams>();
+  auto confirm_cb = [this, self = weak_ptr_factory_.GetWeakPtr(),
+                     bd_addr = params.bd_addr](bool confirm) {
+    if (!self) {
+      return;
+    }
 
-  reply_params->bd_addr = params.bd_addr;
+    if (confirm) {
+      SendUserConfirmationRequestReply(bd_addr);
+    } else {
+      SendUserConfirmationRequestNegativeReply(bd_addr);
+    }
+  };
+  conn_pair->second->pairing_state().OnUserConfirmationRequest(
+      letoh32(params.numeric_value), std::move(confirm_cb));
+}
 
-  hci_->command_channel()->SendCommand(std::move(reply), dispatcher_, nullptr);
+void BrEdrConnectionManager::OnUserPasskeyRequest(
+    const hci::EventPacket& event) {
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kUserPasskeyRequestEventCode);
+  const auto& params = event.params<hci::UserPasskeyRequestEventParams>();
+
+  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  if (!conn_pair) {
+    bt_log(INFO, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+    SendUserPasskeyRequestNegativeReply(params.bd_addr);
+    return;
+  }
+
+  auto passkey_cb = [this, self = weak_ptr_factory_.GetWeakPtr(),
+                     bd_addr =
+                         params.bd_addr](std::optional<uint32_t> passkey) {
+    if (!self) {
+      return;
+    }
+
+    if (passkey) {
+      SendUserPasskeyRequestReply(bd_addr, *passkey);
+    } else {
+      SendUserPasskeyRequestNegativeReply(bd_addr);
+    }
+  };
+  conn_pair->second->pairing_state().OnUserPasskeyRequest(
+      std::move(passkey_cb));
+}
+
+void BrEdrConnectionManager::OnUserPasskeyNotification(
+    const hci::EventPacket& event) {
+  ZX_DEBUG_ASSERT(event.event_code() == hci::kUserPasskeyNotificationEventCode);
+  const auto& params = event.params<hci::UserPasskeyNotificationEventParams>();
+
+  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  if (!conn_pair) {
+    bt_log(INFO, "gap-bredr", "got %s for unconnected addr %s", __func__,
+           bt_str(params.bd_addr));
+    return;
+  }
+  conn_pair->second->pairing_state().OnUserPasskeyNotification(
+      letoh32(params.numeric_value));
 }
 
 bool BrEdrConnectionManager::Connect(
@@ -883,6 +1034,134 @@ void BrEdrConnectionManager::SendCreateConnectionCancelCommand(
         hci_is_error(event, WARN, "hci-bredr",
                      "failed to cancel connection request");
       });
+}
+
+void BrEdrConnectionManager::SendIoCapabilityRequestReply(
+    DeviceAddressBytes bd_addr, hci::IOCapability io_capability,
+    uint8_t oob_data_present, hci::AuthRequirements auth_requirements,
+    hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kIOCapabilityRequestReply,
+      sizeof(hci::IOCapabilityRequestReplyCommandParams));
+  auto params =
+      packet->mutable_view()
+          ->mutable_payload<hci::IOCapabilityRequestReplyCommandParams>();
+
+  params->bd_addr = bd_addr;
+  params->io_capability = io_capability;
+  params->oob_data_present = oob_data_present;
+  params->auth_requirements = auth_requirements;
+
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
+}
+
+void BrEdrConnectionManager::SendIoCapabilityRequestNegativeReply(
+    DeviceAddressBytes bd_addr, hci::StatusCode reason,
+    hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kIOCapabilityRequestNegativeReply,
+      sizeof(hci::IOCapabilityRequestNegativeReplyCommandParams));
+  auto params = packet->mutable_view()
+                    ->mutable_payload<
+                        hci::IOCapabilityRequestNegativeReplyCommandParams>();
+
+  params->bd_addr = bd_addr;
+  params->reason = reason;
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
+}
+
+void BrEdrConnectionManager::SendUserConfirmationRequestReply(
+    DeviceAddressBytes bd_addr, hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kUserConfirmationRequestReply,
+      sizeof(hci::UserConfirmationRequestReplyCommandParams));
+  packet->mutable_view()
+      ->mutable_payload<hci::UserConfirmationRequestReplyCommandParams>()
+      ->bd_addr = bd_addr;
+
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
+}
+
+void BrEdrConnectionManager::SendUserConfirmationRequestNegativeReply(
+    DeviceAddressBytes bd_addr, hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kUserConfirmationRequestNegativeReply,
+      sizeof(hci::UserConfirmationRequestNegativeReplyCommandParams));
+  packet->mutable_view()
+      ->mutable_payload<
+          hci::UserConfirmationRequestNegativeReplyCommandParams>()
+      ->bd_addr = bd_addr;
+
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
+}
+
+void BrEdrConnectionManager::SendUserPasskeyRequestReply(
+    DeviceAddressBytes bd_addr, uint32_t numeric_value,
+    hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kUserPasskeyRequestReply,
+      sizeof(hci::UserPasskeyRequestReplyCommandParams));
+  auto params =
+      packet->mutable_view()
+          ->mutable_payload<hci::UserPasskeyRequestReplyCommandParams>();
+
+  params->bd_addr = bd_addr;
+  params->numeric_value = htole32(numeric_value);
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
+}
+
+void BrEdrConnectionManager::SendUserPasskeyRequestNegativeReply(
+    DeviceAddressBytes bd_addr, hci::StatusCallback cb) {
+  auto packet = hci::CommandPacket::New(
+      hci::kUserPasskeyRequestNegativeReply,
+      sizeof(hci::UserPasskeyRequestNegativeReplyCommandParams));
+  packet->mutable_view()
+      ->mutable_payload<hci::UserPasskeyRequestNegativeReplyCommandParams>()
+      ->bd_addr = bd_addr;
+
+  hci::CommandChannel::CommandCallback command_cb;
+  if (cb) {
+    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+      cb(event.ToStatus());
+    };
+  }
+  hci_->command_channel()->SendCommand(std::move(packet), dispatcher_,
+                                       std::move(command_cb));
 }
 
 }  // namespace gap
