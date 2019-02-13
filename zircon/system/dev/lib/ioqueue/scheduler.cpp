@@ -9,8 +9,8 @@
 
 namespace ioqueue {
 
-static inline io_op_t* node_to_op(list_node_t* node) {
-    return containerof(node, io_op_t, node);
+static inline Op* node_to_op(list_node_t* node) {
+    return containerof(node, Op, node);
 }
 
 Scheduler::Scheduler() {
@@ -81,13 +81,13 @@ zx_status_t Scheduler::RemoveStream(uint32_t id) {
     return ZX_OK;
 }
 
-zx_status_t Scheduler::InsertOps(io_op_t** op_list, size_t op_count, size_t* out_num_ready) {
+zx_status_t Scheduler::InsertOps(Op** op_list, size_t op_count, size_t* out_num_ready) {
     fbl::AutoLock lock(&lock_);
     zx_status_t status = ZX_OK;
     for (size_t i = 0; i < op_count; i++) {
-        io_op_t* op = op_list[i];
-        // TODO(sron): avoid redundant lookups of same sid.
-        StreamRef stream = FindStreamLocked(op->sid);
+        Op* op = op_list[i];
+        // TODO(sron): avoid redundant lookups of same stream id.
+        StreamRef stream = FindStreamLocked(op->stream_id);
         if (stream == nullptr) {
             fprintf(stderr, "Error: Attempted to enqueue op for non-existent stream\n");
             op->result = ZX_ERR_INVALID_ARGS;
@@ -117,7 +117,7 @@ zx_status_t Scheduler::InsertOps(io_op_t** op_list, size_t op_count, size_t* out
     return status;
 }
 
-zx_status_t Scheduler::GetNextOp(bool wait, io_op_t** op_out) {
+zx_status_t Scheduler::GetNextOp(bool wait, Op** op_out) {
     for ( ; ; ) {
         int err;
         if (wait) {
@@ -157,7 +157,7 @@ zx_status_t Scheduler::GetNextOp(bool wait, io_op_t** op_out) {
     list_add_tail(&stream->issued_op_list_, op_node);
     num_ready_ops_--;
     num_issued_ops_++;
-    io_op_t* op = node_to_op(op_node);
+    Op* op = node_to_op(op_node);
     if (list_is_empty(&stream->ready_op_list_)) {
         // Do not reinsert into queue.
         stream->flags_ &= ~kIoStreamFlagScheduled;
@@ -171,7 +171,7 @@ zx_status_t Scheduler::GetNextOp(bool wait, io_op_t** op_out) {
     return ZX_OK;
 }
 
-zx_status_t Scheduler::GetCompletedOps(io_op_t** op_list, size_t op_count, size_t* out_count) {
+zx_status_t Scheduler::GetCompletedOps(Op** op_list, size_t op_count, size_t* out_count) {
     fbl::AutoLock lock(&lock_);
     size_t i;
     for (i = 0; i < op_count; i++) {
@@ -185,13 +185,13 @@ zx_status_t Scheduler::GetCompletedOps(io_op_t** op_list, size_t op_count, size_
     return ZX_OK;
 }
 
-void Scheduler::CompleteOp(io_op_t* op, zx_status_t result) {
+void Scheduler::CompleteOp(Op* op, zx_status_t result) {
     fbl::AutoLock lock(&lock_);
     num_issued_ops_--;
     sem_post(&issue_sem_);
-    StreamRef stream = FindStreamLocked(op->sid);
+    StreamRef stream = FindStreamLocked(op->stream_id);
     if (stream == NULL) {
-        fprintf(stderr, "Error: completed op for non-existent stream %u\n", op->sid);
+        fprintf(stderr, "Error: completed op for non-existent stream %u\n", op->stream_id);
         op->result = ZX_ERR_INVALID_ARGS;
         return;
     }

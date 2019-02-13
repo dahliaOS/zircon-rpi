@@ -127,16 +127,16 @@ void Queue::ReleaseAcquireSlot() {
     acquire_workers_--;
 }
 
-zx_status_t Queue::AcquireOps(io_op_t** op_list, size_t* op_count, bool wait) {
-    return ops_->acquire(ops_->context, op_list, op_count, wait);
+zx_status_t Queue::AcquireOps(Op** op_list, size_t* op_count, bool wait) {
+    return ops_->acquire(ops_->context, Op::ToIoOpList(op_list), op_count, wait);
 }
 
-zx_status_t Queue::IssueOp(io_op_t* op) {
-    return ops_->issue(ops_->context, op);
+zx_status_t Queue::IssueOp(Op* op) {
+    return ops_->issue(ops_->context, Op::ToIoOp(op));
 }
 
-void Queue::ReleaseOp(io_op_t* op) {
-    ops_->release(ops_->context, op);
+void Queue::ReleaseOp(Op* op) {
+    ops_->release(ops_->context, Op::ToIoOp(op));
 }
 
 } // namespace

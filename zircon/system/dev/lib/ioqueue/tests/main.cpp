@@ -13,7 +13,7 @@ struct TestOp {
     uint32_t id;
     bool issued;
     bool released;
-    io_op_t op;
+    IoOp op;
 };
 
 class IoQueueTest {
@@ -26,17 +26,17 @@ public:
     void CloseInput() { CancelAcquire(); }
 
     // Callbacks
-    static zx_status_t cb_acquire(void* context, io_op_t** op_list, size_t* op_count, bool wait) {
+    static zx_status_t cb_acquire(void* context, IoOp** op_list, size_t* op_count, bool wait) {
         IoQueueTest* test = static_cast<IoQueueTest*>(context);
         return test->AcquireOps(op_list, op_count, wait);
     }
 
-    static zx_status_t cb_issue(void* context, io_op_t* op) {
+    static zx_status_t cb_issue(void* context, IoOp* op) {
         IoQueueTest* test = static_cast<IoQueueTest*>(context);
         return test->IssueOp(op);
     }
 
-    static void cb_release(void* context, io_op_t* op) {
+    static void cb_release(void* context, IoOp* op) {
         IoQueueTest* test = static_cast<IoQueueTest*>(context);
         test->ReleaseOp(op);
     }
@@ -52,10 +52,10 @@ public:
     }
 
 private:
-    zx_status_t AcquireOps(io_op_t** op_list, size_t* op_count, bool wait);
+    zx_status_t AcquireOps(IoOp** op_list, size_t* op_count, bool wait);
     void CancelAcquire();
-    zx_status_t IssueOp(io_op_t* op);
-    void ReleaseOp(io_op_t* op);
+    zx_status_t IssueOp(IoOp* op);
+    void ReleaseOp(IoOp* op);
     void Fatal();
 
     IoQueue* q_ = nullptr;
@@ -80,7 +80,7 @@ void IoQueueTest::Enqueue(TestOp* top) {
     enqueued_count_++;
 }
 
-zx_status_t IoQueueTest::AcquireOps(io_op_t** op_list, size_t* op_count, bool wait) {
+zx_status_t IoQueueTest::AcquireOps(IoOp** op_list, size_t* op_count, bool wait) {
     fbl::AutoLock lock(&lock_);
     printf("cb: acquire\n");
     if (closed_) {
@@ -110,8 +110,8 @@ zx_status_t IoQueueTest::AcquireOps(io_op_t** op_list, size_t* op_count, bool wa
     return ZX_OK;
 }
 
-zx_status_t IoQueueTest::IssueOp(io_op_t* op) {
-    printf("cb: issue %u:%u\n", op->sid, op->opcode);
+zx_status_t IoQueueTest::IssueOp(IoOp* op) {
+    printf("cb: issue %u:%u\n", op->stream_id, op->opcode);
     TestOp* top = containerof(op, TestOp, op);
     top->issued = true;
     op->result = ZX_OK;
@@ -120,8 +120,8 @@ zx_status_t IoQueueTest::IssueOp(io_op_t* op) {
     return ZX_OK;
 }
 
-void IoQueueTest::ReleaseOp(io_op_t* op) {
-    printf("cb: release %u:%u\n", op->sid, op->opcode);
+void IoQueueTest::ReleaseOp(IoOp* op) {
+    printf("cb: release %u:%u\n", op->stream_id, op->opcode);
     TestOp* top = containerof(op, TestOp, op);
     top->released = true;
     fbl::AutoLock lock(&lock_);
@@ -162,24 +162,24 @@ void op_test(IoQueueTest* test, int depth) {
     memset(tops, 0, sizeof(TestOp) * num_ops);
 
     tops[0].id = 100;
-    tops[0].op.sid = 0;
+    tops[0].op.stream_id = 0;
 
     tops[1].id = 101;
-    tops[1].op.sid = 0;
+    tops[1].op.stream_id = 0;
 
     test->Enqueue(&tops[0]);
     test->Enqueue(&tops[1]);
 
     tops[2].id = 102;
-    tops[2].op.sid = 2;
+    tops[2].op.stream_id = 2;
 
     test->Enqueue(&tops[2]);
 
     tops[3].id = 103;
-    tops[3].op.sid = 4;
+    tops[3].op.stream_id = 4;
 
     tops[4].id = 104;
-    tops[4].op.sid = 0;
+    tops[4].op.stream_id = 0;
 
     test->Enqueue(&tops[3]);
     test->Enqueue(&tops[4]);

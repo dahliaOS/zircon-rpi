@@ -10,7 +10,7 @@
 #include <semaphore.h>
 #include <zircon/types.h>
 
-#include <ioqueue/queue.h>
+#include "op.h"
 #include "stream.h"
 
 #define IO_SCHED_DEFAULT_PRI       16
@@ -32,10 +32,10 @@ public:
     StreamRef FindStream(uint32_t id);
     zx_status_t RemoveStream(uint32_t id);
 
-    zx_status_t InsertOps(io_op_t** op_list, size_t op_count, size_t* out_num_ready);
-    zx_status_t GetNextOp(bool wait, io_op_t** op_out);
-    zx_status_t GetCompletedOps(io_op_t** op_list, size_t op_count, size_t* out_count);
-    void CompleteOp(io_op_t* op, zx_status_t result);
+    zx_status_t InsertOps(Op** op_list, size_t op_count, size_t* out_num_ready);
+    zx_status_t GetNextOp(bool wait, Op** op_out);
+    zx_status_t GetCompletedOps(Op** op_list, size_t op_count, size_t* out_count);
+    void CompleteOp(Op* op, zx_status_t result);
 
 
     void CloseAll();

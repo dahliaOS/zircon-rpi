@@ -38,7 +38,7 @@ public:
 
     // Client API - asynchronous calls.
     // --------------------------------
-    void AsyncCompleteOp(io_op_t* op, zx_status_t result) { sched_.CompleteOp(op, result); }
+    void AsyncCompleteOp(Op* op, zx_status_t result) { sched_.CompleteOp(op, result); }
 
     // API invoked by worker threads.
     // ------------------------------
@@ -47,9 +47,9 @@ public:
     void WorkerExited(uint32_t id);
     zx_status_t GetAcquireSlot();
     void ReleaseAcquireSlot();
-    zx_status_t AcquireOps(io_op_t** op_list, size_t* op_count, bool wait);
-    zx_status_t IssueOp(io_op_t* op);
-    void ReleaseOp(io_op_t* op);
+    zx_status_t AcquireOps(Op** op_list, size_t* op_count, bool wait);
+    zx_status_t IssueOp(Op* op);
+    void ReleaseOp(Op* op);
 
 private:
     Scheduler sched_{};
