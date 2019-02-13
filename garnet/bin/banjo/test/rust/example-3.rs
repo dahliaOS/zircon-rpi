@@ -3,10 +3,25 @@
 // found in the LICENSE file.
 
 // WARNING: THIS FILE IS MACHINE GENERATED. DO NOT EDIT.
-// Generated from the {primary_namespace} banjo file
+// Generated from the banjo.examples.example3 banjo file
 
-#![allow(warnings)]
 use fuchsia_zircon as zircon;
-use fuchsia_ddk as ddk;
+use fuchsia_ddk_sys as ddk;
 
-{includes}
+
+// C ABI compat
+
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct point_t {
+    pub x: i64,
+    pub y: i64,
+}
+
+
+
+
+
+
+// idiomatic bindings

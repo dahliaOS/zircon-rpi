@@ -224,3 +224,17 @@ mod cpp_internal {
         "cpp/callback-internal.h"
     );
 }
+
+mod rust {
+    use super::*;
+
+    codegen_test!(alignment, RustBackend, ["banjo/alignment.test.banjo"], "rust/alignment.rs");
+    codegen_test!(empty, RustBackend, ["banjo/empty.test.banjo"], "rust/empty.rs");
+    codegen_test!(enums, RustBackend, ["banjo/enums.test.banjo"], "rust/enums.rs");
+    codegen_test!(example_0, RustBackend, ["banjo/example-0.test.banjo"], "rust/example-0.rs");
+    codegen_test!(example_1, RustBackend, ["banjo/example-1.test.banjo"], "rust/example-1.rs");
+    codegen_test!(example_2, RustBackend, ["banjo/example-2.test.banjo"], "rust/example-2.rs");
+    codegen_test!(example_3, RustBackend, ["banjo/example-3.test.banjo"], "rust/example-3.rs");
+    codegen_test!(example_4, RustBackend, ["banjo/example-4.test.banjo"], "rust/example-4.rs");
+}
+

@@ -22,7 +22,7 @@ impl {protocol_name}Protocol {{
     pub fn from_device(parent_device: &ddk::Device) -> Result<Self, ()> {{ // TODO error type
         let mut ret = Self::default();
         unsafe {{
-            let resp = ddk::device_get_protocol(
+            let resp = ddk::sys::device_get_protocol(
                 parent_device.get_ptr(),
                 ddk::protocols::ZX_PROTOCOL_{protocol_name_upper},
                 &mut ret as *mut _ as *mut ::std::os::raw::c_void);

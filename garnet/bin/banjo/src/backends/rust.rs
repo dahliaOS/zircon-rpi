@@ -40,23 +40,30 @@ fn to_rust_type(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
     match ty {
         ast::Ty::Bool => Ok(String::from("bool")),
         ast::Ty::Int8 => Ok(String::from("i8")),
+        ast::Ty::Int16 => Ok(String::from("i16")),
         ast::Ty::Int32 => Ok(String::from("i32")),
+        ast::Ty::Int64 => Ok(String::from("i64")),
+        ast::Ty::UInt8 => Ok(String::from("u8")),
         ast::Ty::UInt16 => Ok(String::from("u16")),
         ast::Ty::UInt32 => Ok(String::from("u32")),
         ast::Ty::UInt64 => Ok(String::from("u64")),
+        ast::Ty::Float32 => Ok(String::from("f32")),
+        ast::Ty::Float64 => Ok(String::from("f64")),
         ast::Ty::USize => Ok(String::from("usize")),
         ast::Ty::Array { .. } => Ok(String::from("*mut u8 /* TODO ARRAY */ ")),
         ast::Ty::Voidptr => Ok(String::from("*mut u8 /* TODO void?! */ ")),
         ast::Ty::Str { .. } => Ok(String::from("*mut u8 /*TODO String */")),
         ast::Ty::Vector { ref ty, size: _, nullable: _ } => to_rust_type(ast, ty),
-        ast::Ty::Identifier { id, reference: _ } => {
+        ast::Ty::Identifier { id, reference } => {
+            let ptr = if *reference { "*mut "} else { "" };
             if id.is_base_type() {
                 Ok(format!("zircon::sys::zx_{}_t", id.name()))
             } else {
                 match ast.id_to_type(id) {
                     ast::Ty::Interface => return Ok(c::to_c_name(id.name())),
                     ast::Ty::Struct => {
-                        return Ok(c::to_c_name(id.name()) + "_t");
+                        let name = c::to_c_name(id.name());
+                        return Ok(format!("{ptr}{name}_t", ptr = ptr, name = name))
                     }
                     t => to_rust_type(ast, &t),
                 }
