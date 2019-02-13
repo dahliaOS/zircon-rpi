@@ -8,9 +8,9 @@ use wlan_reg::*;
 
 fn play_operating_class() {
     let jurisdiction = country::get_jurisdiction();
-    let filepath = loader::get_operating_class_filename(&jurisdiction);
+    let filepath = operclass::get_filepath(&jurisdiction);
 
-    let toml = match loader::load_operating_class_toml(&filepath.to_string()) {
+    let toml = match operclass::load_toml(&filepath.to_string()) {
         Err(e) => {
             error!("{}", e);
             return;
@@ -25,16 +25,16 @@ fn play_operating_class() {
     //    utils::dump_file(&filepath);
 
     let channel_groups =
-        channel::build_legit_channel_groups(&toml, &country::get_active_operating_classes());
+        channel::build_legitimate_group(&toml, &country::get_active_operating_classes());
 
     println!("{}", channel_groups);
 }
 
 fn play_regulation() {
     let jurisdiction = country::get_jurisdiction();
-    let filepath = loader::get_regulation_filename(&jurisdiction);
+    let filepath = regulation::get_filepath(&jurisdiction);
 
-    let toml = match loader::load_regulation_toml(&filepath.to_string()) {
+    let toml = match regulation::load_toml(&filepath.to_string()) {
         Err(e) => {
             error!("{}", e);
             println!("{}", e);
@@ -56,7 +56,7 @@ fn play_regulation() {
 }
 
 fn main() {
-    let legit_chan_group = channel::get_legit_chan_groups();
+    let legit_chan_group = channel::get_legitimate_group();
     match legit_chan_group {
         Err(e) => {
             error!("{:?}", e);
@@ -71,7 +71,7 @@ fn main() {
     println!("Planned non-oper channels {:?}", channel::get_planned_non_operation_chanidx_list());
     println!("Blocked channels          {:?}", channel::get_blocked_chanidx_list());
 
-    let oper_chan_group = channel::get_oper_chan_groups();
+    let oper_chan_group = channel::get_operation_group();
     match oper_chan_group {
         Err(e) => {
             error!("{:?}", e);
