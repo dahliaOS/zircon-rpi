@@ -26,7 +26,7 @@ driver_module("rust_example") {
 
  # ldflags = [ "-L/usr/local/google/home/bwb/fuchsia/buildtools/linux-x64/rust/lib/rustlib/x86_64-fuchsia/lib" ]
 
-  configs -= [ "//build/config/fuchsia:no_cpp_standard_library" ]
+ configs -= [ "//build/config/fuchsia:no_cpp_standard_library" ]
 
   deps = [
     "//garnet/drivers/rust/rust",

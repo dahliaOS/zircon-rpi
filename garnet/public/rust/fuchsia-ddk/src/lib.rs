@@ -2,14 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![no_std]
+#![feature(alloc)]
+
 pub extern crate fuchsia_ddk_sys as sys;
+
+extern crate alloc;
 
 use {
     fuchsia_ddk_sys::zx_device_t,
-    std::ffi::{CStr, CString},
+    alloc::prelude::*,
+    core::slice,
 };
 
-pub mod protocols;
+#[inline]
+unsafe fn strlen(p: *const libc::c_char) -> usize {
+    let mut n = 0;
+    while *p.offset(n as isize) != 0 {
+        n += 1;
+    }
+    n
+}
 
 #[derive(Debug)]
 #[repr(transparent)]
@@ -27,32 +40,35 @@ impl Device {
     }
 
     /// Returns the name of the device
-    pub fn get_name(&self) -> &CStr {
+    pub fn get_name(&self) -> &str {
         unsafe {
-            let resp = sys::device_get_name(self.0);
-            // TODO validate
-            CStr::from_ptr(resp)
+            let name_ptr = sys::device_get_name(self.0);
+            let len = strlen(name_ptr);
+            let ptr = name_ptr as *const u8;
+            let slice = slice::from_raw_parts(ptr, len); // knock off the null byte
+            core::str::from_utf8(slice).unwrap()
         }
     }
 
     /// Creates a child device and adds it to the devmgr
     /// TODO(bwb): rename to add_child?
-    pub fn add_device<T: Into<Vec<u8>>>(&self, name: T) -> Result<Device, ()> {
-        let name_cstring = CString::new(name).unwrap(); // TODO ?
+    pub fn add_device(&self, name: String) -> Result<Device, ()> {
+        let mut name_vec: Vec<u8> = name.clone().into();
+        name_vec.reserve_exact(1);
+        name_vec.push(0);
 
         // device_add_args_t values are copied, so device_add_args_t can be stack allocated.
         let mut args = sys::device_add_args_t {
-                name: name_cstring.as_ptr(),
-                version: 0x96a64134d56e88e3, // DEVICE_ADD_ARGS_VERSION,
-                ops: unsafe { &mut DEVICE_OPS } as *mut _, // std::ptr::null_mut(),
-
-                ctx: std::ptr::null_mut(),
-                props: std::ptr::null_mut(),
+                name: name_vec.as_ptr(),
+                version: sys::DEVICE_ADD_ARGS_VERSION,
+                ops: unsafe { &mut DEVICE_OPS } as *mut _,
+                ctx: core::ptr::null_mut(),
+                props: core::ptr::null_mut(),
                 flags: 1,
                 prop_count: 0,
                 proto_id: 0,
-                proto_ops: std::ptr::null_mut(),
-                proxy_args: std::ptr::null_mut(),
+                proto_ops: core::ptr::null_mut(),
+                proxy_args: core::ptr::null_mut(),
                 client_remote: 0 //handle
         };
 

@@ -35,6 +35,7 @@ template("banjo_rust_library") {
       "//garnet/public/rust/fuchsia-async",
       "//garnet/public/rust/fuchsia-zircon",
       "//garnet/public/rust/fuchsia-ddk",
+      "//third_party/rust-crates/rustc_deps:libc",
       "//third_party/rust-crates/rustc_deps:futures-preview",
     ]
 

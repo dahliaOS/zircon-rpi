@@ -221,6 +221,13 @@ pub struct zx_driver_ops_t {
     >,
     pub release: ::core::option::Option<unsafe extern "C" fn(ctx: *mut libc::c_void)>,
 }
+
+// echo -n "device_add_args_v0.5" | sha256sum | cut -c1-16
+pub const DEVICE_ADD_ARGS_VERSION: u64 = 0x96a64134d56e88e3;
+
+// echo -n "zx_driver_ops_v0.5" | sha256sum | cut -c1-16
+pub const DRIVER_OPS_VERSION: u64 = 0x2b3490fa40d9f452;
+
 pub const DEVICE_ADD_NON_BINDABLE: u32 = 1;
 pub const DEVICE_ADD_INSTANCE: u32 = 2;
 pub const DEVICE_ADD_MUST_ISOLATE: u32 = 4;

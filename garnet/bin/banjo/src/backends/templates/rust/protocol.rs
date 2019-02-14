@@ -24,8 +24,8 @@ impl {protocol_name}Protocol {{
         unsafe {{
             let resp = ddk::sys::device_get_protocol(
                 parent_device.get_ptr(),
-                ddk::protocols::ZX_PROTOCOL_{protocol_name_upper},
-                &mut ret as *mut _ as *mut ::std::os::raw::c_void);
+                ddk::sys::ZX_PROTOCOL_{protocol_name_upper},
+                &mut ret as *mut _ as *mut libc::c_void);
             if resp != fuchsia_zircon::sys::ZX_OK {{
                 return Err(());
             }}
