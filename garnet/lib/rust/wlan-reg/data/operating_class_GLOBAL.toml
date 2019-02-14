@@ -1,0 +1,786 @@
+version = "0.1.0" # Schema version
+jurisdiction = "GLOBAL"
+
+// IEEE Std 802.11-2016 Table E-4.
+
+# [{jurisdiction}{dash}{operating class}]
+
+// Operating class 1-80 are reserved.
+[GLOBAL-81]
+    # Mandatory fields
+    oper_class = 81
+    start_freq = 2.407
+    spacing = 25
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    center_freq_idx = [] # Channel index corresponding to the center frequency
+
+    # Behavior limits set.
+    # Optional. Absence is considered to be false.
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Two spaces between tables
+[GLOBAL-82]
+    oper_class = 82
+    start_freq = 2.414
+    spacing = 25
+    set = [14]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-83]
+    oper_class = 83
+    start_freq = 2.407
+    spacing = 40
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-84]
+    oper_class = 84
+    start_freq = 2.407
+    spacing = 40
+    set = [5, 6, 7, 8, 9, 10, 11, 12, 13]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Operating class 85-92 are omiitted.
+# There is no practical way to define these unequivocally without the start_freq.
+# Operating class 93 is reserved.
+
+
+[GLOBAL-94]
+    oper_class = 94
+    start_freq = 3.000
+    spacing = 20
+    set = [133, 137]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-95]
+    oper_class = 95
+    start_freq = 3.000
+    spacing = 10
+    set = [132, 134, 136, 138]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-96]
+    oper_class = 96
+    start_freq = 3.0025
+    spacing = 5
+    set = [131, 132, 133, 134, 135, 136, 137, 138]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = true
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Operating class 97-100 are reserved
+
+
+[GLOBAL-101]
+    oper_class = 101
+    start_freq = 4.85
+    spacing = 20
+    set = [21, 25]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-102]
+    oper_class = 102
+    start_freq = 4.89
+    spacing = 10
+    set = [11, 13, 15, 17, 19]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-103]
+    oper_class = 103
+    start_freq = 4.9375
+    spacing = 5
+    set = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-104]
+    oper_class = 104
+    start_freq = 4.000
+    spacing = 40
+    set = [184, 192]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-105]
+    oper_class = 105
+    start_freq = 4.000
+    spacing = 40
+    set = [188, 196]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-106]
+    oper_class = 106
+    start_freq = 4.000
+    spacing = 10
+    set = [191, 195]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-107]
+    oper_class = 107
+    start_freq = 4.000
+    spacing = 10
+    set = [189, 191, 193, 195, 197]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-108]
+    oper_class = 108
+    start_freq = 4.0025
+    spacing = 5
+    set = [188, 189, 190, 191, 192, 193, 194, 195, 196, 197]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-109]
+    oper_class = 109
+    start_freq = 4.000
+    spacing = 20
+    set = [184, 188, 192, 196]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-110]
+    oper_class = 110
+    start_freq = 4.000
+    spacing = 10
+    set = [183, 184, 185, 186, 187, 188, 189]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-111]
+    oper_class = 111
+    start_freq = 4.0025
+    spacing = 5
+    set = [182, 183, 184, 185, 186, 187, 188, 189]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-112]
+    oper_class = 112
+    start_freq = 5.000
+    spacing = 20
+    set = [8, 12 ,16]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-113]
+    oper_class = 113
+    start_freq = 5.000
+    spacing = 10
+    set = [7, 8, 9, 10, 11]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-114]
+    oper_class = 114
+    start_freq = 5.0025
+    spacing = 5
+    set = [6, 7, 8, 9, 10, 11]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+[GLOBAL-115]
+    oper_class = 115
+    start_freq = 5.000
+    spacing = 20
+    set = [36, 40, 44, 48]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-116]
+    oper_class = 116
+    start_freq = 5.000
+    spacing = 40
+    set = [36, 44]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-117]
+    oper_class = 117
+    start_freq = 5.000
+    spacing = 40
+    set = [40, 48]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-118]
+    oper_class = 118
+    start_freq = 5.000
+    spacing = 20
+    set = [52, 56, 60, 64]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-119]
+    oper_class = 119
+    start_freq = 5.000
+    spacing = 40
+    set = [52, 60]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-120]
+    oper_class = 120
+    start_freq = 5.000
+    spacing = 40
+    set = [56, 64]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-121]
+    oper_class = 121
+    start_freq = 5.000
+    spacing = 20
+    set = [100, 104, 108, 112, 116, 116, 120, 124, 128, 132, 136, 140, 144]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-122]
+    oper_class = 122
+    start_freq = 5.000
+    spacing = 40
+    set = [100, 108, 116, 124, 132, 140]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-123]
+    oper_class = 123
+    start_freq = 5.000
+    spacing = 40
+    set = [104, 112, 120, 128, 136, 140]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = true
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-124]
+    oper_class = 124
+    start_freq = 5.000
+    spacing = 20
+    set = [149, 153, 157, 161]
+    center_freq_idx = []
+
+    nomadic = true
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-125]
+    oper_class = 125
+    start_freq = 5.000
+    spacing = 20
+    set = [149, 153, 157, 161, 165, 169]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = true
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-126]
+    oper_class = 126
+    start_freq = 5.000
+    spacing = 40
+    set = [149, 157]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = true
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-127]
+    oper_class = 127
+    start_freq = 5.000
+    spacing = 40
+    set = [153, 161]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = true
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-128]
+    oper_class = 128
+    start_freq = 5.000
+    spacing = 80
+    set = []
+    center_freq_idx = [42, 58, 106, 122, 138, 155]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-129]
+    oper_class = 129
+    start_freq = 5.000
+    spacing = 160
+    set = []
+    center_freq_idx = [50, 114]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+[GLOBAL-130]
+    oper_class = 130
+    start_freq = 5.000
+    spacing = 80
+    set = []
+    center_freq_idx = [42, 58, 106, 122, 138, 155]
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = true
+    use_eirp_vht_txpower_env = true
+    geo_db = false
+
+
+# Operating class 131-179 are reserved
+
+
+[GLOBAL-180]
+    oper_class = 180
+    start_freq = 56.16
+    spacing = 2160
+    set = [1, 2, 3, 4, 5, 6]
+    center_freq_idx = []
+
+    nomadic = false
+    license_exempt = false
+    primary_chan_lower = false
+    primary_chan_upper = false
+    cca_de = false
+    dfs_50_100 = false
+    its_nonmobile = false
+    its_mobiel = false
+    cbw80plus = false
+    use_eirp_vht_txpower_env = false
+    geo_db = false
+
+
+# Operating class 181-191 are reserved
+# Operating class 192-254 are vendor-specific
+# Operating class 255 is reserved
