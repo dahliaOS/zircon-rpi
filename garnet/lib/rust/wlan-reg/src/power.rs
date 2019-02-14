@@ -2,14 +2,14 @@ extern crate toml;
 
 use super::channel;
 use super::country;
+use super::device_cap;
 use super::operclass;
 use super::regulation;
 
+use failure::{bail, Error};
 use std::collections::HashMap;
 use toml::Value;
 use toml::Value::Table;
-
-use failure::{bail, Error};
 
 #[derive(Debug)]
 pub struct PowerBudgetByRange {
@@ -81,7 +81,7 @@ pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {
 
     let operclass_filepath = operclass::get_filepath(&juris);
     let operclass_toml = operclass::load_toml(&operclass_filepath)?;
-    let oper_classes = country::get_active_operating_classes();
+    let oper_classes = device_cap::get_operating_classes(juris.as_str())?;
     let chan_groups = channel::build_legitimate_group(&operclass_toml, &oper_classes);
 
     let reg_filepath = regulation::get_filepath(&juris);

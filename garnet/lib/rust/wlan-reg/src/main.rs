@@ -24,10 +24,10 @@ fn play_operating_class() {
     //    println!("   From file contents:");
     //    utils::dump_file(&filepath);
 
-    let channel_groups =
-        channel::build_legitimate_group(&toml, &country::get_active_operating_classes());
-
-    println!("{}", channel_groups);
+    //    let channel_groups =
+    //        channel::build_legitimate_group(&toml, &device_cap::get_active_operating_classes());
+    //
+    //    println!("{}", channel_groups);
 }
 
 fn play_regulation() {
@@ -67,7 +67,7 @@ fn main() {
         }
     }
 
-    println!("Device capable channels   {:?}", channel::get_device_capable_chanidx_list());
+    println!("Device capable channels   {:?}", device_cap::get_channels());
     println!("Planned non-oper channels {:?}", channel::get_planned_non_operation_chanidx_list());
     println!("Blocked channels          {:?}", channel::get_blocked_chanidx_list());
 
