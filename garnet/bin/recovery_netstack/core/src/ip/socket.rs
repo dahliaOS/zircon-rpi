@@ -169,7 +169,8 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
         addr: T::ConnAddr,
         sock: T::ConnSocket,
         ip_sock: IpConnSocket<I>,
-    ) -> Result<(), NetstackError> {
+    ) -> Result<(), (NetstackError, (T::ConnKey, T::ConnAddr, T::ConnSocket, IpConnSocket<I>))>
+    {
         let addr = AddrVec::new(addr, ip_sock.addr());
         self.map
             .insert(
@@ -177,7 +178,17 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
                 conn_addr_to_addr::<I, T>(addr.clone()),
                 Bar::Conn(TransportSocket { addr, key, sock, ip_sock }),
             )
-            .map_err(|_| unimplemented!())
+            .map_err(|(key, addr, sock)| {
+                (unimplemented!(), {
+                    let sock = sock.unwrap_conn();
+                    (
+                        key.unwrap_conn().clone(),
+                        sock.addr.head(),
+                        unimplemented!(),
+                        unimplemented!(),
+                    )
+                })
+            })
     }
 
     pub fn insert_device_conn(
@@ -186,7 +197,10 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
         addr: T::ConnAddr,
         sock: T::ConnSocket,
         ip_sock: IpDeviceConnSocket<I>,
-    ) -> Result<(), NetstackError> {
+    ) -> Result<
+        (),
+        (NetstackError, (T::DeviceConnKey, T::ConnAddr, T::ConnSocket, IpDeviceConnSocket<I>)),
+    > {
         let addr = AddrVec::new(addr, ip_sock.addr());
         self.map
             .insert(
@@ -194,7 +208,17 @@ impl<I: Ip, T: TransportSocketImpl> TransportSocketMap<I, T> {
                 device_conn_addr_to_addr::<I, T>(addr.clone()),
                 Bar::DeviceConn(TransportSocket { addr, key, sock, ip_sock }),
             )
-            .map_err(|_| unimplemented!())
+            .map_err(|(key, addr, sock)| {
+                (unimplemented!(), {
+                    let sock = sock.unwrap_device_conn();
+                    (
+                        key.unwrap_device_conn().clone(),
+                        sock.addr.head(),
+                        unimplemented!(),
+                        unimplemented!(),
+                    )
+                })
+            })
     }
 
     pub fn insert_listener(

@@ -66,11 +66,21 @@ type ConnSocketPortPair = ConnAddr<NonZeroU16, NonZeroU16>;
 
 type ConnSocketRequestPortPair = ConnAddr<AutoAddr<NonZeroU16>, NonZeroU16>;
 
-const PORT_MAP_RETRY: usize = 256;
-
+/// A map of transport-layer sockets in protocols with local and remote ports.
+///
+/// A `PortBasedSocketMap` wraps a `TransportSocketMap` and adds functionality
+/// specific to transport-layer protocols which use local and remote ports. In
+/// particular, given a socket creation request with a local port of *auto*, a
+/// `PortBasedSocketMap` can automatically allocate an unused local port.
 struct PortBasedSocketMap<I: Ip, T: TransportSocketImpl> {
     map: TransportSocketMap<I, T>,
 }
+
+// TODO(joshlf): Redesign this algorithm. Currently, we simply randomly generate
+// source ports PORT_MAP_RETRY times and then give up. This is probably good
+// enough for now, but won't be in the long run.
+
+const PORT_MAP_RETRY: usize = 256;
 
 fn random_port_pair(remote_port: NonZeroU16) -> ConnSocketPortPair {
     use rand::Rng;
@@ -94,25 +104,82 @@ impl<
         >,
     > PortBasedSocketMap<I, T>
 {
+    /// Insert a new connection, allocating a local port if necessary.
+    ///
+    /// `insert_conn` inserts a new connection. If the local port is *auto*, it
+    /// attempts to allocate an available local port automatically. On success,
+    /// the chosen port pair is returned.
     fn insert_conn(
         &mut self,
-        key: T::ConnKey,
+        mut key: T::ConnKey,
         port_pair: ConnSocketRequestPortPair,
-        sock: T::ConnSocket,
-        ip_sock: IpConnSocket<I>,
+        mut sock: T::ConnSocket,
+        mut ip_sock: IpConnSocket<I>,
     ) -> Result<ConnSocketPortPair, NetstackError> {
-        for _ in 0..PORT_MAP_RETRY {}
-        unimplemented!();
+        if let AutoAddr::Addr(local) = port_pair.local() {
+            let port_pair = ConnAddr::new(local, port_pair.remote());
+            return self
+                .map
+                .insert_conn(key, port_pair, sock, ip_sock)
+                .map(|_| port_pair)
+                .map_err(|(err, _)| err);
+        }
+
+        let mut i = 0;
+        loop {
+            i += 1;
+            let candidate_port = random_port_pair(port_pair.remote());
+            match self.map.insert_conn(key, candidate_port, sock, ip_sock) {
+                Ok(()) => return Ok(candidate_port),
+                Err((err, (key_, _, sock_, ip_sock_))) => {
+                    if i == PORT_MAP_RETRY {
+                        return Err(err);
+                    }
+                    key = key_;
+                    sock = sock_;
+                    ip_sock = ip_sock_;
+                }
+            }
+        }
     }
 
+    /// Insert a new device connection, allocating a local port if necessary.
+    ///
+    /// `insert_device_conn` inserts a new device connection. If the local port
+    /// is *auto*, it attempts to allocate an available local port
+    /// automatically. On success, the chosen port pair is returned.
     fn insert_device_conn(
         &mut self,
-        key: T::DeviceConnKey,
+        mut key: T::DeviceConnKey,
         port_pair: ConnSocketRequestPortPair,
-        sock: T::ConnSocket,
-        ip_sock: IpDeviceConnSocket<I>,
+        mut sock: T::ConnSocket,
+        mut ip_sock: IpDeviceConnSocket<I>,
     ) -> Result<ConnSocketPortPair, NetstackError> {
-        unimplemented!()
+        if let AutoAddr::Addr(local) = port_pair.local() {
+            let port_pair = ConnAddr::new(local, port_pair.remote());
+            return self
+                .map
+                .insert_device_conn(key, port_pair, sock, ip_sock)
+                .map(|_| port_pair)
+                .map_err(|(err, _)| err);
+        }
+
+        let mut i = 0;
+        loop {
+            i += 1;
+            let candidate_port = random_port_pair(port_pair.remote());
+            match self.map.insert_device_conn(key, candidate_port, sock, ip_sock) {
+                Ok(()) => return Ok(candidate_port),
+                Err((err, (key_, _, sock_, ip_sock_))) => {
+                    if i == PORT_MAP_RETRY {
+                        return Err(err);
+                    }
+                    key = key_;
+                    sock = sock_;
+                    ip_sock = ip_sock_;
+                }
+            }
+        }
     }
 
     fn insert_listener(
@@ -122,7 +189,7 @@ impl<
         sock: T::ListenerSocket,
         ip_sock: IpListenerSocket<I>,
     ) -> Result<(), NetstackError> {
-        unimplemented!()
+        self.map.insert_listener(key, local_port, sock, ip_sock)
     }
 
     pub fn get_conn_by_key(

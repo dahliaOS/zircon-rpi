@@ -99,6 +99,7 @@ pub trait UdpEventDispatcher {
         log_unimplemented!((), "UdpEventDispatcher::receive_udp_from_conn: not implemented");
     }
 
+    /// Receive a UDP packet for a device connection.
     fn receive_udp_from_device_conn<A: IpAddr>(
         &mut self,
         conn: &Self::UdpDeviceConn,

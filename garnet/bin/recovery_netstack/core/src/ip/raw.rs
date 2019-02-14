@@ -196,7 +196,7 @@ pub fn connect_ip<D: EventDispatcher, I: Ip>(
     let (proto, ip) = addr.into_head_rest();
     let socket = IpConnSocket::new(ctx, ip, proto)?;
     let state = get_inner_state::<_, I>(ctx.state());
-    state.sockets.insert_conn(conn, proto, (), socket).map(|_| ())
+    state.sockets.insert_conn(conn, proto, (), socket).map(|_| ()).map_err(|(err, _)| err)
 }
 
 pub fn connect_all_ip<D: EventDispatcher, I: Ip>(
@@ -207,7 +207,11 @@ pub fn connect_all_ip<D: EventDispatcher, I: Ip>(
     let (proto, ip) = addr.into_head_rest();
     let socket = IpDeviceConnSocket::new(ctx, ip, proto)?;
     let state = get_inner_state::<_, I>(ctx.state());
-    state.sockets.insert_device_conn(device_conn, proto, (), socket).map(|_| ())
+    state
+        .sockets
+        .insert_device_conn(device_conn, proto, (), socket)
+        .map(|_| ())
+        .map_err(|(err, _)| err)
 }
 
 pub fn listen_ip<D: EventDispatcher, I: Ip>(
