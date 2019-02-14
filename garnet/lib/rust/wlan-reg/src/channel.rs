@@ -1,6 +1,7 @@
 extern crate toml;
 
 use super::country;
+use super::device_cap;
 use super::operclass;
 use super::utils;
 
@@ -240,21 +241,6 @@ pub fn build_operation_group(
     }
 }
 
-/// Returns the list of channel indexes that an underlying radio can tune to
-pub fn get_device_capable_chanidx_list() -> Vec<u8> {
-    // Note - the list does not distinguish the CBW-specific tunability.
-    // The ultimate CBW to use for an association requires the negotiation between peers.
-    // The fact that Operation Channel Group includes an non-empty list for a particular CBW
-    // does not either imply the device is capable of using a particular CBW nor the association
-    // in that CBW may take place.
-    let band_2ghz: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-    let band_5ghz: Vec<u8> = vec![
-        36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144,
-        149, 153, 157, 161, 165,
-    ];
-    [band_2ghz.as_slice(), band_5ghz.as_slice()].concat()
-}
-
 /// Returns what user configured not to use
 pub fn get_planned_non_operation_chanidx_list() -> Vec<u8> {
     // Stub
@@ -272,12 +258,12 @@ pub fn get_legitimate_group() -> Result<ChannelGroups, Error> {
     let juris = country::get_jurisdiction();
     let operclass_filepath = operclass::get_filepath(&juris);
     let operclass_toml = operclass::load_toml(&operclass_filepath)?;
-    let oper_classes = country::get_active_operating_classes();
+    let oper_classes = device_cap::get_operating_classes(juris.as_str())?;
     Ok(build_legitimate_group(&operclass_toml, &oper_classes))
 }
 
 pub fn get_operation_group() -> Result<ChannelGroups, Error> {
-    let capable = get_device_capable_chanidx_list();
+    let capable = device_cap::get_channels()?;
     let pno = get_planned_non_operation_chanidx_list();
     let blocked = get_blocked_chanidx_list();
     let legit_chan_groups = get_legitimate_group()?;
