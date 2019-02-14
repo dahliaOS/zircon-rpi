@@ -1,0 +1,70 @@
+version = "0.1.0" # Schema version
+jurisdiction = "GLOBAL"
+
+# TODO(porce): Add references
+
+
+# GLOBAL regulation is defined as the intersection of the regulations
+# of all jurisdiction on the Earth
+
+
+[2402-2472]
+    freq_beg = 2.402  # GHz
+    freq_end = 2.472 # GHz
+    chan_idx_beg = 1
+    chan_idx_end = 11
+
+    [2400-2483.role-any]
+        role = "any"
+        max_conduct_power = 20 # dBm
+        max_ant_gain = 0 # dBi. Unknown
+
+
+[5170-5250]
+    # Note the beginning frequency is _not_ 5.170 GHz, which corresponds to channel 36.
+    freq_beg = 5.170
+    freq_end = 5.250
+    chan_idx_beg = 36
+    chan_idx_end = 48
+
+    # Indoor only
+    # CBW20 only is to be controlled by the Operating Class
+    [5150-5250.role-any]
+        role = "any"
+        max_conduct_power = 20 # dBm
+        max_psd = 17 # dBm/MHz
+        max_ant_gain = 0 # dBi. Unknown
+
+
+[5250-5350]
+    # TODO(porce): Figure out the common rule for the DFS
+    # before this subband is decided to be usable.
+    do_not_use = true
+
+    is_dfs = true
+
+    freq_beg = 5.250
+    freq_end = 5.350
+    chan_idx_beg = 52 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
+    chan_idx_end = 64
+
+    # For reference, this is the rule from FCC.
+    # See FCC KDB905462 D02 v02 Table 3.
+    dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
+    dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+
+    dfs_channel_availability_check_time = 60000 # msec. 60 sec
+    dfs_channel_move_time = 10000 # msec. 10 sec.
+    dfs_channel_closing_tx_time = 200 # msec
+    dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
+    dfs_non_occupancy_period = 1800000 # msec. 30 minutes
+
+    # Indoor only
+    # CBW20 only is to be controlled by the Operating Class
+    [5250-5350.role-any]
+        role = "any"
+        # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
+        # At least 6 dB below the mean EIRP of 30 dBm.
+        max_conduct_power = 20 # dBm
+        max_psd = 17 # dBm/MHz
+        max_ant_gain = 0 # dBi
