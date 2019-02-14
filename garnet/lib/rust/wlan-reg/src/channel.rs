@@ -26,7 +26,7 @@ pub struct ChannelGroups {
 
 impl fmt::Display for ChannelGroups {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Channel Groups\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n{:14}: {:?}\n",
+        write!(f, "{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}",
             "2 GHz", self.band_2ghz,
             "5 GHz", self.band_5ghz,
             "DFS", self.dfs,
