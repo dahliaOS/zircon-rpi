@@ -185,7 +185,8 @@ zx_status_t Scheduler::GetCompletedOps(Op** op_list, size_t op_count, size_t* ou
     return ZX_OK;
 }
 
-void Scheduler::CompleteOp(Op* op, zx_status_t result) {
+void Scheduler::CompleteOp(Op* op, bool async) {
+    // Todo: don't block on async.
     fbl::AutoLock lock(&lock_);
     num_issued_ops_--;
     sem_post(&issue_sem_);
@@ -196,9 +197,12 @@ void Scheduler::CompleteOp(Op* op, zx_status_t result) {
         return;
     }
     fbl::AutoLock stream_lock(&stream->lock_);
-    op->result = result;
-    list_delete(&op->node);  // Remove from issued list.
-    list_add_tail(&completed_op_list_, &op->node); // Add to list of ops pending completion.
+    list_delete(&op->node);                        // Remove from issued list.
+    // If async, completion is deferred to worker threads in the completed list.
+    // Otherwise, scheduler is done with this op.
+    if (async) {
+        list_add_tail(&completed_op_list_, &op->node); // Add to list of completed ops.
+    }
 }
 
 // Close all streams.

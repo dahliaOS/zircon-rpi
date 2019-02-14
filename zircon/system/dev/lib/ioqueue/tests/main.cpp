@@ -9,11 +9,11 @@
 #include <zircon/listnode.h>
 
 struct TestOp {
+    IoOp op;
     list_node_t node;
     uint32_t id;
     bool issued;
     bool released;
-    IoOp op;
 };
 
 class IoQueueTest {
@@ -23,7 +23,8 @@ public:
     void Enqueue(TestOp* top);
     void SetQueue(IoQueue* q) { q_ = q; }
     IoQueue* GetQueue() { return q_; }
-    void CloseInput() { CancelAcquire(); }
+    void CloseInput(bool wait);
+    void GetCounts(uint32_t counts[3]);
 
     // Callbacks
     static zx_status_t cb_acquire(void* context, IoOp** op_list, size_t* op_count, bool wait) {
@@ -77,7 +78,28 @@ IoQueueTest::IoQueueTest() {
 void IoQueueTest::Enqueue(TestOp* top) {
     fbl::AutoLock lock(&lock_);
     list_add_tail(&in_list_, &top->node);
-    enqueued_count_++;
+    in_avail_.Signal();
+}
+
+void IoQueueTest::GetCounts(uint32_t count[3]) {
+    fbl::AutoLock lock(&lock_);
+    count[0] = enqueued_count_;
+    count[1] = issued_count_;
+    count[2] = released_count_;
+}
+
+void IoQueueTest::CloseInput(bool wait) {
+    printf("%s\n", __FUNCTION__);
+    if (wait) {
+        fbl::AutoLock lock(&lock_);
+        if (!list_is_empty(&in_list_)) {
+            printf("%s list is not empty\n", __FUNCTION__);
+            released_all_.Wait(&lock_);
+            assert(list_is_empty(&in_list_));
+            printf("%s emptied\n", __FUNCTION__);
+        }
+    }
+    CancelAcquire();
 }
 
 zx_status_t IoQueueTest::AcquireOps(IoOp** op_list, size_t* op_count, bool wait) {
@@ -102,17 +124,23 @@ zx_status_t IoQueueTest::AcquireOps(IoOp** op_list, size_t* op_count, bool wait)
         if (node == nullptr) {
             break;
         }
-        // io_list_remove(node);
         TestOp* top = containerof(node, TestOp, node);
         op_list[i] = &top->op;
+        printf("cb: acquire %u:%u\n", top->op.stream_id, top->id);
+        enqueued_count_++;
     }
     *op_count = i;
+    if (list_is_empty(&in_list_)) {
+        released_all_.Broadcast();
+    }
     return ZX_OK;
 }
 
 zx_status_t IoQueueTest::IssueOp(IoOp* op) {
-    printf("cb: issue %u:%u\n", op->stream_id, op->opcode);
+    printf("cb: issue %p\n", op);
     TestOp* top = containerof(op, TestOp, op);
+    printf("cb: issue %u:%u\n", op->stream_id, top->id);
+    assert(top->issued == false);
     top->issued = true;
     op->result = ZX_OK;
     fbl::AutoLock lock(&lock_);
@@ -121,15 +149,13 @@ zx_status_t IoQueueTest::IssueOp(IoOp* op) {
 }
 
 void IoQueueTest::ReleaseOp(IoOp* op) {
-    printf("cb: release %u:%u\n", op->stream_id, op->opcode);
+    printf("cb: release %p\n", op);
     TestOp* top = containerof(op, TestOp, op);
+    printf("cb: release %u:%u\n", op->stream_id, top->id);
+    assert(top->released == false);
     top->released = true;
     fbl::AutoLock lock(&lock_);
     released_count_++;
-    if (released_count_ == enqueued_count_) {
-        printf("%s:%u\n", __FUNCTION__, __LINE__);
-        released_all_.Broadcast();
-    }
 }
 
 void IoQueueTest::CancelAcquire() {
@@ -155,11 +181,12 @@ IoQueueCallbacks cb = {
 
 uint32_t num_workers;
 
+
 void op_test(IoQueueTest* test, int depth) {
     printf("%s\n", __FUNCTION__);
     const size_t num_ops = 10;
     TestOp tops[num_ops];
-    memset(tops, 0, sizeof(TestOp) * num_ops);
+    memset(tops, 0, sizeof(tops));
 
     tops[0].id = 100;
     tops[0].op.stream_id = 0;
@@ -184,7 +211,9 @@ void op_test(IoQueueTest* test, int depth) {
     test->Enqueue(&tops[3]);
     test->Enqueue(&tops[4]);
 
-    test->CloseInput();
+    // sleep(2);
+
+    test->CloseInput(true);
     printf("%s done\n", __FUNCTION__);
 }
 
@@ -200,6 +229,12 @@ void serve_test(IoQueueTest* test, int depth) {
         op_test(test, depth - 1);
     }
     IoQueueShutdown(q);
+
+    uint32_t count[3];
+    test->GetCounts(count);
+    printf("enq = %u, iss = %u, rel = %u\n", count[0], count[1], count[2]);
+    assert(count[0] == count[1]); // Enqueued == issued.
+    assert(count[1] == count[2]); // Issued == Released.
     printf("%s done\n", __FUNCTION__);
 }
 
@@ -223,7 +258,7 @@ void open_test(IoQueueTest* test, int depth) {
     assert(status == ZX_ERR_ALREADY_EXISTS);
 
     status = IoQueueOpenStream(q, kIoQueueMaxPri + 5, 7); // Open stream 7 at invalid priority.
-    // Failure expected
+    // Failure expected.
     assert(status == ZX_ERR_INVALID_ARGS);
 
     // valid streams are 0, 1, 2, 4
@@ -254,22 +289,25 @@ void create_test(int depth) {
 }
 
 void do_tests() {
-    const int max_depth = 3;
+    // const int max_depth = 3;
     num_workers = 1;
     printf("num workers = %u\n", num_workers);
-    for (int i = 0; i <= max_depth; i++) {
-        create_test(i);
-    }
+    create_test(3);
+    // for (int i = 0; i <= max_depth; i++) {
+    //     create_test(i);
+    // }
 
-    num_workers = 2;
-    printf("\nnum workers = %u\n", num_workers);
-    for (int i = 0; i <= max_depth; i++) {
-        create_test(i);
-    }
+    // num_workers = 2;
+    // printf("\nnum workers = %u\n", num_workers);
+    // for (int i = 0; i <= max_depth; i++) {
+    //     create_test(i);
+    // }
 }
 
 int main(int argc, char* argv[]) {
     printf("IO Queue test\n");
-    do_tests();
+    while(1) {
+        do_tests();
+    }
     return 0;
 }

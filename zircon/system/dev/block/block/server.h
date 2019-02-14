@@ -23,15 +23,14 @@
 #include <lib/fzl/fifo.h>
 #include <lib/sync/completion.h>
 #include <lib/zx/vmo.h>
+#include <ioqueue/queue.h>
 #include <zircon/device/block.h>
 #include <zircon/thread_annotations.h>
 #include <zircon/types.h>
 
-#include "io-queue.h"
 #include "txn-group.h"
 
 class ServerManager;
-using io_op_t = ioqueue::io_op_t;
 
 // Represents the mapping of "vmoid --> VMO"
 class IoBuffer : public fbl::WAVLTreeContainable<fbl::RefPtr<IoBuffer>>,
@@ -81,17 +80,18 @@ public:
     void Complete(zx_status_t status);
 
     block_op_t* Op() { return &op_; }
-    io_op_t* Iop() { return &iop_; }
+    IoOp* Iop() { return &iop_; }
 
     // This function is a fancy containerof() that gets around BlockMessage being a non-POD type.
-    static BlockMessage* FromIoOp(io_op_t* iop) {
+    static BlockMessage* FromIoOp(IoOp* iop) {
         BlockMessage* dummy = static_cast<BlockMessage*>(nullptr);
         uintptr_t ioff = reinterpret_cast<uintptr_t>(&dummy->iop_);
         uintptr_t iaddr = reinterpret_cast<uintptr_t>(iop);
         return reinterpret_cast<BlockMessage*>(iaddr - ioff);
     }
 
-    void AsyncCompleteNotify(zx_status_t status);
+    // static void AsyncCompleteNotify(zx_status_t status);
+    static void CompleteCallback(void* cookie, zx_status_t status, block_op_t* bop);
 
     // Overloaded new operator allows variable-sized allocation to match block op size.
     void* operator new(size_t size) = delete;
@@ -106,7 +106,7 @@ private:
     reqid_t reqid_;
     groupid_t group_;
     size_t op_size_;
-    io_op_t iop_;
+    IoOp iop_;
     // Must be at the end of structure.
     union {
         block_op_t op_;
@@ -125,7 +125,7 @@ public:
 
     // Starts the BlockServer using the current thread
     zx_status_t AttachVmo(zx::vmo vmo, vmoid_t* out) TA_EXCL(server_lock_);
-    ioqueue::QueueOps* GetOps() { return &ops_; }
+    IoQueueCallbacks* GetOps() { return &ops_; }
 
     // Updates the total number of pending txns, possibly signals
     // the queue-draining thread to wake up if they are waiting
@@ -141,7 +141,7 @@ public:
     // (If appropriate) tells the client that their operation is done.
     void TxnComplete(zx_status_t status, reqid_t reqid, groupid_t group);
 
-    void AsyncCompleteNotify(io_op_t* op, zx_status_t status);
+    void AsyncCompleteNotify(IoOp* op);
 
     void Shutdown();
     ~BlockServer();
@@ -164,19 +164,19 @@ private:
     // Functions that read from the fifo and invoke the queue drainer.
     // Should not be invoked concurrently.
     zx_status_t Read(block_fifo_request_t* requests, size_t max, size_t* actual);
-    size_t FillFromIntakeQueue(io_op_t** op_list, size_t max_ops);
+    size_t FillFromIntakeQueue(IoOp** op_list, size_t max_ops);
 
     zx_status_t FindVmoIDLocked(vmoid_t* out) TA_REQ(server_lock_);
 
     // Called indirectly by Queue ops.
-    zx_status_t Intake(io_op_t** op_list, size_t* op_count, bool wait);
-    zx_status_t Service(io_op_t* op);
+    zx_status_t Intake(IoOp** op_list, size_t* op_count, bool wait);
+    zx_status_t Service(IoOp* op);
     void SignalFifoCancel();
 
     // Queue ops
-    static zx_status_t OpAcquire(void* context, io_op_t** op_list, size_t* op_count, bool wait);
-    static zx_status_t OpIssue(void* context, io_op_t* op);
-    static void OpRelease(void* context, io_op_t* op);
+    static zx_status_t OpAcquire(void* context, IoOp** op_list, size_t* op_count, bool wait);
+    static zx_status_t OpIssue(void* context, IoOp* op);
+    static void OpRelease(void* context, IoOp* op);
     static void OpCancelAcquire(void* context);
     static void FatalFromQueue(void* context);
 
@@ -199,5 +199,5 @@ private:
     vmoid_t last_id_ TA_GUARDED(server_lock_);
 
     ServerManager* manager_;
-    ioqueue::QueueOps ops_{};
+    IoQueueCallbacks ops_{};
 };

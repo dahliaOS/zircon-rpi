@@ -14,9 +14,15 @@
 
 #define IO_QUEUE_MAX_WORKERS        8
 
+class IoQueue {
+public:
+    IoQueue() = default;
+    ~IoQueue() = default;
+};
+
 namespace ioqueue {
 
-class Queue {
+class Queue : public IoQueue {
 public:
     // Client API - synchronous calls.
     // -------------------------------
@@ -38,7 +44,7 @@ public:
 
     // Client API - asynchronous calls.
     // --------------------------------
-    void AsyncCompleteOp(Op* op, zx_status_t result) { sched_.CompleteOp(op, result); }
+    void AsyncCompleteOp(Op* op) { sched_.CompleteOp(op, true); }
 
     // API invoked by worker threads.
     // ------------------------------

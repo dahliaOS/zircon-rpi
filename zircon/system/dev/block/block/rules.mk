@@ -10,15 +10,12 @@ MODULE_TYPE := driver
 
 MODULE_SRCS := \
     $(LOCAL_DIR)/block.cpp \
-    $(LOCAL_DIR)/io-scheduler.cpp \
-    $(LOCAL_DIR)/io-stream.cpp \
-    $(LOCAL_DIR)/io-queue.cpp \
-    $(LOCAL_DIR)/io-worker.cpp \
     $(LOCAL_DIR)/server.cpp \
     $(LOCAL_DIR)/server-manager.cpp \
     $(LOCAL_DIR)/txn-group.cpp \
 
 MODULE_STATIC_LIBS := \
+    system/dev/lib/ioqueue \
     system/ulib/ddk \
     system/ulib/ddktl \
     system/ulib/fbl \
@@ -27,7 +24,10 @@ MODULE_STATIC_LIBS := \
     system/ulib/zx \
     system/ulib/zxcpp \
 
-MODULE_LIBS := system/ulib/c system/ulib/driver system/ulib/zircon
+MODULE_LIBS := \
+    system/ulib/c \
+    system/ulib/driver \
+    system/ulib/zircon \
 
 MODULE_BANJO_LIBS := \
     system/banjo/ddk-protocol-block \

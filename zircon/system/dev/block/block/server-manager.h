@@ -10,9 +10,9 @@
 #include <ddktl/protocol/block.h>
 #include <lib/zx/fifo.h>
 #include <lib/zx/vmo.h>
+#include <ioqueue/queue.h>
 #include <zircon/types.h>
 
-#include "io-queue.h"
 #include "server.h"
 
 // ServerManager controls the state of a background thread (or threads) servicing Fifo
@@ -41,9 +41,7 @@ public:
     // Returns an error if a server is not currently running.
     zx_status_t AttachVmo(zx::vmo vmo, vmoid_t* out_vmoid);
 
-    inline void AsyncCompleteNotify(ioqueue::io_op_t* op, zx_status_t result) {
-        queue_->AsyncCompleteOp(op, result);
-    }
+    inline void AsyncCompleteNotify(IoOp* op) { IoQueueAsyncCompleteOp(queue_.get(), op); }
 
     // Notification that the client FIFO has been closed.
     void AsyncClientExited();
@@ -60,5 +58,5 @@ private:
 
     std::atomic<ServerManagerState> state_ = SM_STATE_SHUTDOWN;
     std::unique_ptr<BlockServer> server_ = nullptr;
-    std::unique_ptr<ioqueue::Queue> queue_ = nullptr;
+    IoQueueUniquePtr queue_;
 };

@@ -30,6 +30,7 @@ struct Op {
     uint64_t _unused[4];
 
     static IoOp* ToIoOp(Op* op) { return reinterpret_cast<IoOp*>(op); }
+    static Op* FromIoOp(IoOp* iop) { return reinterpret_cast<Op*>(iop); }
     static IoOp** ToIoOpList(Op** list) { return reinterpret_cast<IoOp**>(list); }
 };
 

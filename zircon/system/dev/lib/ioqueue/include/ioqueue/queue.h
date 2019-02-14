@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <memory>
 #include <stdint.h>
 
 #include <zircon/types.h>
@@ -38,7 +39,7 @@ struct IoQueueCallbacks {
     void (*fatal)(void* context);
 };
 
-typedef void IoQueue;
+class IoQueue;
 
 zx_status_t IoQueueCreate(const IoQueueCallbacks* cb, IoQueue** q_out);
 zx_status_t IoQueueOpenStream(IoQueue* q, uint32_t priority, uint32_t id);
@@ -47,4 +48,12 @@ zx_status_t IoQueueServe(IoQueue* q, uint32_t num_workers);
 void IoQueueShutdown(IoQueue* q);
 void IoQueueDestroy(IoQueue* q);
 
-void IoQueueAsyncCompleteOp(IoQueue* q, IoOp* op, zx_status_t result);
+void IoQueueAsyncCompleteOp(IoQueue* q, IoOp* op);
+
+class IoQueueUniquePtr : public std::unique_ptr<IoQueue, decltype(&IoQueueDestroy)> {
+public:
+    IoQueueUniquePtr(IoQueue* q = nullptr) :
+        std::unique_ptr<IoQueue, decltype(&IoQueueDestroy)>(q, IoQueueDestroy) {
+    }
+};
+

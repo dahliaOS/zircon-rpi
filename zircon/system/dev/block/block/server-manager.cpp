@@ -34,15 +34,15 @@ zx_status_t ServerManager::Start(ddk::BlockProtocolClient* protocol, zx::fifo* o
         return status;
     }
 
-    fbl::AllocChecker ac;
-    std::unique_ptr<ioqueue::Queue> queue(new (&ac) ioqueue::Queue(server->GetOps()));
-    if (!ac.check()) {
+    IoQueue* q = nullptr;
+    if ((status = IoQueueCreate(server->GetOps(), &q)) != ZX_OK) {
         printf("Failed to allocate queue\n");
         return ZX_ERR_NO_MEMORY;
     }
+    IoQueueUniquePtr queue(q);
 
     for (uint32_t i = 0; i <= MAX_TXN_GROUP_COUNT; i++) {
-        if ((status = queue->OpenStream(kDefaultStreamPriority, i)) != ZX_OK) {
+        if ((status = IoQueueOpenStream(queue.get(), kDefaultStreamPriority, i)) != ZX_OK) {
             printf("Failed to open stream\n");
             return status;
         }
@@ -51,7 +51,7 @@ zx_status_t ServerManager::Start(ddk::BlockProtocolClient* protocol, zx::fifo* o
     server_ = std::move(server);
     queue_ = std::move(queue);
     state_.store(SM_STATE_SERVING);
-    status = queue_->Serve(1);
+    status = IoQueueServe(queue_.get(), 1);
     if (status != ZX_OK) {
         printf("Serve returned failure\n");
         Shutdown();
@@ -66,7 +66,7 @@ void ServerManager::Shutdown() {
     if (state_.load() == SM_STATE_SHUTDOWN) {
         return;
     }
-    queue_->Shutdown();
+    IoQueueShutdown(queue_.get());
     server_->Shutdown();
     server_.reset();
     queue_.reset();

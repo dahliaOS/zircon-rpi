@@ -173,3 +173,8 @@ void IoQueueShutdown(IoQueue* q) {
    ioqueue::Queue* queue = static_cast<ioqueue::Queue*>(q);
    queue->Shutdown();
 }
+
+void IoQueueAsyncCompleteOp(IoQueue* q, IoOp* op) {
+   ioqueue::Queue* queue = static_cast<ioqueue::Queue*>(q);
+   queue->AsyncCompleteOp(ioqueue::Op::FromIoOp(op));
+}

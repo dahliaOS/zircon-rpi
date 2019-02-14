@@ -50,12 +50,6 @@ void OutOfBandRespond(const fzl::fifo<block_fifo_response_t, block_fifo_request_
     }
 }
 
-void BlockCompleteCb(void* cookie, zx_status_t status, block_op_t* bop) {
-    ZX_DEBUG_ASSERT(bop != nullptr);
-    BlockMessage* message = static_cast<BlockMessage*>(cookie);
-    message->AsyncCompleteNotify(status);
-}
-
 uint32_t OpcodeToCommand(uint32_t opcode) {
     // TODO(ZX-1826): Unify block protocol and block device interface
     static_assert(BLOCK_OP_READ == BLOCKIO_READ, "");
@@ -116,7 +110,7 @@ void BlockMessage::Init(fbl::RefPtr<IoBuffer> iobuf, BlockServer* server,
     group_ = req->group;
     iop_.flags = 0;
     iop_.result = ZX_OK;
-    iop_.sid = req->group;
+    iop_.stream_id = req->group;
 }
 
 void BlockMessage::Complete(zx_status_t status) {
@@ -125,8 +119,10 @@ void BlockMessage::Complete(zx_status_t status) {
     iobuf_ = nullptr;
 }
 
-void BlockMessage::AsyncCompleteNotify(zx_status_t status) {
-    server_->AsyncCompleteNotify(this->Iop(), status);
+void BlockMessage::CompleteCallback(void* cookie, zx_status_t status, block_op_t* bop) {
+    BlockMessage* message = static_cast<BlockMessage*>(cookie);
+    message->iop_.result = status;
+    message->server_->AsyncCompleteNotify(&message->iop_);
 }
 
 void BlockServer::BarrierComplete() {
@@ -140,6 +136,10 @@ void BlockServer::BarrierComplete() {
 #endif
 }
 
+void BlockServer::AsyncCompleteNotify(IoOp* op) {
+    manager_->AsyncCompleteNotify(op);
+}
+
 void BlockServer::TxnComplete(zx_status_t status, reqid_t reqid, groupid_t group) {
     if (group == kNoGroup) {
         OutOfBandRespond(fifo_, status, reqid, group);
@@ -147,10 +147,6 @@ void BlockServer::TxnComplete(zx_status_t status, reqid_t reqid, groupid_t group
         ZX_DEBUG_ASSERT(group < MAX_TXN_GROUP_COUNT);
         groups_[group].Complete(status);
     }
-}
-
-void BlockServer::AsyncCompleteNotify(io_op_t* op, zx_status_t status) {
-    manager_->AsyncCompleteNotify(op, status);
 }
 
 zx_status_t BlockServer::Read(block_fifo_request_t* requests, size_t max, size_t* actual) {
@@ -227,7 +223,7 @@ void BlockServer::TxnEnd() {
     // }
 }
 
-zx_status_t BlockServer::Service(io_op_t* op) {
+zx_status_t BlockServer::Service(IoOp* op) {
     BlockMessage* msg = BlockMessage::FromIoOp(op);
 #if 0
     // TODO: remove barrier handling from this.
@@ -256,7 +252,7 @@ zx_status_t BlockServer::Service(io_op_t* op) {
     // are capable of implementing hardware barriers.
     msg->op.command &= ~(BLOCK_FL_BARRIER_BEFORE | BLOCK_FL_BARRIER_AFTER);
 #endif
-    bp_->Queue(msg->Op(), BlockCompleteCb, msg);
+    bp_->Queue(msg->Op(), BlockMessage::CompleteCallback, msg);
     return ZX_ERR_ASYNC; // Enqueued.
 }
 
@@ -457,7 +453,7 @@ zx_status_t BlockServer::ProcessRequest(block_fifo_request_t* request) {
     return status;
 }
 
-size_t BlockServer::FillFromIntakeQueue(io_op_t** op_list, size_t max_ops) {
+size_t BlockServer::FillFromIntakeQueue(IoOp** op_list, size_t max_ops) {
     size_t i;
     for (i = 0; i < max_ops; i++) {
         BlockMessage* msg = intake_queue_.pop_front();
@@ -469,7 +465,7 @@ size_t BlockServer::FillFromIntakeQueue(io_op_t** op_list, size_t max_ops) {
     return i;
 }
 
-zx_status_t BlockServer::Intake(io_op_t** op_list, size_t* op_count, bool wait) {
+zx_status_t BlockServer::Intake(IoOp** op_list, size_t* op_count, bool wait) {
     size_t max_ops = *op_count;
     if (max_ops == 0) {
         return ZX_ERR_INVALID_ARGS;
@@ -545,17 +541,17 @@ void BlockServer::Shutdown() {
     ZX_ASSERT(intake_queue_.is_empty());
 }
 
-zx_status_t BlockServer::OpAcquire(void* context, io_op_t** op_list, size_t* op_count, bool wait) {
+zx_status_t BlockServer::OpAcquire(void* context, IoOp** op_list, size_t* op_count, bool wait) {
     BlockServer* bs = static_cast<BlockServer*>(context);
     return bs->Intake(op_list, op_count, wait);
 }
 
-zx_status_t BlockServer::OpIssue(void* context, io_op_t* op) {
+zx_status_t BlockServer::OpIssue(void* context, IoOp* op) {
     BlockServer* bs = static_cast<BlockServer*>(context);
     return bs->Service(op);
 }
 
-void BlockServer::OpRelease(void* context, io_op_t* op) {
+void BlockServer::OpRelease(void* context, IoOp* op) {
     BlockMessage* msg = BlockMessage::FromIoOp(op);
     msg->Complete(op->result);
     delete msg;
