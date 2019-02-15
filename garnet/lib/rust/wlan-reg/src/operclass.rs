@@ -129,9 +129,15 @@ mod tests {
 
     #[test]
     fn test_load_toml() {
-        const FILE_PATH: &str = "./data/operating_class_US.toml";
-        assert!(load_toml(FILE_PATH).is_ok());
+        const FILES: [&str; 2] = ["./data/operating_class_US.toml", "./data/operating_class_GLOBAL.toml"];
+        for f in FILES.iter() {
+            match load_toml(f) {
+                Ok(_) => (),
+                Err(e) => { println!("Error while processing {} : {}", f,e); assert!(false)},
+            };
+        }
     }
+
     #[test]
     fn test_get_filepath() {
         let got = get_filepath("XYZ");

@@ -134,3 +134,29 @@ pub fn get_filepath(jurisdiction: &str) -> String {
         REGULATION_FILENAME_SUFFIX,
     )
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_filepath() {
+        let got = get_filepath("XYZ");
+        let want = "./data/regulation_XYZ.toml".to_string();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn test_load_toml() {
+        const FILES: [&str; 2] = ["./data/regulation_US.toml", "./data/regulation_GLOBAL.toml"];
+        for f in FILES.iter() {
+            match load_toml(f) {
+                Ok(_) => (),
+                Err(e) => { println!("Error while processing {} : {}", f,e); assert!(false)},
+            };
+        }
+    }
+
+
+}

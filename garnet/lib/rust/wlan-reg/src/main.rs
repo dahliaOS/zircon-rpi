@@ -115,9 +115,9 @@ fn main() {
     show_device_cap();
 
     show_legit_chan_group();
-    show_oper_chan_group();
 
     show_sample_chan_config();
+    show_oper_chan_group();
 
     show_power_budget();
     println!("");
