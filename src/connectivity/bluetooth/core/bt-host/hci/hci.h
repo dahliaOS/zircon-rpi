@@ -301,7 +301,7 @@ struct AuthenticationRequestedCommandParams {
 
 // =================================================
 // Set Connection Encryption Command (v1.1) (BR/EDR)
-constexpr OpCode kiSetConnectionEncryption = LinkControlOpCode(0x0013);
+constexpr OpCode kSetConnectionEncryption = LinkControlOpCode(0x0013);
 
 struct SetConnectionEncryptionCommandParams {
   // Connection_Handle (only the lower 12-bits are meaningful).
@@ -445,6 +445,47 @@ constexpr OpCode kUserConfirmationRequestNegativeReply =
 
 struct UserConfirmationRequestNegativeReplyCommandParams {
   // The BD_ADDR of the remote device involved in the simple pairing process.
+  DeviceAddressBytes bd_addr;
+} __PACKED;
+
+// ========================================================
+// User Passkey Request Reply Command (v2.1 + EDR) (BR/EDR)
+constexpr OpCode kUserPasskeyRequestReply = LinkControlOpCode(0x002E);
+
+struct UserPasskeyRequestReplyCommandParams {
+  // The BD_ADDR of the remote device involved in the simple pairing process.
+  DeviceAddressBytes bd_addr;
+
+  // Numeric value (passkey) entered by user. Valid values are 0 - 999999.
+  uint32_t numeric_value;
+} __PACKED;
+
+// =================================================================
+// User Passkey Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+constexpr OpCode kUserPasskeyRequestNegativeReply = LinkControlOpCode(0x002F);
+
+struct UserPasskeyRequestNegativeReplyCommandParams {
+  // The BD_ADDR of the remote device involved in the simple pairing process.
+  DeviceAddressBytes bd_addr;
+} __PACKED;
+
+// ==================================================================
+// IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+constexpr OpCode kIOCapabilityRequestNegativeReply = LinkControlOpCode(0x0034);
+
+struct IOCapabilityRequestNegativeReplyCommandParams {
+  // The BD_ADDR of the remote device involved in simple pairing process
+  DeviceAddressBytes bd_addr;
+
+  // Reason that Simple Pairing was rejected. See 7.1.36 for valid error codes.
+  StatusCode reason;
+} __PACKED;
+
+struct IOCapabilityRequestNegativeReplyReturnParams {
+  // See enum StatusCode in hci_constants.h.
+  StatusCode status;
+
+  // BD_ADDR of the remote device involved in simple pairing process
   DeviceAddressBytes bd_addr;
 } __PACKED;
 
@@ -1389,9 +1430,35 @@ struct UserConfirmationRequestEventParams {
 // User Passkey Request Event (v2.1 + EDR) (BR/EDR)
 constexpr EventCode kUserPasskeyRequestEventCode = 0x34;
 
+struct UserPasskeyRequestEventParams {
+  // Address of the device involved in simple pairing process
+  DeviceAddressBytes bd_addr;
+} __PACKED;
+
+// ===================================================
+// Simple Pairing Complete Event (v2.1 + EDR) (BR/EDR)
+constexpr EventCode kSimplePairingCompleteEventCode = 0x36;
+
+struct SimplePairingCompleteEventParams {
+  // See enum StatusCode in hci_constants.h.
+  StatusCode status;
+
+  // Address of the device involved in simple pairing process
+  DeviceAddressBytes bd_addr;
+} __PACKED;
+
 // =====================================================
 // User Passkey Notification Event (v2.1 + EDR) (BR/EDR)
 constexpr EventCode kUserPasskeyNotificationEventCode = 0x3B;
+
+struct UserPasskeyNotificationEventParams {
+  // Address of the device involved in simple pairing process
+  DeviceAddressBytes bd_addr;
+
+  // Numeric value (passkey) entered by user. Valid values are 0 - 999999.
+  uint32_t numeric_value;
+} __PACKED;
+
 
 // =========================
 // LE Meta Event (v4.0) (LE)
