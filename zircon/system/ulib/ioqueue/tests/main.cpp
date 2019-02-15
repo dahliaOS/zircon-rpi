@@ -230,8 +230,7 @@ void serve_test(IoQueueTest* test, int depth) {
     uint32_t count[3];
     test->GetCounts(count);
     printf("enq = %u, iss = %u, rel = %u\n", count[0], count[1], count[2]);
-    assert(count[0] == count[1]); // Enqueued == issued.
-    assert(count[1] == count[2]); // Issued == Released.
+    assert(count[0] == count[2]); // Enqueued == Released.
     printf("%s done\n", __FUNCTION__);
 }
 
