@@ -15,11 +15,11 @@ MODULE_SRCS := \
     $(LOCAL_DIR)/txn-group.cpp \
 
 MODULE_STATIC_LIBS := \
-    system/dev/lib/ioqueue \
     system/ulib/ddk \
     system/ulib/ddktl \
     system/ulib/fbl \
     system/ulib/fzl \
+    system/ulib/ioqueue \
     system/ulib/sync \
     system/ulib/zx \
     system/ulib/zxcpp \

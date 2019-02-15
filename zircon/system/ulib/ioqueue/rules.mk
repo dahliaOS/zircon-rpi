@@ -30,8 +30,8 @@ MODULE_SRCS := \
     $(LOCAL_DIR)/tests/main.cpp \
 
 MODULE_STATIC_LIBS := \
-    system/dev/lib/ioqueue \
     system/ulib/fbl \
+    system/ulib/ioqueue \
     system/ulib/zxcpp \
 
 MODULE_LIBS := \
