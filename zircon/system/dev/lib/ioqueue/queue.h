@@ -64,7 +64,7 @@ private:
     bool shutdown_ = true;          // Queue has been shut down.
     uint32_t num_workers_ = 0;      // Number of worker threads.
     uint32_t active_workers_ = 0;   // Number of active workers.
-    cnd_t event_workers_exited_;    // All workers have exited.
+    fbl::ConditionVariable event_workers_exited_;    // All workers have exited.
     uint32_t acquire_workers_ = 0;  // Number of worker threads in acquire.
     const IoQueueCallbacks* ops_ = nullptr;
     Worker worker[IO_QUEUE_MAX_WORKERS]; // Array of worker objects.

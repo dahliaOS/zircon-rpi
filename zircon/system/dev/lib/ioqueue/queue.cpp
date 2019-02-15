@@ -10,16 +10,13 @@
 
 namespace ioqueue {
 
-Queue::Queue(const IoQueueCallbacks* cb) : sched_(), shutdown_(false), ops_(cb) {
-    cnd_init(&event_workers_exited_);
-}
+Queue::Queue(const IoQueueCallbacks* cb) : sched_(), shutdown_(false), ops_(cb) {}
 
 Queue::~Queue() {
     // printf("%s:%u\n", __FUNCTION__, __LINE__);
     if (!shutdown_) {
         Shutdown();
     }
-    cnd_destroy(&event_workers_exited_);
 }
 
 zx_status_t Queue::OpenStream(uint32_t priority, uint32_t id) {
@@ -109,7 +106,7 @@ void Queue::Shutdown() {
         fbl::AutoLock lock(&lock_);
         if (active_workers_ > 0) {
             // printf("q: waiting on worker exit\n");
-            cnd_wait(&event_workers_exited_, lock_.GetInternal());
+            event_workers_exited_.Wait(&lock_);
             assert(active_workers_ == 0);
         }
         for (uint32_t i = 0; i < num_workers_; i++) {
@@ -125,7 +122,7 @@ void Queue::WorkerExited(uint32_t id) {
     // printf("worker %u exiting, num_workers = %u\n", id, active_workers_);
     if (active_workers_ == 0) {
         // printf("signalling all workers exited\n");
-        cnd_broadcast(&event_workers_exited_);
+        event_workers_exited_.Broadcast();
     }
 }
 
