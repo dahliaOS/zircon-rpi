@@ -30,7 +30,8 @@ public:
 
     zx_status_t AddStream(StreamRef stream);
     StreamRef FindStream(uint32_t id);
-    zx_status_t RemoveStream(uint32_t id);
+    void RemoveStream(StreamRef stream);
+    void RemoveStreamLocked(StreamRef stream);
 
     zx_status_t InsertOps(Op** op_list, size_t op_count, size_t* out_num_ready);
     zx_status_t GetNextOp(bool wait, Op** op_out);

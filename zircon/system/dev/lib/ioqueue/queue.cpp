@@ -45,16 +45,34 @@ zx_status_t Queue::OpenStream(uint32_t priority, uint32_t id) {
 }
 
 zx_status_t Queue::CloseStream(uint32_t id) {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
-    {
+     // printf("%s:%u\n", __FUNCTION__, __LINE__);
+    for (bool first = true; ; first = false) {
         fbl::AutoLock lock(&lock_);
-        assert(!shutdown_);
-        if (shutdown_) {
-            // Shutdown will handle closing this stream
-            return ZX_ERR_BAD_STATE;
+        if (first) {
+            assert(!shutdown_);
+            first = false;
         }
+         if (shutdown_) {
+             // Shutdown will handle closing this stream
+             return ZX_ERR_BAD_STATE;
+         }
+        StreamRef stream = sched_.FindStream(id);
+        if (stream == nullptr) {
+             return ZX_ERR_INVALID_ARGS;
+        }
+        fbl::AutoLock stream_lock(&stream->lock_);
+        stream->flags_ |= kIoStreamFlagClosed;
+        // Once closed, the stream cannot transition from idle to scheduled.
+        if ((stream->flags_ & kIoStreamFlagScheduled) == 0) {
+            sched_.RemoveStreamLocked(stream);
+            return ZX_OK;
+        }
+        lock.release();
+        // Wait until all commands have completed.
+        stream->event_unscheduled_.Wait(&stream->lock_);
+        assert((stream->flags_ & kIoStreamFlagScheduled) == 0);
+        // Have stream lock, but not queue lock. Order of locks requires taking queue lock first.
     }
-    return sched_.RemoveStream(id);
 }
 
 zx_status_t Queue::Serve(uint32_t num_workers) {

@@ -61,10 +61,10 @@ public:
     ListNodeState list_node_;
     uint32_t id_;
     uint32_t priority_;
-    uint32_t flags_ = 0;
 
     fbl::Mutex lock_;
     // These fields are protected by the above stream lock.
+    uint32_t flags_ = 0;
     fbl::ConditionVariable event_unscheduled_;
     list_node_t ready_op_list_;
     list_node_t issued_op_list_;
