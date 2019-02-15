@@ -25,6 +25,9 @@ jurisdiction = "US"
     chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
     chan_idx_end = 13
 
+    is_indoor = true
+    is_outdoor = true
+
     [2400-2483.role-any]
         role = "any"
         # Summed across all antennas. 15.247.b.3. For up to 6 dBi antenna
@@ -40,6 +43,9 @@ jurisdiction = "US"
     freq_end = 5.250
     chan_idx_beg = 34
     chan_idx_end = 48
+
+    is_indoor = true
+    is_outdoor = true
 
     [5150-5250.role-indoor_ap]
         role = "indoor_ap"
@@ -77,6 +83,9 @@ jurisdiction = "US"
     chan_idx_beg = 50 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
     chan_idx_end = 68
 
+    is_indoor = true
+    is_outdoor = true
+
     # See FCC KDB905462 D02 v02 Table 3.
     dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
     dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
@@ -106,6 +115,9 @@ jurisdiction = "US"
     chan_idx_beg = 96
     chan_idx_end = 142 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
 
+    is_indoor = true
+    is_outdoor = true
+
     [5470-5725.role-any]
         role = "any"
         # 250 mWatts or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
@@ -119,6 +131,9 @@ jurisdiction = "US"
     freq_end = 5.850 # GHz
     chan_idx_beg = 144 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
     chan_idx_end = 165
+
+    is_indoor = true
+    is_outdoor = true
 
     [5725-5850.role-any]
         role = "any"

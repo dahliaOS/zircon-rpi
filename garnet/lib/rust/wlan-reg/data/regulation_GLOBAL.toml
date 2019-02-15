@@ -14,7 +14,7 @@ jurisdiction = "GLOBAL"
     chan_idx_beg = 1
     chan_idx_end = 11
 
-    [2400-2483.role-any]
+    [2402-2472.role-any]
         role = "any"
         max_conduct_power = 20 # dBm
         max_ant_gain = 0 # dBi. Unknown
@@ -27,9 +27,11 @@ jurisdiction = "GLOBAL"
     chan_idx_beg = 36
     chan_idx_end = 48
 
-    # Indoor only
+    is_indoor = true
+    is_outdoor = false
+
     # CBW20 only is to be controlled by the Operating Class
-    [5150-5250.role-any]
+    [5170-5250.role-any]
         role = "any"
         max_conduct_power = 20 # dBm
         max_psd = 17 # dBm/MHz
@@ -48,6 +50,9 @@ jurisdiction = "GLOBAL"
     chan_idx_beg = 52 # Note Channel 50 overlaps with UNII-1 and UNII-2A both.
     chan_idx_end = 64
 
+    is_indoor = true
+    is_outdoor = false
+
     # For reference, this is the rule from FCC.
     # See FCC KDB905462 D02 v02 Table 3.
     dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
@@ -59,7 +64,6 @@ jurisdiction = "GLOBAL"
     dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
     dfs_non_occupancy_period = 1800000 # msec. 30 minutes
 
-    # Indoor only
     # CBW20 only is to be controlled by the Operating Class
     [5250-5350.role-any]
         role = "any"
