@@ -113,10 +113,16 @@ zx_status_t ArmIspDevice::InitIsp() {
 
     IspHWReset(false);
 
+    // validate the ISP product ID
     if (ISP_PRODUCT_ID::Get().ReadFrom(&isp_mmio_).reg_value() != PRODUCT_ID_DEFAULT) {
         zxlogf(ERROR, "%s: Unknown product ID\n", __func__);
         return ZX_ERR_NOT_SUPPORTED;
     }
+
+    // Disable and clear all IRQs
+    ISP_MASK_VECTOR::Get().ReadFrom(&isp_mmio_).mask_all().WriteTo(&isp_mmio_);
+
+    IspLoadInitSequences();
 
     return ZX_OK;
 }
