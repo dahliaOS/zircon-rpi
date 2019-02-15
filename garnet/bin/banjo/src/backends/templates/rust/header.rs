@@ -5,7 +5,8 @@
 // WARNING: THIS FILE IS MACHINE GENERATED. DO NOT EDIT.
 // Generated from the {primary_namespace} banjo file
 
-#![allow(warnings)]
+#![allow(unused_imports, non_camel_case_types)]
+
 use fuchsia_zircon as zircon;
 use fuchsia_ddk as ddk;
 

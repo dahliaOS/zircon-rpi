@@ -5,8 +5,9 @@
 // WARNING: THIS FILE IS MACHINE GENERATED. DO NOT EDIT.
 // Generated from the banjo.examples.empty banjo file
 
+#![allow(unused_imports)]
 use fuchsia_zircon as zircon;
-use fuchsia_ddk_sys as ddk;
+use fuchsia_ddk as ddk;
 
 // C ABI compat
 

@@ -50,9 +50,10 @@ fn to_rust_type(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
         ast::Ty::Float32 => Ok(String::from("f32")),
         ast::Ty::Float64 => Ok(String::from("f64")),
         ast::Ty::USize => Ok(String::from("usize")),
-        ast::Ty::Array { .. } => Ok(String::from("*mut u8 /* TODO ARRAY */ ")),
-        ast::Ty::Voidptr => Ok(String::from("*mut u8 /* TODO void?! */ ")),
-        ast::Ty::Str { .. } => Ok(String::from("*mut u8 /*TODO String */")),
+        ast::Ty::Array { .. } => Ok(String::from("*mut libc::c_void /* Array */ ")),
+        ast::Ty::Voidptr => Ok(String::from("*mut libc::c_void /* Voidptr */ ")),
+        ast::Ty::Enum { .. } => Ok(String::from("*mut libc::c_void /* Enum not right*/")),
+        ast::Ty::Str { .. } => Ok(String::from("*mut libc::c_void /* String */")),
         ast::Ty::Vector { ref ty, size: _, nullable: _ } => to_rust_type(ast, ty),
         ast::Ty::Identifier { id, reference } => {
             let ptr = if *reference { "*mut "} else { "" };
@@ -148,17 +149,34 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                         },
                         // TODO struct implementation
                         ast::Ty::Struct => panic!("implement struct"),
+                        ast::Ty::Vector {..} => {
+                            let ty_name = to_rust_type(ast, ty).unwrap();
+                            //if vec_ty.is_reference() {
+                            //    format!("{ty}** out_{name}_{buffer}, size_t* {name}_{size}",
+                            //            buffer = c::name_buffer(&name),
+                            //            size = c::name_size(&name),
+                            //            ty = ty_name,
+                            //            name = c::to_c_name(name))
+                            //} else {
+                            format!("out_{name}_{buffer}: {ty}, {name}_{size}: libc::size_t, \
+                                    out_{name}_actual: *mut libc::size_t",
+                                    buffer = c::name_buffer(&ty_name),
+                                    size = c::name_size(&name),
+                                    ty = ty_name,
+                                    name = c::to_c_name(name))
+                        },
                         _ => format!("{}: {}", c::to_c_name(name), to_rust_type(ast, ty).unwrap()),
                     }
                 })
                 .collect();
             params.extend(out_params);
 
+
             fns.push(format!(
                 include_str!("templates/rust/protocol_fn.rs"),
                 fn_name = c::to_c_name(method.name.as_str()),
                 return_param = return_param,
-                params = params.join(", ")
+                params = params.join(", "),
             ));
         }
         Ok(fns.join("\n"))
@@ -180,12 +198,12 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                 .collect();
 
             let mut out_params_iter = method.out_params.iter();
-            let return_param = match get_first_param(ast, method) {
+            let (return_param, return_param_name) = match get_first_param(ast, method) {
                 Some(p) => {
                     out_params_iter.next();
-                    to_rust_type(ast, &p.1)?
+                    (to_rust_type(ast, &p.1)?, c::to_c_name(&p.0))
                 }
-                None => "()".to_string(),
+                None => ("()".to_string(), "no_ret".to_string())
             };
 
             let out_params: Vec<String> = out_params_iter
@@ -212,6 +230,23 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                             }
                         }
                         // TODO struct implementation
+                        ast::Ty::Vector {..} => {
+                            let ty_name = to_rust_type(ast, ty).unwrap();
+                            //if vec_ty.is_reference() {
+                            //    format!("{ty}** out_{name}_{buffer}, size_t* {name}_{size}",
+                            //            buffer = c::name_buffer(&name),
+                            //            size = c::name_size(&name),
+                            //            ty = ty_name,
+                            //            name = c::to_c_name(name))
+                            //} else {
+                            format!("out_{name}_{buffer}: {ty}, {name}_{size}: libc::size_t, \
+                                    out_{name}_actual: *mut libc::size_t",
+                                    buffer = c::name_buffer(&ty_name),
+                                    size = c::name_size(&name),
+                                    ty = ty_name,
+                                    name = c::to_c_name(name))
+                                //}
+                        },
                         ast::Ty::Struct => panic!("implement struct"),
                         _ => format!("{}: {}", c::to_c_name(name), to_rust_type(ast, ty).unwrap()),
                     }
@@ -219,11 +254,38 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                 .collect();
             params.extend(out_params);
 
+            // params without types for interacting with C ABI
+            // TODO out params
+            let mut out_params_iter = method.out_params.iter();
+            if get_first_param(ast, method).is_some() {
+                out_params_iter.next();
+            }
+
+            let raw_params: Vec<String> = method
+                .in_params
+                .iter()
+                .chain(out_params_iter)
+                .map(|(name, ty)| {
+                    match ty {
+                        ast::Ty::Vector {..} => {
+                            let ty_name = to_rust_type(ast, ty).unwrap();
+                            format!("out_{name}_{buffer}, {name}_{size}, out_{name}_actual",
+                                    buffer = c::name_buffer(&ty_name),
+                                    size = c::name_size(&name),
+                                    name = c::to_c_name(name))
+                        },
+                        _ => format!("{}", c::to_c_name(name))
+                    }
+                })
+                .collect();
+
             fns.push(format!(
                 include_str!("templates/rust/protocol_fn_safe.rs"),
                 fn_name = c::to_c_name(method.name.as_str()),
                 return_param = return_param,
-                params = params.join(", ")
+                return_param_name = return_param_name,
+                params = params.join(", "),
+                raw_params = raw_params.join(", ")
             ));
         }
         Ok(fns.join("\n"))
@@ -256,7 +318,7 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                 let Constant(ref size) = value;
                 accum.push(format!(
                     "pub const {name}: {ty} = {val};",
-                    name = c::to_c_name(name.as_str()),
+                    name = name.to_uppercase(),
                     ty = to_rust_type(ast, ty)?,
                     val = size,
                 ));

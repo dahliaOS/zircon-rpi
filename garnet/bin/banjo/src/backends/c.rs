@@ -54,7 +54,7 @@ fn get_doc_comment(attrs: &ast::Attrs, tabs: usize) -> String {
     "".to_string()
 }
 
-fn ty_to_c_str(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
+pub fn ty_to_c_str(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
     match ty {
         ast::Ty::Bool => Ok(String::from("bool")),
         ast::Ty::Int8 => Ok(String::from("int8_t")),
@@ -148,14 +148,15 @@ fn size_to_c_str(ty: &ast::Ty, cons: &ast::Constant, ast: &ast::BanjoAst) -> Str
     }
 }
 
-fn name_buffer(ty: &str) -> &'static str {
+pub fn name_buffer(ty: &str) -> &'static str {
     if ty == "void" {
         "buffer"
     } else {
         "list"
     }
 }
-fn name_size(ty: &str) -> &'static str {
+
+pub fn name_size(ty: &str) -> &'static str {
     if ty == "void" {
         "size"
     } else {

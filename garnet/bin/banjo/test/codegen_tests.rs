@@ -236,5 +236,6 @@ mod rust {
     codegen_test!(example_2, RustBackend, ["banjo/example-2.test.banjo"], "rust/example-2.rs");
     codegen_test!(example_3, RustBackend, ["banjo/example-3.test.banjo"], "rust/example-3.rs");
     codegen_test!(example_4, RustBackend, ["banjo/example-4.test.banjo"], "rust/example-4.rs");
+    codegen_test!(example_6, RustBackend, ["banjo/example-6.test.banjo"], "rust/example-6.rs");
 }
 

@@ -3,53 +3,49 @@
 // found in the LICENSE file.
 
 // WARNING: THIS FILE IS MACHINE GENERATED. DO NOT EDIT.
-// Generated from the banjo.examples.example4 banjo file
+// Generated from the banjo.examples.example6 banjo file
 
 #![allow(unused_imports)]
+
 use fuchsia_zircon as zircon;
 use fuchsia_ddk as ddk;
 
+
 // C ABI compat
+pub const x: i32 = 23;
+
+
+
+
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct point_t {
-    pub x: u64,
-}
+pub struct Hello_ops_t {
+    pub say: unsafe extern "C" fn (ctx: *mut u8, req: *mut u8 /*TODO String */, response: *mut u8 /*TODO String */) -> (),
 
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum enum_t {
-    X  = 23,
-}
-
-#[repr(C)]
-pub struct Interface_ops_t {
-    pub func: unsafe extern "C" fn (ctx: *mut u8, x: bool) -> (),
 }
 
 #[repr(C)]
-pub struct InterfaceProtocol {
-    pub ops: *mut Interface_ops_t,
+pub struct HelloProtocol {
+    pub ops: *mut Hello_ops_t,
     pub ctx: *mut u8,
 }
 
-impl Default for InterfaceProtocol {
+impl Default for HelloProtocol {
     fn default() -> Self {
-        InterfaceProtocol {
+        HelloProtocol {
             ops: core::ptr::null_mut(),
             ctx: core::ptr::null_mut(),
         }
     }
 }
 
-impl InterfaceProtocol {
+impl HelloProtocol {
     pub fn from_device(parent_device: &ddk::Device) -> Result<Self, ()> { // TODO error type
         let mut ret = Self::default();
         unsafe {
             let resp = ddk::sys::device_get_protocol(
                 parent_device.get_ptr(),
-                ddk::sys::ZX_PROTOCOL_INTERFACE,
+                ddk::sys::ZX_PROTOCOL_HELLO,
                 &mut ret as *mut _ as *mut libc::c_void);
             if resp != fuchsia_zircon::sys::ZX_OK {
                 return Err(());
@@ -58,10 +54,12 @@ impl InterfaceProtocol {
         }
     }
 
-    pub unsafe fn func(&self, x: bool) -> () {
-        let no_ret = ((*self.ops).func)(self.ctx, x);
+    pub unsafe fn say(&self, req: *mut u8 /*TODO String */, response: *mut u8 /*TODO String */) -> () {
+        let no_ret = ((*self.ops).say)(self.ctx, req, response);
         no_ret
     }
+
 }
+
 
 // idiomatic bindings

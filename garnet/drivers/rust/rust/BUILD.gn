@@ -10,6 +10,7 @@ rustc_staticlib("rust") {
   deps = [
     #"//garnet/public/banjo/ddk-protocol-serial:ddk-protocol-serial-rustc",
     "//zircon/public/banjo/ddk-protocol-platform-device:ddk-protocol-platform-device-rustc",
+    "//zircon/public/banjo/ddk-protocol-gpio:ddk-protocol-gpio-rustc",
     "//garnet/public/rust/fuchsia-zircon",
     "//garnet/public/rust/fuchsia-ddk",
 #    "//garnet/public/rust/fuchsia-ddk/fuchsia-ddk-sys",

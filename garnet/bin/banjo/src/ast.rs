@@ -943,6 +943,12 @@ impl BanjoAst {
             })
         {
             let Constant(string) = constant;
+            if string.len() > 2 {
+                if string.get(0..2) == Some("0x") {
+                    return Ok(()) // TODO(bwb): validate if hex
+                }
+            }
+
             match ty {
                 Ty::Int8 => {
                     i8::from_str(string)
