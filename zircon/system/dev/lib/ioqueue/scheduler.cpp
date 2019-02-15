@@ -151,6 +151,9 @@ zx_status_t Scheduler::GetNextOp(bool wait, Op** op_out) {
         stream->flags_ &= ~kIoStreamFlagScheduled;
         num_streams_--;
         stream->event_unscheduled_.Broadcast();
+        if (num_streams_ == 0) {
+            event_drained_.Broadcast();
+        }
     } else {
         // Insert to back of list of streams at this priority.
         pri_list_[stream->priority_].push_back(std::move(stream));

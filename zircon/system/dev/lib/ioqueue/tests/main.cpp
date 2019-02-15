@@ -180,12 +180,11 @@ IoQueueCallbacks cb = {
 };
 
 uint32_t num_workers;
-
+const size_t num_ops = 10;
+TestOp tops[num_ops];
 
 void op_test(IoQueueTest* test, int depth) {
     printf("%s\n", __FUNCTION__);
-    const size_t num_ops = 10;
-    TestOp tops[num_ops];
     memset(tops, 0, sizeof(tops));
 
     tops[0].id = 100;
@@ -210,8 +209,6 @@ void op_test(IoQueueTest* test, int depth) {
 
     test->Enqueue(&tops[3]);
     test->Enqueue(&tops[4]);
-
-    // sleep(2);
 
     test->CloseInput(true);
     printf("%s done\n", __FUNCTION__);

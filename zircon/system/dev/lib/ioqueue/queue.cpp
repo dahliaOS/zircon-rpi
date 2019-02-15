@@ -120,7 +120,6 @@ void Queue::Shutdown() {
 }
 
 void Queue::WorkerExited(uint32_t id) {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
     fbl::AutoLock lock(&lock_);
     active_workers_--;
     // printf("worker %u exiting, num_workers = %u\n", id, active_workers_);

@@ -71,7 +71,7 @@ void Worker::WorkerLoop() {
             if (status == ZX_ERR_CANCELED) {
                 // Cancel received.
                 //      drain the queue and exit.
-                assert(cancelled_);
+                cancelled_ = true;
             } else if (status != ZX_OK) {
                 // Todo: handle better
                 assert(false);
@@ -111,9 +111,6 @@ zx_status_t Worker::AcquireOps(bool wait, size_t* out_num_ready) {
     do {
         op_count = 32;
         status = q_->AcquireOps(op_list, &op_count, wait);
-        if (status == ZX_ERR_CANCELED) {
-            cancelled_ = true;
-        }
         if (status != ZX_OK) {
             return status;
         }
