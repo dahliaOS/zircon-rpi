@@ -27,6 +27,7 @@ MODULE_TYPE := usertest
 MODULE_NAME := ioqueue-test
 
 MODULE_SRCS := \
+    $(LOCAL_DIR)/tests/ioqueue-test.cpp \
     $(LOCAL_DIR)/tests/main.cpp \
 
 MODULE_STATIC_LIBS := \
