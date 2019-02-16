@@ -37,6 +37,13 @@ pub struct fidl_txn_t {
     _unused: [u8; 0],
 }
 
+// Max device name length, not including a null-terminator
+pub const ZX_DEVICE_NAME_MAX: u8 = 31;
+
+// Current Version
+// echo -n "zx_device_ops_v0.51" | sha256sum | cut -c1-16
+pub const DEVICE_OPS_VERSION: u64 = 0xc4640f7115d2ee49;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct zx_protocol_device_t {

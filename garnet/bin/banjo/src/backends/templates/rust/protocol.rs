@@ -19,17 +19,14 @@ impl Default for {protocol_name}Protocol {{
 }}
 
 impl {protocol_name}Protocol {{
-    pub fn from_device(parent_device: &ddk::Device) -> Result<Self, zircon::sys::zx_status_t> {{ // TODO error type
+    pub fn from_device<Ctx>(parent_device: &ddk::Device<Ctx>) -> Result<Self, zircon::Status> {{
         let mut ret = Self::default();
         unsafe {{
             let resp = ddk::sys::device_get_protocol(
                 parent_device.get_ptr(),
                 ddk::sys::ZX_PROTOCOL_{protocol_name_upper},
                 &mut ret as *mut _ as *mut libc::c_void);
-            if resp != fuchsia_zircon::sys::ZX_OK {{
-                return Err(resp);
-            }}
-            Ok(ret)
+            zircon::Status::ok(resp).map(|_| ret)
         }}
     }}
 
