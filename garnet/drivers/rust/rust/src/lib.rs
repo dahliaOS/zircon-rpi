@@ -9,19 +9,13 @@
 use {
     banjo_ddk_protocol_platform_device::*,
     banjo_ddk_protocol_gpio::*,
-//    std::ffi::CString,
     fuchsia_ddk::{OpaqueCtx, Device},
     fuchsia_ddk::sys::*,
-    fuchsia_zircon::{
-        self as zx,
-        sys::{zx_status_t, ZX_ERR_NOT_SUPPORTED, ZX_OK},
-    },
+    fuchsia_zircon::{self as zx},
 };
 
-
-// TODO(bwb): Make a proc_macro to encase the bind programs
-// Ex: #[driver_init(rust_example_bind)]
-pub fn init(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status> {
+#[fuchsia_ddk::bind_entry_point]
+fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status> {
     eprintln!("[rust_example] parent device name: {}", parent_device.get_name());
 
     let platform_device = PDevProtocol::from_device(&parent_device)?;
@@ -69,16 +63,3 @@ pub fn init(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status> {
 
     Ok(())
 }
-
-#[no_mangle]
-pub extern "C" fn rust_example_bind(ctx: *mut libc::c_void, parent_device: *mut zx_device_t) -> zx_status_t {
-    let parent_device = unsafe {
-        Device::<OpaqueCtx>::from_raw_ptr(parent_device)
-    };
-
-    match init(parent_device) {
-        Ok(_) => ZX_OK,
-        Err(e) => e.into_raw(),
-    }
-}
-

@@ -246,7 +246,7 @@ pub struct device_add_args_t {
     pub version: u64,
     pub name: *const libc::c_char,
     pub ctx: *mut libc::c_void,
-    pub ops: *mut zx_protocol_device_t,
+    pub ops: *const zx_protocol_device_t,
     pub props: *mut zx_device_prop_t,
     pub prop_count: u32,
     pub proto_id: u32,

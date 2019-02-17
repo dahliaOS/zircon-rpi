@@ -17,6 +17,7 @@ use {
     core::marker::PhantomData,
 };
 
+pub use fuchsia_ddk_macro::bind_entry_point;
 
 /// OpaqueCtx is for parent devices where the type is unknown
 /// since it was not created by this driver.
@@ -81,9 +82,9 @@ impl<T> Device<T> {
 
         // device_add_args_t values are copied, so device_add_args_t can be stack allocated.
         let mut args = sys::device_add_args_t {
-            name: name_vec.as_ptr(),
+            name: name_vec.as_ptr() as *mut libc::c_char,
             version: sys::DEVICE_ADD_ARGS_VERSION,
-            ops: unsafe { &mut DEVICE_OPS } as *mut _,
+            ops: &DEVICE_OPS as *const _,
             ctx: Box::leak(context) as *mut _ as *mut libc::c_void,
             props: core::ptr::null_mut(),
             flags: 1,
@@ -115,7 +116,7 @@ impl<T> Device<T> {
 }
 
 #[no_mangle]
-pub static mut DEVICE_OPS: sys::zx_protocol_device_t = sys::zx_protocol_device_t {
+pub static DEVICE_OPS: sys::zx_protocol_device_t = sys::zx_protocol_device_t {
     version: sys::DEVICE_OPS_VERSION,
     close: None,
     get_protocol: None,
