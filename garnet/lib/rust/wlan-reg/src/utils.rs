@@ -29,11 +29,11 @@ pub fn dump_file(filepath: &String) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn is_set(v: &Table, key1: &String, key2: &str) -> bool {
-    if v.get(key1).is_none() || v[key1].get(key2).is_none() {
+pub fn is_set(v: &Value, key: &str) -> bool {
+    if v.get(key).is_none() {
         return false;
     }
-    v[key1][key2].as_bool().unwrap()
+    v[key].as_bool().unwrap()
 }
 
 /// Converts TOML integer array into Vec<u8>

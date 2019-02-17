@@ -42,7 +42,7 @@ impl fmt::Display for ChannelGroups {
 /// A Legitimate Channel Groups is a set of channel lists
 /// defined in the jurisdiction of the device operation.
 /// See also A Operation Channel Groups for comparison.
-pub fn build_legitimate_group(v: &Table, active_operclasses: &Vec<u8>) -> ChannelGroups {
+pub fn build_legitimate_group(t: &Table, active_operclasses: &Vec<u8>) -> ChannelGroups {
     let mut dfs = vec![];
     let mut band_2ghz = vec![];
     let mut band_5ghz = vec![];
@@ -51,27 +51,30 @@ pub fn build_legitimate_group(v: &Table, active_operclasses: &Vec<u8>) -> Channe
     let mut cbw80center = vec![];
     let mut cbw160center = vec![];
 
-    // TODO(porce): Improve the walk by walking on the BTreeMap.
+    let juris = t["jurisdiction"].as_str().expect("should have jurisdiction field");
+    let beg_pattern = format!("{}-", juris);
+
     let mut operclass_cnt = 0;
-    const OPERCLASS_IDX_MIN: u8 = 1;
-    const OPERCLASS_IDX_MAX: u8 = 255;
-    for idx in OPERCLASS_IDX_MIN..=OPERCLASS_IDX_MAX {
+    for (key, v) in t.iter() {
+        if !key.starts_with(beg_pattern.as_str()) {
+            continue;
+        }
+        let token = key.rsplit("-").collect::<Vec<_>>()[0];
+        if token.parse::<u8>().is_err() {
+            continue;
+        }
+
+        let idx = token.parse::<u8>().unwrap();
         if !active_operclasses.contains(&idx) {
             continue;
         }
-        let mut key = format!("{}-{}", v["jurisdiction"], idx);
-        key = str::replace(key.as_str(), "\"", "");
-        if v.get(&key).is_none() {
-            continue;
-        }
-
         operclass_cnt += 1;
 
-        let channel_set = utils::get_chanlist(&v[&key]["set"]);
-        let center_channel_set = utils::get_chanlist(&v[&key]["center_freq_idx"]);
+        let channel_set = utils::get_chanlist(&v["set"]);
+        let center_channel_set = utils::get_chanlist(&v["center_freq_idx"]);
 
-        let start_freq = v[&key]["start_freq"].as_float().unwrap() as f64;
-        let spacing = v[&key]["spacing"].as_integer().unwrap() as u8;
+        let start_freq = v["start_freq"].as_float().unwrap() as f64;
+        let spacing = v["spacing"].as_integer().unwrap() as u8;
 
         if start_freq == 5.000 {
             band_5ghz.extend(&channel_set);
@@ -80,14 +83,14 @@ pub fn build_legitimate_group(v: &Table, active_operclasses: &Vec<u8>) -> Channe
         if start_freq == 2.407 {
             band_2ghz.extend(&channel_set);
         }
-        if utils::is_set(v, &key, "dfs_50_100") {
+        if utils::is_set(v, "dfs_50_100") {
             dfs.extend(&channel_set);
         }
 
-        if utils::is_set(v, &key, "primary_chan_lower") {
+        if utils::is_set(v, "primary_chan_lower") {
             cbw40above.extend(&channel_set);
         }
-        if utils::is_set(v, &key, "primary_chan_upper") {
+        if utils::is_set(v, "primary_chan_upper") {
             cbw40below.extend(&channel_set);
         }
         if spacing == 80 {
