@@ -5,7 +5,6 @@ extern crate toml;
 use super::utils;
 use super::vec_string;
 use failure::{bail, Error};
-use log::info;
 use toml::value::Table;
 use toml::Value;
 
@@ -37,34 +36,35 @@ pub fn load_toml(filepath: &str) -> Result<Table, Error> {
 
 /// Passes the validation if mandatory fields are present.
 /// Optional fields, or unidentifiable fields are don't care fields.
-fn validate(v: &Table) -> Result<(), Error> {
+fn validate(t: &Table) -> Result<(), Error> {
     let mandatory_fields = vec_string!["version", "jurisdiction"];
     for m in mandatory_fields.iter() {
-        if !v.contains_key(m) {
+        if !t.contains_key(m) {
             bail!("mandatory field missing: {}", m);
         };
     }
 
-    const OPERCLASS_IDX_MIN: u8 = 1;
-    const OPERCLASS_IDX_MAX: u8 = 255;
-    for idx in OPERCLASS_IDX_MIN..=OPERCLASS_IDX_MAX {
-        let mut key = format!("{}-{}", v["jurisdiction"], idx);
-        key = str::replace(key.as_str(), "\"", "");
-        if !v.contains_key(&key) {
+    let juris = t["jurisdiction"].as_str().expect("should have jurisdiction field");
+    let beg_pattern = format!("{}-", juris);
+
+    for (k, v) in t.iter() {
+        if !k.starts_with(beg_pattern.as_str()) {
             continue;
         }
-        info!("Operating class {} found", &key);
-
-        let operclass = match &v[&key] {
-            Value::Table(t) => t,
+        let token = k.rsplit("-").collect::<Vec<_>>()[0];
+        if token.parse::<u8>().is_err() {
+            continue;
+        }
+        let idx = token.parse::<u8>().unwrap();
+        let operclass = match v {
+            Value::Table(tbl) => tbl,
             _ => continue,
         };
 
         if let Err(e) = validate_operclass(&operclass, idx) {
-            bail!("Failed to validate operclass {}: {}", key, e);
+            bail!("Failed to validate operclass {}: {}", k, e);
         }
     }
-
     Ok(())
 }
 
