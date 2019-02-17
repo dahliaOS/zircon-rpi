@@ -3,60 +3,51 @@ extern crate serde_derive;
 extern crate toml;
 
 use super::utils;
+use super::vec_string;
 use failure::{bail, Error};
+use toml::value::Table;
 use toml::Value;
-use toml::Value::Table;
 
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
-pub fn load_toml(filepath: &str) -> Result<Value, Error> {
+pub fn load_toml(filepath: &str) -> Result<Table, Error> {
     let toml = utils::load_toml(filepath)?;
     validate(toml)
-    //        Err(e) => {
-    //            bail!("{}", e);
-    //        }
-    //        _ => (),
-    //    };
-    //    Ok(toml)
 }
 
 /// Passes the validation if mandatory fields are present.
 /// Optional fields, or unidentifiable fields are don't care ones.
-pub fn validate(v: Value) -> Result<Value, Error> {
+pub fn validate(v: Table) -> Result<Table, Error> {
     const MANDATORY_FIELDS: &'static [&'static str] = &["version", "jurisdiction"];
     for f in MANDATORY_FIELDS.iter() {
-        if v.get(f).is_none() {
+        if !v.contains_key(&f.to_string()) {
             bail!("mandatory field missing: {}", f);
         };
     }
-    let table = match &v {
-        Table(t) => t,
-        _ => {
-            bail!("not a table! : {}", v);
-        }
-    };
-    for (k, vv) in table.iter() {
-        if let Table(_) = vv {
-            if let Err(e) = validate_subband(&vv) {
-                bail!("Key {} has error: {}", k, e);
-            }
+    for (k, vv) in v.iter() {
+        let subband = match vv {
+            Value::Table(t) => t,
+            _ => continue,
+        };
+        if let Err(e) = validate_subband(subband) {
+            bail!("Key {} has error: {}", k, e);
         }
     }
     Ok(v)
 }
 
-fn validate_subband(v: &Value) -> Result<(), Error> {
+fn validate_subband(v: &Table) -> Result<(), Error> {
     if v.get("do_not_use").is_some() {
         return Ok(());
     }
 
-    const MANDATORY_FIELDS1: &'static [&'static str] = &["freq_beg", "freq_end"];
-    for f in MANDATORY_FIELDS1.iter() {
-        if v.get(f).is_none() {
-            bail!("mandatory field missing: {}", f);
+    let mandatory_fields1 = vec_string!["freq_beg", "freq_end"];
+    for m in mandatory_fields1.iter() {
+        if !v.contains_key(m) {
+            bail!("mandatory field missing: {}", m);
         };
-        if !v[f].is_float() {
-            bail!("field {} is non-float: {} ", f, v[f]);
+        if !v[m].is_float() {
+            bail!("field {} is non-float: {} ", m, v[m]);
         }
     }
     let freq_beg = v["freq_beg"].as_float().unwrap() as f64;
@@ -65,13 +56,13 @@ fn validate_subband(v: &Value) -> Result<(), Error> {
         bail!("freq_beg {} is greater than freq_end {}", freq_beg, freq_end);
     }
 
-    const MANDATORY_FIELDS2: &'static [&'static str] = &["chan_idx_beg", "chan_idx_end"];
-    for f in MANDATORY_FIELDS2.iter() {
-        if v.get(f).is_none() {
-            bail!("mandatory field missing: {}", f);
+    let mandatory_fields2 = vec_string!["chan_idx_beg", "chan_idx_end"];
+    for m in mandatory_fields2.iter() {
+        if !v.contains_key(m) {
+            bail!("mandatory field missing: {}", m);
         };
-        if !v[f].is_integer() {
-            bail!("field {} is non-integer: {} ", f, v[f]);
+        if !v[m].is_integer() {
+            bail!("field {} is non-integer: {} ", m, v[m]);
         }
     }
     let chan_idx_beg = v["chan_idx_beg"].as_integer().unwrap() as u64;
@@ -80,33 +71,26 @@ fn validate_subband(v: &Value) -> Result<(), Error> {
         bail!("chan_idx_beg {} is greater than chan_idx_end {}", chan_idx_beg, chan_idx_end);
     }
 
-    const CHOICE_FIELDS: &'static [&'static str] = &["role-any", "role-client"];
+    let choice_fields = vec_string!["role-any", "role-client"];
     let mut found_choice = false;
-    for f in CHOICE_FIELDS.iter() {
-        if v.get(f).is_some() {
+    for f in choice_fields.iter() {
+        if v.contains_key(f) {
             found_choice = true;
             break;
         };
     }
     if found_choice == false {
-        bail!("choice field missing: {:?}", CHOICE_FIELDS);
+        bail!("choice field missing: {:?}", choice_fields);
     }
 
     validate_power_budget(v)
 }
 
-fn validate_power_budget(v: &Value) -> Result<(), Error> {
-    let table = match v {
-        Table(t) => t,
-        _ => {
-            bail!("not a table! : {}", v);
-        }
-    };
-
+fn validate_power_budget(v: &Table) -> Result<(), Error> {
     const MANDATORY_FIELDS: &'static [&'static str] =
         &["role", "max_conduct_power", "max_ant_gain"];
-    for (k, vv) in table.iter() {
-        if let Table(_) = vv {
+    for (k, vv) in v.iter() {
+        if let Value::Table(_) = vv {
             if !k.starts_with("role-") {
                 bail!("found a non-role specific table: {}", k);
             }
@@ -135,7 +119,6 @@ pub fn get_filepath(jurisdiction: &str) -> String {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,10 +136,11 @@ mod tests {
         for f in FILES.iter() {
             match load_toml(f) {
                 Ok(_) => (),
-                Err(e) => { println!("Error while processing {} : {}", f,e); assert!(false)},
+                Err(e) => {
+                    println!("Error while processing {} : {}", f, e);
+                    assert!(false)
+                }
             };
         }
     }
-
-
 }

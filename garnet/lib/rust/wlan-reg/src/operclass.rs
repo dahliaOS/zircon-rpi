@@ -3,10 +3,11 @@ extern crate serde_derive;
 extern crate toml;
 
 use super::utils;
+use super::vec_string;
 use failure::{bail, Error};
 use log::info;
+use toml::value::Table;
 use toml::Value;
-use toml::Value::Table;
 
 /// Returns the TOML file name containing the Operating Classes of the jurisdiction of the operation
 pub fn get_filepath(jurisdiction: &str) -> String {
@@ -24,7 +25,7 @@ pub fn get_filepath(jurisdiction: &str) -> String {
 
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
-pub fn load_toml(filepath: &str) -> Result<Value, Error> {
+pub fn load_toml(filepath: &str) -> Result<Table, Error> {
     let toml = utils::load_toml(filepath)?;
     match validate(&toml) {
         Ok(()) => Ok(toml),
@@ -36,11 +37,11 @@ pub fn load_toml(filepath: &str) -> Result<Value, Error> {
 
 /// Passes the validation if mandatory fields are present.
 /// Optional fields, or unidentifiable fields are don't care fields.
-fn validate(v: &Value) -> Result<(), Error> {
-    const MANDATORY_FIELDS: &'static [&'static str] = &["version", "jurisdiction"];
-    for f in MANDATORY_FIELDS.iter() {
-        if v.get(f).is_none() {
-            bail!("mandatory field missing: {}", f);
+fn validate(v: &Table) -> Result<(), Error> {
+    let mandatory_fields = vec_string!["version", "jurisdiction"];
+    for m in mandatory_fields.iter() {
+        if !v.contains_key(m) {
+            bail!("mandatory field missing: {}", m);
         };
     }
 
@@ -49,12 +50,17 @@ fn validate(v: &Value) -> Result<(), Error> {
     for idx in OPERCLASS_IDX_MIN..=OPERCLASS_IDX_MAX {
         let mut key = format!("{}-{}", v["jurisdiction"], idx);
         key = str::replace(key.as_str(), "\"", "");
-        if v.get(&key).is_none() {
+        if !v.contains_key(&key) {
             continue;
         }
         info!("Operating class {} found", &key);
 
-        if let Err(e) = validate_operclass(&v[&key], idx) {
+        let operclass = match &v[&key] {
+            Value::Table(t) => t,
+            _ => continue,
+        };
+
+        if let Err(e) = validate_operclass(&operclass, idx) {
             bail!("Failed to validate operclass {}: {}", key, e);
         }
     }
@@ -62,21 +68,13 @@ fn validate(v: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-fn validate_operclass(v: &Value, operclass_idx: u8) -> Result<(), Error> {
-    let t = match v {
-        Table(t) => t,
-        _ => {
-            bail!("passed Value is not a Table");
+fn validate_operclass(t: &Table, operclass_idx: u8) -> Result<(), Error> {
+    let mandatory_fields =
+        vec_string!["oper_class", "start_freq", "spacing", "set", "center_freq_idx"];
+    for m in mandatory_fields.iter() {
+        if !t.contains_key(m) {
+            bail!("mandatary field not found: {}", m);
         }
-    };
-
-    const MANDATORY_FIELDS: &'static [&'static str] =
-        &["oper_class", "start_freq", "spacing", "set", "center_freq_idx"];
-
-    for f in MANDATORY_FIELDS.iter() {
-        if t.get(&f.to_string()).is_none() {
-            bail!("mandatary field not found: {}", f);
-        };
     }
 
     if !t["oper_class"].is_integer() {
@@ -129,11 +127,15 @@ mod tests {
 
     #[test]
     fn test_load_toml() {
-        const FILES: [&str; 2] = ["./data/operating_class_US.toml", "./data/operating_class_GLOBAL.toml"];
+        const FILES: [&str; 2] =
+            ["./data/operating_class_US.toml", "./data/operating_class_GLOBAL.toml"];
         for f in FILES.iter() {
             match load_toml(f) {
                 Ok(_) => (),
-                Err(e) => { println!("Error while processing {} : {}", f,e); assert!(false)},
+                Err(e) => {
+                    println!("Error while processing {} : {}", f, e);
+                    assert!(false)
+                }
             };
         }
     }

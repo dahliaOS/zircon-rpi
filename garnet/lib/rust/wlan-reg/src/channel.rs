@@ -7,7 +7,7 @@ use super::utils;
 
 use failure::Error;
 use std::fmt;
-use toml::Value;
+use toml::value::Table;
 
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct ChannelGroups {
@@ -42,7 +42,7 @@ impl fmt::Display for ChannelGroups {
 /// A Legitimate Channel Groups is a set of channel lists
 /// defined in the jurisdiction of the device operation.
 /// See also A Operation Channel Groups for comparison.
-pub fn build_legitimate_group(v: &Value, active_operclasses: &Vec<u8>) -> ChannelGroups {
+pub fn build_legitimate_group(v: &Table, active_operclasses: &Vec<u8>) -> ChannelGroups {
     let mut dfs = vec![];
     let mut band_2ghz = vec![];
     let mut band_5ghz = vec![];

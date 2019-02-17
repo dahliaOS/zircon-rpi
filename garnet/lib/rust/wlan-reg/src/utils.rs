@@ -1,9 +1,9 @@
 use failure::{bail, Error};
 use std::{fs, fs::File, io::prelude::*, path::PathBuf};
+use toml::value::Table;
 use toml::Value;
-use toml::Value::Table;
 
-pub fn load_toml(filepath: &str) -> Result<Value, Error> {
+pub fn load_toml(filepath: &str) -> Result<Table, Error> {
     let rel_path = PathBuf::from(filepath);
     let _abs_path = fs::canonicalize(&rel_path)?;
     let mut file = File::open(filepath)?;
@@ -12,7 +12,7 @@ pub fn load_toml(filepath: &str) -> Result<Value, Error> {
     let value = contents.parse::<Value>()?;
 
     match value {
-        Table(_) => Ok(value),
+        Value::Table(t) => Ok(t),
         _ => {
             bail!("Parsed TOML file is not a Table: {}", filepath);
         }
@@ -29,7 +29,7 @@ pub fn dump_file(filepath: &String) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn is_set(v: &Value, key1: &String, key2: &str) -> bool {
+pub fn is_set(v: &Table, key1: &String, key2: &str) -> bool {
     if v.get(key1).is_none() || v[key1].get(key2).is_none() {
         return false;
     }
