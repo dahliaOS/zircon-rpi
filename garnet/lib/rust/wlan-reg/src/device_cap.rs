@@ -2,12 +2,12 @@ extern crate toml;
 
 use super::utils;
 use failure::{bail, Error};
+use toml::value::Table;
 use toml::Value;
-use toml::Value::Table;
 
 /// Take the file path for an Operating Class TOML file,
 /// returns TOML Value if validated, otherwise, error.
-pub fn load_toml(filepath: &str) -> Result<Value, Error> {
+pub fn load_toml(filepath: &str) -> Result<Table, Error> {
     let toml = utils::load_toml(filepath)?;
     match validate(&toml) {
         Ok(()) => Ok(toml),
@@ -17,17 +17,17 @@ pub fn load_toml(filepath: &str) -> Result<Value, Error> {
     }
 }
 
-pub fn validate(v: &Value) -> Result<(), Error> {
+pub fn validate(v: &Table) -> Result<(), Error> {
     const MANDATORY_FIELDS: &'static [&'static str] = &["version", "channels", "operating_classes"];
     for f in MANDATORY_FIELDS.iter() {
-        if v.get(f).is_none() {
+        if !v.contains_key(&f.to_string()) {
             bail!("mandatory field missing: {}", f);
         };
     }
     let table = match &v["operating_classes"] {
-        Table(t) => t,
+        Value::Table(t) => t,
         _ => {
-            bail!("not a table! : {}", v);
+            bail!("not a table! :");
         }
     };
 

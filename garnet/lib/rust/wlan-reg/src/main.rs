@@ -78,7 +78,11 @@ fn show_sample_chan_config() {
     };
     println!("\n[Sample channel configurations]");
     println!("{:20} : {:?}", "Device capabilities", device_chans);
-    println!("{:20} : {:?}", "Planned Non-operate", channel::get_planned_non_operation_chanidx_list());
+    println!(
+        "{:20} : {:?}",
+        "Planned Non-operate",
+        channel::get_planned_non_operation_chanidx_list()
+    );
     println!("{:20} : {:?}", "Blocked", channel::get_blocked_chanidx_list());
 }
 

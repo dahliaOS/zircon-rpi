@@ -6,10 +6,10 @@ use super::device_cap;
 use super::operclass;
 use super::regulation;
 
-use failure::{bail, Error};
+use failure::Error;
 use std::collections::HashMap;
+use toml::value::Table;
 use toml::Value;
-use toml::Value::Table;
 
 #[derive(Debug)]
 pub struct PowerBudgetByRange {
@@ -19,23 +19,16 @@ pub struct PowerBudgetByRange {
 }
 
 pub fn build_power_budget_by_range(
-    v: &Value,
+    table: &Table,
     role_in_query: &str,
 ) -> Result<Vec<PowerBudgetByRange>, Error> {
-    let table = match v {
-        Table(t) => t,
-        _ => {
-            bail!("not a table! :{} ", v);
-        }
-    };
-
     let mut result: Vec<PowerBudgetByRange> = vec![];
     for (_, elem) in table.iter() {
         if elem.get("do_not_use").is_some() {
             continue;
         }
         let subband_table = match elem {
-            Table(s) => s,
+            Value::Table(s) => s,
             _ => continue,
         };
 
