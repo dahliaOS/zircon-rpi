@@ -45,7 +45,7 @@ pub const ZX_DEVICE_NAME_MAX: u8 = 31;
 pub const DEVICE_OPS_VERSION: u64 = 0xc4640f7115d2ee49;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct zx_protocol_device_t {
     pub version: u64,
     pub get_protocol: ::core::option::Option<
@@ -126,6 +126,27 @@ pub struct zx_protocol_device_t {
         ) -> zx::sys::zx_status_t,
     >,
 }
+
+//#[repr(C)]
+//#[derive(Debug)]
+//pub struct zx_protocol_device_t {
+//    pub version: u64,
+//    pub get_protocol: *const libc::c_void,
+//    pub open: *const libc::c_void,
+//    pub open_at: *const libc::c_void,
+//    pub close: *const libc::c_void,
+//    pub unbind: *const libc::c_void,
+//    pub release: *const libc::c_void,
+//    pub read: *const libc::c_void,
+//    pub write: *const libc::c_void,
+//    pub get_size: *const libc::c_void,
+//    pub ioctl: *const libc::c_void,
+//    pub suspend: *const libc::c_void,
+//    pub resume: *const libc::c_void,
+//    pub rxrpc: *const libc::c_void,
+//    pub message: *const libc::c_void,
+//}
+
 
 extern "C" {
     pub fn device_get_name(dev: *mut zx_device_t) -> *const libc::c_char;

@@ -112,8 +112,8 @@ pub fn bind_entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #(#attrs)* #no_mangle
         pub extern "C" fn #ident(ctx: *mut libc::c_void,
                                  parent_device: *mut zx_device_t) -> fuchsia_zircon::sys::zx_status_t {
-            let parent_device = unsafe {
-                Device::<OpaqueCtx>::from_raw_ptr(parent_device)
+            let parent_device: fuchsia_ddk::Device<fuchsia_ddk::OpaqueCtx> = unsafe {
+                fuchsia_ddk::Device::<fuchsia_ddk::OpaqueCtx>::from_raw_ptr(parent_device)
             };
             let _bind = |#input| #ret_type {
                 #block

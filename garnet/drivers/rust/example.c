@@ -16,6 +16,12 @@ static zx_driver_ops_t rust_example_driver_ops = {
     .bind = rust_example_bind,
 };
 
+// TODO(bwb): consider implementing rust macro
+//ZIRCON_DRIVER!(rust_example, rust_example_driver_ops, "zircon", "0.1" [
+//    ABORT_IF_NE!(BIND_PROTOCOL, ZX_PROTOCOL_DEV),
+//    ...
+//])
+
 // clang-format off
 ZIRCON_DRIVER_BEGIN(rust_example, rust_example_driver_ops, "zircon", "0.1", 4)
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),

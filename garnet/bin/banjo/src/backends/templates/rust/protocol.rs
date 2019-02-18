@@ -32,3 +32,6 @@ impl {protocol_name}Protocol {{
 
 {safe_protocol_fns}
 }}
+
+// TODO(bwb): maybe?
+// impl Protocol for {protocol_name}Protocol {{ }}
