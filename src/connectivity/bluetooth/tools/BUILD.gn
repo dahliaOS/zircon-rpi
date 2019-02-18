@@ -21,6 +21,13 @@ package("bluetooth-tools") {
     "bt-snoop-cli",
   ]
 
+  meta = [
+    {
+      path = rebase_path("bt-avrcp-controller/meta/bt-avrcp-controller.cmx")
+      dest = "bt-avrcp-controller.cmx"
+    },
+  ]
+
   binaries = [
     {
       name = "bt_avrcp_controller"

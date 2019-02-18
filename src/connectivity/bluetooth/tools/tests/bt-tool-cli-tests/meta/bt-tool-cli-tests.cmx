@@ -9,7 +9,7 @@
         ],
         "services": [
             "fuchsia.bluetooth.avrcp.Avrcp",
-            "fuchsia.bluetooth.avrcp.AvrcpTest",
+            "fuchsia.bluetooth.avrcp.TestAvrcp",
             "fuchsia.bluetooth.bredr.Profile",
             "fuchsia.bluetooth.snoop.Snoop",
             "fuchsia.logger.LogSink",

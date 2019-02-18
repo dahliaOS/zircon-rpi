@@ -1,5 +1,16 @@
 {
     "program": {
         "binary": "test/bt-avrcp-controller-unittests"
+    },
+    "sandbox": {
+        "dev": [
+            "class/bt-host",
+            "test/test"
+        ],
+        "services": [
+            "fuchsia.bluetooth.avrcp.Avrcp",
+            "fuchsia.bluetooth.avrcp.TestAvrcp",
+            "fuchsia.bluetooth.bredr.Profile"
+        ]
     }
 }

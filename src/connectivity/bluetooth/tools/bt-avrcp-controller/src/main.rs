@@ -8,8 +8,8 @@ use {
     failure::{Error, ResultExt},
     fidl::endpoints::create_endpoints,
     fidl_fuchsia_bluetooth_avrcp::{
-        AvrcpMarker, AvrcpTestMarker, ControllerEvent, ControllerEventStream, ControllerMarker,
-        ControllerProxy, TestControllerMarker, TestControllerProxy,
+        AvrcpMarker, ControllerEvent, ControllerEventStream, ControllerMarker, ControllerProxy,
+        TestAvrcpMarker, TestControllerMarker, TestControllerProxy,
     },
     fuchsia_async as fasync,
     fuchsia_component::client::connect_to_service,
@@ -236,7 +236,18 @@ async fn controller_listener(mut stream: ControllerEventStream) -> Result<(), Er
         print!("{}", CLEAR_LINE);
         match evt {
             ControllerEvent::OnNotification { notif } => {
-                println!("Event: {:?}", notif);
+                if let Some(value) = notif.volume {
+                    println!("Volume event: {:?} {:?}", notif.timestamp.unwrap(), value);
+                }
+                if let Some(value) = notif.pos {
+                    println!("Pos event: {:?} {:?}", notif.timestamp.unwrap(), value);
+                }
+                if let Some(value) = notif.status {
+                    println!("Status event: {:?} {:?}", notif.timestamp.unwrap(), value);
+                }
+                if let Some(value) = notif.track_id {
+                    println!("Track event: {:?} {:?}", notif.timestamp.unwrap(), value);
+                }
             }
         }
     }
@@ -277,19 +288,30 @@ async fn main() -> Result<(), Error> {
 
     let device_id = &opt.device.replace("-", "").to_lowercase();
 
+    // Connect to test controller service
+
+    let test_avrcp_svc = connect_to_service::<TestAvrcpMarker>()
+        .context("Failed to connect to Bluetooth Test AVRCP interface")?;
+
+    // Create a channel for our Request<TestController> to live
+    let (t_client, t_server) = create_endpoints::<TestControllerMarker>()
+        .expect("Error creating Test Controller endpoint");
+
+    let _status =
+        await!(test_avrcp_svc.get_test_controller_for_target(&device_id.as_str(), t_server))?;
+    eprintln!(
+        "Test controller obtained to device \"{device}\" AVRCP remote target service",
+        device = &device_id,
+    );
+
+    // Connect to avrcp controller service
+
     let avrcp_svc = connect_to_service::<AvrcpMarker>()
         .context("Failed to connect to Bluetooth AVRCP interface")?;
-
-    let test_avrcp_svc = connect_to_service::<AvrcpTestMarker>()
-        .context("Failed to connect to Bluetooth Test AVRCP interface")?;
 
     // Create a channel for our Request<Controller> to live
     let (c_client, c_server) =
         create_endpoints::<ControllerMarker>().expect("Error creating Controller endpoint");
-
-    // Create a channel for our Request<Controller> to live
-    let (t_client, t_server) = create_endpoints::<TestControllerMarker>()
-        .expect("Error creating Test Controller endpoint");
 
     let _status = await!(avrcp_svc.get_controller_for_target(&device_id.as_str(), c_server))?;
     eprintln!(
@@ -297,12 +319,7 @@ async fn main() -> Result<(), Error> {
         device = &device_id,
     );
 
-    let _status =
-        await!(test_avrcp_svc.get_test_controller_for_target(&device_id.as_str(), t_server))?;
-    eprintln!(
-        "Test Controller obtained to device \"{device}\" AVRCP remote target service",
-        device = &device_id,
-    );
+    // setup repl
 
     let controller = c_client.into_proxy().expect("error obtaining controller client proxy");
     let test_controller =

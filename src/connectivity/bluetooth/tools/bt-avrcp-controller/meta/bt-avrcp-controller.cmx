@@ -1,0 +1,14 @@
+{
+    "program": {
+        "binary": "bin/bt-avrcp-controller"
+    },
+    "sandbox": {
+        "features": [
+            "shell"
+        ],
+        "services": [
+            "fuchsia.bluetooth.avrcp.Avrcp",
+            "fuchsia.bluetooth.avrcp.TestAvrcp"
+        ]
+    }
+}
