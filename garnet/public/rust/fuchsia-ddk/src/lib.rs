@@ -37,7 +37,7 @@ unsafe fn strlen(p: *const libc::c_char) -> usize {
 
 pub struct Ctx<T> {
     device: Device<T>,
-    real_ctx: Box<T>, // TODO(bwb): make not pub w/ constructor
+    real_ctx: Box<T>,
 }
 
 impl<T> Ctx<T> {
@@ -48,7 +48,6 @@ impl<T> Ctx<T> {
         }
     }
 
-    // TODO make unsafe for now. probably unsound
     pub fn get_device(&self) -> &Device<T> {
         &self.device
     }
@@ -74,7 +73,8 @@ impl<T> DerefMut for Ctx<T> {
 }
 
 pub trait DeviceOps where Self: core::marker::Sized {
-    fn unbind(device: &Device<Self>);
+    fn unbind(_: &Device<Self>) -> () { }
+//    fn close(_: &Device<Self>) -> () { }
 //    fn release(&mut self);
 }
 
@@ -83,6 +83,8 @@ pub struct Device<T> {
     device: *mut zx_device_t,
     ctx_type: PhantomData<T>,
 }
+
+unsafe impl<T: Send + Sync > Send for Device<T> { }
 
 impl<T> Default for Device<T> {
     fn default() -> Self {

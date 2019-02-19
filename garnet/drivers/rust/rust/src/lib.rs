@@ -15,7 +15,11 @@ use {
     std::marker::PhantomData,
 };
 
-// TODO make this a fancy macro
+//pub static DEVICE_OPS: zx_protocol_device_t = make_device_ops!(Gpio, [message, unbind, get_protocol]);
+
+// TODO make this a fancy proc_macro
+// annotate the whole crate with #![fuchsia_ddk::driver]
+// go through anything that is named DeviceOps and build the static ops table
 pub static DEVICE_OPS: zx_protocol_device_t = zx_protocol_device_t {
     version: DEVICE_OPS_VERSION,
     close:  None,
@@ -42,6 +46,7 @@ pub unsafe extern "C" fn unbind_unsafe(ctx: *mut libc::c_void) {
 
 #[derive(Default)]
 pub struct Gpio {
+    // TODO(bwb): Check with todd that this is safe to have protocols Send + Sync
     gpios: Vec<GpioProtocol>,
 }
 
@@ -78,7 +83,7 @@ fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status>
         name: core::ptr::null_mut(),
     };
 
-    let mut ctx = Ctx::new(Gpio::default());
+    let mut ctx = Gpio::default();
 
     // TODO(bwb): Add result type to banjo
     let resp = unsafe { platform_device.get_device_info(&mut info) };
@@ -101,7 +106,11 @@ fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status>
 
     }
 
-    let example_device = parent_device.add_device_with_context(String::from("rust-gpio-example"), ctx, &DEVICE_OPS);
+    let example_device = parent_device.add_device_with_context(String::from("rust-gpio-example"), Ctx::new(std::sync::Arc::new(ctx)), &DEVICE_OPS)?;
+
+    //std::thread::spawn(move || {
+    //    eprintln!("{}", example_device.get_name());
+    //});
 
     eprintln!("[rust_example] nothing crashed on device add!");
 
