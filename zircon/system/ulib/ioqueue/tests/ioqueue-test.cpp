@@ -27,25 +27,34 @@ void IoQueueTest::GetCounts(uint32_t count[3]) {
     count[2] = released_count_;
 }
 
-void IoQueueTest::CloseInput(bool wait) {
-    printf("%s\n", __FUNCTION__);
-    if (wait) {
-        fbl::AutoLock lock(&lock_);
-        if (!list_is_empty(&in_list_)) {
-            printf("%s list is not empty\n", __FUNCTION__);
-            released_all_.Wait(&lock_);
-            assert(list_is_empty(&in_list_));
-            printf("%s emptied\n", __FUNCTION__);
-        }
+void IoQueueTest::WaitForAcquired() {
+    fbl::AutoLock lock(&lock_);
+    while (!list_is_empty(&in_list_)) {
+        acquired_all_.Wait(&lock_);
     }
-    CancelAcquire();
+}
+
+void IoQueueTest::WaitForReleased() {
+    fbl::AutoLock lock(&lock_);
+    while (!list_is_empty(&in_list_)) {
+        acquired_all_.Wait(&lock_);
+    }
+    while (released_count_ != enqueued_count_) {
+        released_all_.Wait(&lock_);
+    }
+}
+
+void IoQueueTest::CloseInput() {
+    fbl::AutoLock lock(&lock_);
+    closed_ = true;
+    in_avail_.Broadcast();
 }
 
 zx_status_t IoQueueTest::AcquireOps(IoOp** op_list, size_t* op_count, bool wait) {
     fbl::AutoLock lock(&lock_);
-    printf("cb: acquire\n");
+    // printf("cb: acquire\n");
     if (closed_) {
-        printf("cb:   closed\n");
+        // printf("cb:   closed\n");
         return ZX_ERR_CANCELED;   // Input source closed.
     }
     if (list_is_empty(&in_list_)) {
@@ -65,46 +74,47 @@ zx_status_t IoQueueTest::AcquireOps(IoOp** op_list, size_t* op_count, bool wait)
         }
         TestOp* top = containerof(node, TestOp, node);
         op_list[i] = &top->op;
-        printf("cb: acquire %u:%u\n", top->op.stream_id, top->id);
+        // printf("cb: acquire %u:%u\n", top->op.stream_id, top->id);
         enqueued_count_++;
     }
     *op_count = i;
     if (list_is_empty(&in_list_)) {
-        released_all_.Broadcast();
+        acquired_all_.Broadcast();
     }
     return ZX_OK;
 }
 
 zx_status_t IoQueueTest::IssueOp(IoOp* op) {
-    printf("cb: issue %p\n", op);
+    // printf("cb: issue %p\n", op);
     TestOp* top = containerof(op, TestOp, op);
-    printf("cb: issue %u:%u\n", op->stream_id, top->id);
+    // printf("cb: issue %u:%u\n", op->stream_id, top->id);
+    fbl::AutoLock lock(&lock_);
     assert(top->issued == false);
     top->issued = true;
     op->result = ZX_OK;
-    fbl::AutoLock lock(&lock_);
     issued_count_++;
     return ZX_OK;
 }
 
 void IoQueueTest::ReleaseOp(IoOp* op) {
-    printf("cb: release %p\n", op);
+    // printf("cb: release %p\n", op);
     TestOp* top = containerof(op, TestOp, op);
-    printf("cb: release %u:%u\n", op->stream_id, top->id);
+    // printf("cb: release %u:%u\n", op->stream_id, top->id);
+    fbl::AutoLock lock(&lock_);
     assert(top->released == false);
     top->released = true;
-    fbl::AutoLock lock(&lock_);
     released_count_++;
+    if (released_count_ == enqueued_count_) {
+        released_all_.Broadcast();
+    }
 }
 
 void IoQueueTest::CancelAcquire() {
-    printf("cb: cancel_acquire\n");
-    fbl::AutoLock lock(&lock_);
-    closed_ = true;
-    in_avail_.Broadcast();
+    // printf("cb: cancel_acquire\n");
+    CloseInput();
 }
 
 void IoQueueTest::Fatal() {
-    printf("cb: FATAL\n");
+    // printf("cb: FATAL\n");
     assert(false);
 }

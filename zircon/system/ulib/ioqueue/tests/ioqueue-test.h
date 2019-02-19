@@ -24,9 +24,11 @@ public:
     void Enqueue(TestOp* top);
     void SetQueue(IoQueue* q) { q_ = q; }
     IoQueue* GetQueue() { return q_; }
-    void CloseInput(bool wait);
-    void GetCounts(uint32_t counts[3]);
+    void WaitForAcquired();
+    void WaitForReleased();
+    void CloseInput();
 
+    void GetCounts(uint32_t counts[3]);
     uint32_t GetWorkers() { return num_workers_; }
 
     // Callbacks
@@ -72,5 +74,6 @@ private:
     uint32_t released_count_ = 0;
     list_node_t in_list_;
     fbl::ConditionVariable in_avail_;
+    fbl::ConditionVariable acquired_all_;
     fbl::ConditionVariable released_all_;
 };

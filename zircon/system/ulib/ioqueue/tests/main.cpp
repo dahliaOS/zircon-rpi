@@ -57,7 +57,6 @@ static bool ioqueue_open_streams(IoQueueTest* test) {
 }
 
 static bool ioqueue_close_streams(IoQueueTest* test) {
-    printf("closing streams\n");
     IoQueue* q = test->GetQueue();
     ASSERT_EQ(IoQueueCloseStream(q, 0), ZX_OK, "Failed to close stream");
     ASSERT_EQ(IoQueueCloseStream(q, 1), ZX_OK, "Failed to close stream");
@@ -66,7 +65,6 @@ static bool ioqueue_close_streams(IoQueueTest* test) {
 
     ASSERT_EQ(IoQueueCloseStream(q, 2), ZX_OK, "Failed to close stream");
     ASSERT_EQ(IoQueueCloseStream(q, 4), ZX_OK, "Failed to close stream");
-    printf("closing streams done\n");
     return true;
 }
 
@@ -81,7 +79,7 @@ static bool ioqueue_shutdown(IoQueueTest* test) {
     IoQueueShutdown(q);
     uint32_t count[3];
     test->GetCounts(count);
-    printf("enq = %u, iss = %u, rel = %u\n", count[0], count[1], count[2]);
+    // printf("enq = %u, iss = %u, rel = %u\n", count[0], count[1], count[2]);
     ASSERT_EQ(count[0], count[2], "Ops enqueued do not equal ops released");
     return true;
 }
@@ -106,7 +104,9 @@ static void ioqueue_enqueue(IoQueueTest* test) {
 }
 
 static bool ioqueue_wait_for_completion(IoQueueTest* test) {
-    test->CloseInput(true);
+    test->WaitForAcquired();
+    test->WaitForReleased();
+
     uint32_t count[3];
     test->GetCounts(count);
     uint32_t enqueued = count[0];
@@ -154,11 +154,18 @@ static bool ioqueue_test_serve() {
     END_TEST;
 }
 
-BEGIN_TEST_CASE(ioqueue_tests)
-// RUN_TEST(ioqueue_test_create)
-// RUN_TEST(ioqueue_test_open)
+static bool ioqueue_set_mp() {
+    use_num_threads++;
+    return true;
+}
+
+BEGIN_TEST_CASE(test_case_ioqueue)
+RUN_TEST(ioqueue_test_create)
+RUN_TEST(ioqueue_test_open)
 RUN_TEST(ioqueue_test_serve)
-END_TEST_CASE(ioqueue_tests)
+RUN_TEST(ioqueue_set_mp)
+RUN_TEST(ioqueue_test_serve)
+END_TEST_CASE(test_case_ioqueue)
 
 } // namespace tests
 
