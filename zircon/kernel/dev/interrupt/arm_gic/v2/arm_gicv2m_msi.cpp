@@ -83,6 +83,14 @@ zx_status_t arm_gicv2m_msi_alloc_block(uint requested_irqs,
     if (!requested_irqs || (requested_irqs > MAX_MSI_IRQS))
         return ZX_ERR_INVALID_ARGS;
 
+    // out_block->platform_ctx = (void*)is_32bit;
+    // out_block->base_irq_id = 0;
+    // out_block->num_irq = alloc_size;
+    // out_block->tgt_addr = info.doorbell;
+    // out_block->tgt_data = 0;
+    // out_block->allocated = true;
+    // return ZX_OK;
+
     zx_status_t ret = ZX_ERR_INTERNAL;
     bool is_32bit = false;
     uint alloc_size = 1u << log2_uint_ceil(requested_irqs);

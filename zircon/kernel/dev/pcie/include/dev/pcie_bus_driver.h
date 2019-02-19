@@ -121,6 +121,9 @@ public:
     // devices.
     fbl::RefPtr<PcieDevice> GetNthDevice(uint32_t index);
 
+    void MsiTargetAddress(const uint64_t addr) { msi_target_addr_ = addr; }
+    uint64_t MsiTargetAddress() const { return msi_target_addr_; }
+
     // Topology related stuff
     void LinkDeviceToUpstream(PcieDevice& dev, PcieUpstreamNode& upstream);
     void UnlinkDeviceFromUpstream(PcieDevice& dev);
@@ -217,4 +220,6 @@ private:
 
     static fbl::RefPtr<PcieBusDriver>  driver_;
     static fbl::Mutex                  driver_lock_;
+
+    uint64_t msi_target_addr_;
 };

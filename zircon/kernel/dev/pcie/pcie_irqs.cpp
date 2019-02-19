@@ -28,7 +28,7 @@
 
 using fbl::AutoLock;
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 /******************************************************************************
  *
@@ -340,6 +340,9 @@ void PcieDevice::MaskAllMsiVectors() {
 }
 
 void PcieDevice::SetMsiTarget(uint64_t tgt_addr, uint32_t tgt_data) {
+    printf("PcieDevice::SetMsiTarget addr = 0x%016lx, data = 0x%08x\n",
+           tgt_addr, tgt_data);
+
     DEBUG_ASSERT(irq_.msi);
     DEBUG_ASSERT(irq_.msi->is_valid());
     DEBUG_ASSERT(irq_.msi->is64Bit() || !(tgt_addr >> 32));
@@ -399,6 +402,7 @@ void PcieDevice::SetMsiMultiMessageEnb(uint requested_irqs) {
 
 void PcieDevice::LeaveMsiIrqMode() {
     /* Disable MSI, mask all vectors and zero out the target */
+    printf("PcieDevice::LeaveMsiIrqMode\n");
     SetMsiTarget(0x0, 0x0);
 
     /* Return any allocated irq_ block to the platform, unregistering with
@@ -411,6 +415,11 @@ void PcieDevice::LeaveMsiIrqMode() {
 }
 
 zx_status_t PcieDevice::EnterMsiIrqMode(uint requested_irqs) {
+    printf("EnterMsiIrqMode\n");
+
+    SetMsiTarget(bus_drv_.MsiTargetAddress(), 0x1);
+    return ZX_OK;
+
     DEBUG_ASSERT(requested_irqs);
 
     zx_status_t res = ZX_OK;
@@ -420,8 +429,11 @@ zx_status_t PcieDevice::EnterMsiIrqMode(uint requested_irqs) {
     if (!irq_.msi                             ||
         !irq_.msi->is_valid()                 ||
         !bus_drv_.platform().supports_msi()   ||
-        (requested_irqs > irq_.msi->max_irqs()))
+        (requested_irqs > irq_.msi->max_irqs())) {
+
+        printf("PcieDevice::EnterMsiIrqMode fail 0\n");
         return ZX_ERR_NOT_SUPPORTED;
+    }
 
     // If we support PVM, make sure that we are completely masked before
     // attempting to allocate the block of IRQs.
@@ -451,8 +463,10 @@ zx_status_t PcieDevice::EnterMsiIrqMode(uint requested_irqs) {
 
     /* Allocate our handler table */
     res = AllocIrqHandlers(requested_irqs, initially_masked);
-    if (res != ZX_OK)
+    if (res != ZX_OK) {
+        printf("AllocIrqHandlers failed, rc = %d\n", res);
         goto bailout;
+    }
 
     /* Record our new IRQ mode */
     irq_.mode = PCIE_IRQ_MODE_MSI;
@@ -464,6 +478,7 @@ zx_status_t PcieDevice::EnterMsiIrqMode(uint requested_irqs) {
      * 2) Each IRQ has been masked at system level (if supported)
      * 3) Each IRQ has been masked at the PCI PVM level (if supported)
      */
+    printf("Set Msi Target to something good!\n");
     DEBUG_ASSERT(irq_.msi->irq_block_.allocated);
     SetMsiTarget(irq_.msi->irq_block_.tgt_addr, irq_.msi->irq_block_.tgt_data);
 
@@ -553,15 +568,27 @@ zx_status_t PcieDevice::QueryIrqModeCapabilitiesLocked(pcie_irq_mode_t mode,
         break;
 
     case PCIE_IRQ_MODE_MSI:
+        printf("KALSI: platform supports msi?\n");
         /* If the platform does not support MSI, then we don't support MSI,
          * even if the device does. */
         if (!bus_drv_.platform().supports_msi())
             return ZX_ERR_NOT_SUPPORTED;
 
+        printf("KALSI: device supports msi?\n");
+
         /* If the device supports MSI, it will have a pointer to the control
          * structure in config. */
-        if (!irq_.msi || !irq_.msi->is_valid())
+        if (!irq_.msi) {
+            printf("!irq_.msi\n");
             return ZX_ERR_NOT_SUPPORTED;
+        }
+
+        if (!irq_.msi->is_valid()) {
+            printf("!irq_.msi->is_valid()\n");
+            return ZX_ERR_NOT_SUPPORTED;
+        }
+
+        printf("KALSI: everything looks good!\n");
 
         /* We support PVM if either the device does, or if the platform is
          * capable of masking and unmasking individual IRQs from an MSI block

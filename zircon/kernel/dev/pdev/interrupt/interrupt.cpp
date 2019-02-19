@@ -27,6 +27,8 @@ zx_status_t register_int_handler(unsigned int vector, int_handler handler, void*
         return ZX_ERR_INVALID_ARGS;
     }
 
+    printf("Register int handler for vector = %u\n", vector);
+
     AutoSpinLock guard(&lock);
 
     auto h = pdev_get_int_handler(vector);

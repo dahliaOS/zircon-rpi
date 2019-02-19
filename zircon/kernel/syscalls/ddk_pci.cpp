@@ -218,6 +218,20 @@ zx_status_t sys_pci_init(zx_handle_t handle, user_in_ptr<const zx_pci_init_arg_t
         return ZX_ERR_INVALID_ARGS;
     }
 
+    // TODO(gkalsi): This is a dirty IRQ hack.
+    const uint64_t msi_target_lo = (uint64_t)(arg->irqs[0].global_irq);
+    const uint64_t msi_target_hi = (uint64_t)(arg->irqs[1].global_irq);
+    const uint64_t msi_target = msi_target_lo | (msi_target_hi << 32);
+    pcie->MsiTargetAddress(msi_target);
+    // auto& platform = pcie->platform();
+    // PciePlatformInterface* generic_platform = &platform;
+    // ArmGicV2PciePlatformSupport* arm_platform = static_cast<ArmGicV2PciePlatformSupport*>(generic_platform);
+
+    printf("Initializing PCI with 0x%016lx as MSI target\n", msi_target);
+
+    arg->num_irqs = 0;
+
+
     // Configure interrupts
     for (unsigned int i = 0; i < arg->num_irqs; ++i) {
         uint32_t irq = arg->irqs[i].global_irq;
@@ -699,11 +713,17 @@ zx_status_t sys_pci_map_interrupt(zx_handle_t dev_handle,
     if (status != ZX_OK)
         return status;
 
+    printf("sys_pci_map_interrupt: map the interrupt at the device.\n");
+
     fbl::RefPtr<Dispatcher> interrupt_dispatcher;
     zx_rights_t rights;
     zx_status_t result = pci_device->MapInterrupt(which_irq, &interrupt_dispatcher, &rights);
-    if (result != ZX_OK)
+    if (result != ZX_OK) {
+        printf("pci_device->MapInterrupt failed, result = %d\n", result);
         return result;
+    }
+
+    printf("sys_pci_map_interrupt: make the out handle.\n");
 
     return out_handle->make(ktl::move(interrupt_dispatcher), rights);
 }
@@ -718,7 +738,7 @@ zx_status_t sys_pci_map_interrupt(zx_handle_t dev_handle,
 zx_status_t sys_pci_query_irq_mode(zx_handle_t dev_handle,
                                    uint32_t mode,
                                    user_out_ptr<uint32_t> out_max_irqs) {
-    LTRACEF("handle %x\n", dev_handle);
+    LTRACEF("handle %x, mode = %u\n", dev_handle, mode);
 
     auto up = ProcessDispatcher::GetCurrent();
 

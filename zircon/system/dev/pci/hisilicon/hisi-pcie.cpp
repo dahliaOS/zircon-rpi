@@ -4,21 +4,33 @@
 
 // Temporary for debugging.
 #include <stdio.h>
+#include <optional>
+#include <threads.h>
 
 #include <ddk/device.h>
 #include <ddk/driver.h>
+#include <ddk/debug.h>
 #include <ddk/platform-defs.h>
 #include <ddk/protocol/clk.h>
 #include <ddk/protocol/gpio.h>
 #include <ddk/protocol/platform-device-lib.h>
 #include <ddk/protocol/platform/device.h>
-#include <ddktl/mmio.h>
+#include <lib/mmio/mmio.h>
+#include <fbl/algorithm.h>
 
 #include <zircon/driver/binding.h>
 #include <zircon/types.h>
 
 #define HI32(val) ((uint32_t)(((val) >> 32) & 0xfffffffflu))
 #define LO32(val) ((uint32_t)((val)&0xfffffffflu))
+
+#define IRQ_COUNT (4)
+
+#define PCIE_MSI_ADDR_LO        0x820
+#define PCIE_MSI_ADDR_HI        0x824
+#define PCIE_MSI_INTR0_ENABLE       0x828
+#define PCIE_MSI_INTR0_MASK     0x82C
+#define PCIE_MSI_INTR0_STATUS       0x830
 
 class HisiPcieDevice {
 public:
@@ -30,6 +42,10 @@ public:
 private:
     zx_status_t InitProtocols();
     zx_status_t InitMmios();
+
+    zx_status_t InitDebugIRQThread();
+    int HisiPcieIRQTestThread(uint n);
+    int MonitorIrqStatusThread();
 
     zx_status_t kirin_pcie_get_clks();
     zx_status_t kirin_pcie_get_resource();
@@ -43,6 +59,7 @@ private:
 
     zx_status_t kirin_pcie_establish_link();
     void kirin_pcie_host_init();
+    void kirin_pcie_enable_interrupts();
 
     bool kirin_pcie_link_up();
 
@@ -84,6 +101,16 @@ private:
     std::optional<ddk::MmioBuffer> sctrl_;
 
     std::optional<ddk::MmioBuffer> config_;
+
+    zx_handle_t irq_hdl_[IRQ_COUNT];
+    thrd_t irq_thread_[IRQ_COUNT];
+    thrd_t dbg_thread_;
+
+    zx::bti bti_;
+    zx::vmo msi_target_;
+    zx_paddr_t msi_target_paddr_;
+    zx::pmt msi_target_pmt_;
+
 };
 
 #define TOTAL_APP_SIZE (0x02000000)     // 32MiB
@@ -92,6 +119,37 @@ private:
 #define MEM_ADDR_LEN   (TOTAL_APP_SIZE - CFG_ADDR_LEN)
 #define CFG_ADDR_BASE  (MEM_ADDR_BASE + MEM_ADDR_LEN)
 
+static void hisi_pcie_release(void* ctx) {
+    HisiPcieDevice* self = reinterpret_cast<HisiPcieDevice*>(ctx);
+
+    delete self;
+}
+
+static zx_protocol_device_t hisi_pcie_device_proto = []() {
+    zx_protocol_device_t result;
+    result.version = DEVICE_OPS_VERSION;
+    result.release = hisi_pcie_release;
+    return result;
+}();
+
+zx_device_prop_t props[] = {
+    { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_GENERIC },
+    { BIND_PLATFORM_DEV_PID, 0, PDEV_PID_GENERIC },
+    { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_KPCI },
+};
+
+device_add_args_t pci_dev_args = []() {
+    device_add_args_t result;
+
+    result.version = DEVICE_ADD_ARGS_VERSION;
+    result.name = "hisi-dw-pcie";
+    result.ops = &hisi_pcie_device_proto,
+    result.props = props;
+    // result.prop_count = fbl::count_of(props);
+    result.prop_count = 3;
+
+    return result;
+}();
 
 uint32_t HisiPcieDevice::kirin_phy_readl(uint32_t reg) {
     return phy_->Read32(reg);
@@ -244,6 +302,43 @@ void HisiPcieDevice::kirin_pcie_sideband_dbi_w_mode(bool enable) {
     kirin_elb_writel(val, SOC_PCIECTRL_CTRL0_ADDR);
 }
 
+void HisiPcieDevice::kirin_pcie_enable_interrupts() {
+    zx_status_t st = pdev_get_bti(&pdev_, 0, bti_.reset_and_get_address());
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to get bti 0, st = %d\n", st);
+        return;
+    }
+
+    st = zx::vmo::create(PAGE_SIZE, 0, &msi_target_);
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to create msi target vmo st = %d\n", st);
+        return;
+    }
+
+    st = bti_.pin(
+        ZX_BTI_PERM_READ | ZX_BTI_PERM_WRITE,
+        msi_target_,
+        0,
+        PAGE_SIZE,
+        &msi_target_paddr_,
+        1,
+        &msi_target_pmt_
+    );
+
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to pin msi target, st = %d\n", st);
+        return;
+    }
+
+    printf("hisi_pcie: Got MSI target address at 0x%016lx\n", msi_target_paddr_);
+    const uint32_t msi_target_lo = msi_target_paddr_ & 0xffffffff;
+    const uint32_t msi_target_hi = static_cast<uint32_t>((msi_target_paddr_ & 0xffffffff00000000) >> 32);
+
+    kirin_pcie_wr_own_conf(PCIE_MSI_ADDR_LO, 4, msi_target_lo);
+    kirin_pcie_wr_own_conf(PCIE_MSI_ADDR_HI, 4, msi_target_hi);
+
+}
+
 void HisiPcieDevice::kirin_pcie_host_init() {
     zx_status_t st;
 
@@ -255,8 +350,9 @@ void HisiPcieDevice::kirin_pcie_host_init() {
 
     printf("LINK ESTABLISHED!\n");
 
-    // TODO(gkalsi): kirin_pcie_enable_interrupts.
+    kirin_pcie_enable_interrupts();
 }
+
 
 bool HisiPcieDevice::kirin_pcie_link_up() {
 #define PCIE_ELBI_RDLH_LINKUP (0x400)
@@ -477,6 +573,104 @@ zx_status_t HisiPcieDevice::InitMmios() {
     return st;
 }
 
+int HisiPcieDevice::MonitorIrqStatusThread() {
+    // uint64_t msi_target;
+
+
+    // kirin_pcie_rd_own_conf(0x820, 4, &msi_target_lo);
+    // kirin_pcie_rd_own_conf(0x824, 4, &msi_target_hi);
+
+    // msi_target = (((uint64_t)msi_target_hi) << 32) | msi_target_lo;
+
+    // printf("hisi_pcie: MSI target = 0x%016lx\n", msi_target);
+
+    while (true) {
+        zx_nanosleep(zx_deadline_after(ZX_SEC(1)));
+        uint32_t val;
+        kirin_pcie_rd_own_conf(0x830, 4, &val);
+
+        printf("hisi_pcie: thread status = 0x%08x\n", val);
+        kirin_pcie_wr_own_conf(0x830, 4, val);
+
+    }
+
+    return -1;
+}
+
+int HisiPcieDevice::HisiPcieIRQTestThread(uint n) {
+    while (true) {
+        printf("Waiting for IRQ#%u\n", n);
+
+        zx_interrupt_wait(irq_hdl_[n], nullptr);
+
+        printf("Got IRQ#%u\n", n);
+    }
+    return -1;
+}
+
+zx_status_t HisiPcieDevice::InitDebugIRQThread() {
+    // Get all the IRQs
+    zx_status_t st;
+
+    for (uint i = 0; i < IRQ_COUNT; i++) {
+        st = pdev_get_interrupt(&pdev_, i, 0, &irq_hdl_[i]);
+        if (st != ZX_OK) {
+            zxlogf(ERROR, "hisi_pcie: failed to map irq#%u, st = %d\n", i, st);
+            return st;
+        }
+
+
+    }
+
+    auto start_thread0 = [](void* arg) -> int {
+        return static_cast<HisiPcieDevice*>(arg)->HisiPcieIRQTestThread(0);
+    };
+
+    int rc = thrd_create_with_name(&irq_thread_[0], start_thread0, this, "hisi_irq_test0");
+    if (rc != thrd_success) {
+        return ZX_ERR_INTERNAL;
+    }
+
+    auto start_thread1 = [](void* arg) -> int {
+        return static_cast<HisiPcieDevice*>(arg)->HisiPcieIRQTestThread(1);
+    };
+
+    rc = thrd_create_with_name(&irq_thread_[1], start_thread1, this, "hisi_irq_test1");
+    if (rc != thrd_success) {
+        return ZX_ERR_INTERNAL;
+    }
+
+    auto start_thread2 = [](void* arg) -> int {
+        return static_cast<HisiPcieDevice*>(arg)->HisiPcieIRQTestThread(2);
+    };
+
+    rc = thrd_create_with_name(&irq_thread_[2], start_thread2, this, "hisi_irq_test2");
+    if (rc != thrd_success) {
+        return ZX_ERR_INTERNAL;
+    }
+
+    auto start_thread3 = [](void* arg) -> int {
+        return static_cast<HisiPcieDevice*>(arg)->HisiPcieIRQTestThread(3);
+    };
+
+    rc = thrd_create_with_name(&irq_thread_[3], start_thread3, this, "hisi_irq_test3");
+    if (rc != thrd_success) {
+        return ZX_ERR_INTERNAL;
+    }
+
+    // auto irq_debug_thread = [](void* arg) -> int {
+    //     return static_cast<HisiPcieDevice*>(arg)->MonitorIrqStatusThread();
+    // };
+    // rc = thrd_create_with_name(&dbg_thread_, irq_debug_thread, this, "irq_debug_thread");
+    // if (rc != thrd_success) {
+    //     return ZX_ERR_INTERNAL;
+    // }
+
+    printf("hisi_pcie: InitDebugIRQThread mapped all IRQs!\n");
+
+    return ZX_OK;
+}
+
 zx_status_t HisiPcieDevice::Init() {
     zx_status_t st;
 
@@ -489,6 +683,12 @@ zx_status_t HisiPcieDevice::Init() {
     st = InitMmios();
     if (st != ZX_OK) {
         zxlogf(ERROR, "hisi_pcie: failed to init mmios, st = %d\n", st);
+        return st;
+    }
+
+    st = InitDebugIRQThread();
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to start irq debug thread, st = %d\n", st);
         return st;
     }
 
@@ -539,7 +739,23 @@ zx_status_t HisiPcieDevice::Init() {
     // val = kirin_pcie_rd_own_conf(0x14, 4, &val);
     // printf("Bridge BAR1 = 0x%08x\n", val);
 
-    return zx_init_pcie_driver();
+    st = zx_init_pcie_driver();
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to initialize driver, st = %d\n", st);
+        return st;
+    }
+
+    pci_dev_args.ctx = (void*)this;
+
+    st = pdev_device_add(&pdev_, 0, &pci_dev_args, &dev_);
+    if (st != ZX_OK) {
+        zxlogf(ERROR, "hisi_pcie: failed to add device, st = %d\n", st);
+        return st;
+    }
+
+    printf("HisiPcie Init success!\n");
+
+    return ZX_OK;
 }
 
 zx_status_t HisiPcieDevice::kirin_pcie_get_clks() {
@@ -753,7 +969,13 @@ zx_status_t HisiPcieDevice::zx_init_pcie_driver() {
     const size_t arg_size = sizeof(*arg) + sizeof(arg->addr_windows[0]) * 2;
     arg = (zx_pci_init_arg_t*)calloc(1, arg_size);
 
-    arg->num_irqs = 0;
+    arg->num_irqs = 2;
+    arg->irqs[0].global_irq = (uint32_t)(msi_target_paddr_ & 0xffffffff);
+    arg->irqs[1].global_irq = (uint32_t)((msi_target_paddr_ & 0xffffffff00000000) >> 32);
+    // arg->irqs[0].level_triggered =
+    // arg->irqs[0].active_high =
+
+
     arg->addr_window_count = 2;
 
     // Root Bridge Config Window.
@@ -803,7 +1025,7 @@ static zx_driver_ops_t hisi_pcie_driver_ops = []() {
 }();
 
 // clang-format off
-// Bind to ANY Amlogic SoC with a DWC PCIe controller.
+// Bind to ANY Hisilicon SoC with a DWC PCIe controller.
 ZIRCON_DRIVER_BEGIN(hisi_pcie, hisi_pcie_driver_ops, "zircon", "0.1", 4)
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_96BOARDS),

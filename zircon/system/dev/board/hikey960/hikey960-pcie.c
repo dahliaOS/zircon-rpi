@@ -9,6 +9,20 @@
 #include "hikey960-hw.h"
 #include "hikey960.h"
 
+static const pbus_bti_t pci_btis[] = {
+    {
+        .iommu_index = 0,
+        .bti_id = 0,
+    },
+};
+
+static const pbus_dev_t pcie_dev_children[] = {
+    {
+        .bti_list = pci_btis,
+        .bti_count = countof(pci_btis),
+    },
+};
+
 static const pbus_mmio_t mmios[] = {
     // DBI.
     {
@@ -60,26 +74,34 @@ static const pbus_gpio_t gpios[] = {
     },
 };
 
-/*
 static const pbus_irq_t irqs[] = {
-    // TODO(gkalsi).
-    // {
-    //     .irq = 0x0,
-    //     .mode = 0x0,
-    // },
+    {
+        .irq = IRQ_PCIE_RADM_INTA,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+    },
+    {
+        .irq = IRQ_PCIE_RADM_INTB,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+    },
+    {
+        .irq = IRQ_PCIE_RADM_INTC,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+    },
+    {
+        .irq = IRQ_PCIE_RADM_INTD,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+    },
 };
 
 static const pbus_bti_t btis[] = {
-    // TODO(gkalsi).
-    // {
-    //     .iommu_index = 0,
-    //     .bti_id = 0,
-    // },
+    {
+        .iommu_index = 0,
+        .bti_id = 0,
+    },
 };
-*/
 
 static const pbus_clk_t clks[] = {
-    // {   // TODO(gkalsi).
+    // {  // TODO(gkalsi).
     //     .clk = HI3660_PCIEPHY_REF,
     // },
     {
@@ -107,11 +129,20 @@ const pbus_dev_t hikey_pcie_dev = {
     .mmio_list = mmios,
     .mmio_count = countof(mmios),
 
+    .irq_list = irqs,
+    .irq_count = countof(irqs),
+
     .gpio_list = gpios,
     .gpio_count = countof(gpios),
 
     .clk_list = clks,
     .clk_count = countof(clks),
+
+    .child_list = pcie_dev_children,
+    .child_count = countof(pcie_dev_children),
+
+    .bti_list = btis,
+    .bti_count = countof(btis),
 };
 
 zx_status_t hikey960_pcie_init(hikey960_t* hikey) {

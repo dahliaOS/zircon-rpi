@@ -197,6 +197,8 @@ zx_status_t PciDeviceDispatcher::QueryIrqModeCaps(zx_pci_irq_mode_t mode, uint32
 zx_status_t PciDeviceDispatcher::SetIrqMode(zx_pci_irq_mode_t mode, uint32_t requested_irq_count) {
     canary_.Assert();
 
+    printf("PciDeviceDispatcher::SetIrqMode mode = %u, count = %u\n", mode, requested_irq_count);
+
     Guard<fbl::Mutex> guard{&lock_};
     DEBUG_ASSERT(device_);
 

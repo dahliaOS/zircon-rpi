@@ -16,7 +16,7 @@
 
 #include <fbl/alloc_checker.h>
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 /*
  * TODO(cja) Re-add the paranoid sanity checks on capability placement

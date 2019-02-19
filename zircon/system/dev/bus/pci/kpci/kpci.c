@@ -131,6 +131,7 @@ static zx_status_t kpci_set_irq_mode(pci_msg_t* req, kpci_device_t* device, zx_h
 static zx_status_t kpci_map_interrupt(pci_msg_t* req, kpci_device_t* device, zx_handle_t ch) {
     pci_msg_t resp = {};
     zx_handle_t handle = ZX_HANDLE_INVALID;
+    printf("kpci_map_interrupt\n");
     zx_status_t st = zx_pci_map_interrupt(device->handle, req->irq.which_irq, &handle);
     return pci_rpc_reply(ch, st, &handle, req, &resp);
 }
@@ -354,6 +355,7 @@ static zx_status_t pci_init_child(zx_device_t* parent, uint32_t index) {
 }
 
 static zx_status_t pci_drv_bind(void* ctx, zx_device_t* parent) {
+    printf("pci_drv_bind!\n");
     // Walk PCI devices to create their upper half devices until we hit the end
     for (uint32_t index = 0;; index++) {
         if (pci_init_child(parent, index) != ZX_OK) {
@@ -369,9 +371,9 @@ static zx_driver_ops_t kpci_driver_ops = {
 };
 
 // clang-format off
-ZIRCON_DRIVER_BEGIN(pci, kpci_driver_ops, "zircon", "0.1", 5)
+ZIRCON_DRIVER_BEGIN(pci, kpci_driver_ops, "zircon", "0.1", 4)
     BI_MATCH_IF(EQ, BIND_PROTOCOL, ZX_PROTOCOL_PCIROOT),
-    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
+    // BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_KPCI),

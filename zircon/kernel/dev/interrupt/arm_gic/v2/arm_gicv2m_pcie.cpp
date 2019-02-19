@@ -49,17 +49,24 @@ public:
                        bool mask) override {
         arm_gicv2m_msi_mask_unmask(block, msi_id, mask);
     }
+
+    void MsiTargetAddr(uint64_t msi_target) { msi_target_ = msi_target; }
+    uint64_t MsiTargetAddr() const { return msi_target_; }
+
+private:
+    uint64_t msi_target_;
 };
 
 static void arm_gicv2_pcie_init(const void* driver_data, uint32_t length) {
     ASSERT(length >= sizeof(dcfg_arm_gicv2_driver_t));
-    const dcfg_arm_gicv2_driver_t* driver =
-        reinterpret_cast<const dcfg_arm_gicv2_driver_t*>(driver_data);
+    // const dcfg_arm_gicv2_driver_t* driver =
+    //     reinterpret_cast<const dcfg_arm_gicv2_driver_t*>(driver_data);
 
     // based on whether or not ZBI says we support MSI, initialize the v2m allocator
     zx_status_t res;
     bool use_msi;
-    if (driver->use_msi) {
+    // if (driver->use_msi) {
+    if (true) {
         dprintf(SPEW, "GICv2 MSI init\n");
 
         // Initialize the MSI allocator
