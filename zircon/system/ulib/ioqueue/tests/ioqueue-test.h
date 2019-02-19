@@ -12,19 +12,22 @@ struct TestOp {
     IoOp op;
     list_node_t node;
     uint32_t id;
+    bool enqueued;
     bool issued;
     bool released;
 };
 
 class IoQueueTest {
 public:
-    IoQueueTest();
+    IoQueueTest(uint32_t num_workers);
 
     void Enqueue(TestOp* top);
     void SetQueue(IoQueue* q) { q_ = q; }
     IoQueue* GetQueue() { return q_; }
     void CloseInput(bool wait);
     void GetCounts(uint32_t counts[3]);
+
+    uint32_t GetWorkers() { return num_workers_; }
 
     // Callbacks
     static zx_status_t cb_acquire(void* context, IoOp** op_list, size_t* op_count, bool wait) {
@@ -59,6 +62,7 @@ private:
     void ReleaseOp(IoOp* op);
     void Fatal();
 
+    uint32_t num_workers_ = 1;
     IoQueue* q_ = nullptr;
 
     fbl::Mutex lock_;

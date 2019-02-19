@@ -2,14 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <fbl/auto_lock.h>
+#include <unittest/unittest.h>
 
 #include "ioqueue-test.h"
+
+namespace tests {
 
 IoQueueCallbacks cb = {
     .context = NULL,
@@ -20,130 +22,148 @@ IoQueueCallbacks cb = {
     .fatal = IoQueueTest::cb_fatal,
 };
 
-uint32_t num_workers;
 const size_t num_ops = 10;
 TestOp tops[num_ops];
 
-void op_test(IoQueueTest* test, int depth) {
-    printf("%s\n", __FUNCTION__);
-    memset(tops, 0, sizeof(tops));
-
-    tops[0].id = 100;
-    tops[0].op.stream_id = 0;
-
-    tops[1].id = 101;
-    tops[1].op.stream_id = 0;
-
-    test->Enqueue(&tops[0]);
-    test->Enqueue(&tops[1]);
-
-    tops[2].id = 102;
-    tops[2].op.stream_id = 2;
-
-    test->Enqueue(&tops[2]);
-
-    tops[3].id = 103;
-    tops[3].op.stream_id = 4;
-
-    tops[4].id = 104;
-    tops[4].op.stream_id = 0;
-
-    test->Enqueue(&tops[3]);
-    test->Enqueue(&tops[4]);
-
-    test->CloseInput(true);
-    printf("%s done\n", __FUNCTION__);
+static bool ioqueue_create(IoQueueTest* test) {
+    IoQueue* q;
+    cb.context = static_cast<void*>(test);
+    ASSERT_EQ(IoQueueCreate(&cb, &q), ZX_OK, "Failed to create IoQueue");
+    test->SetQueue(q);
+    return true;
 }
 
-void serve_test(IoQueueTest* test, int depth) {
-    printf("%s\n", __FUNCTION__);
+static void ioqueue_destroy(IoQueueTest* test) {
+    IoQueueDestroy(test->GetQueue());
+}
+
+static bool ioqueue_open_streams(IoQueueTest* test) {
     IoQueue* q = test->GetQueue();
+    // Open stream 0 at priority 10
+    ASSERT_EQ(IoQueueOpenStream(q, 10, 0), ZX_OK, "Failed to open stream");
+     // Open stream 2 at priority 12
+    ASSERT_EQ(IoQueueOpenStream(q, 12, 2), ZX_OK, "Failed to open stream");
+     // Open stream 1 at priority 12
+    ASSERT_EQ(IoQueueOpenStream(q, 12, 1), ZX_OK, "Failed to open stream");
+    // Open stream 4 at priority 9
+    ASSERT_EQ(IoQueueOpenStream(q, 9, 4), ZX_OK, "Failed to open stream");
+    // Open stream 2 at priority 18
+    // Failure expected, stream already open.
+    ASSERT_EQ(IoQueueOpenStream(q, 18, 2), ZX_ERR_ALREADY_EXISTS, "Expected stream already open");
+    // Open stream 7 at invalid priority.
+    ASSERT_EQ(IoQueueOpenStream(q, kIoQueueMaxPri + 5, 7), ZX_ERR_INVALID_ARGS, "Expected invalid priority");
+    // valid streams are 0, 1, 2, 4
+    return true;
+}
 
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
-    zx_status_t status = IoQueueServe(q, num_workers);
-    assert(status == ZX_OK);
+static bool ioqueue_close_streams(IoQueueTest* test) {
+    printf("closing streams\n");
+    IoQueue* q = test->GetQueue();
+    ASSERT_EQ(IoQueueCloseStream(q, 0), ZX_OK, "Failed to close stream");
+    ASSERT_EQ(IoQueueCloseStream(q, 1), ZX_OK, "Failed to close stream");
 
-    if (depth) {
-        op_test(test, depth - 1);
-    }
+    ASSERT_EQ(IoQueueCloseStream(q, 1), ZX_ERR_INVALID_ARGS, "Closed non-existent stream");
+
+    ASSERT_EQ(IoQueueCloseStream(q, 2), ZX_OK, "Failed to close stream");
+    ASSERT_EQ(IoQueueCloseStream(q, 4), ZX_OK, "Failed to close stream");
+    printf("closing streams done\n");
+    return true;
+}
+
+static bool ioqueue_serve(IoQueueTest* test) {
+    IoQueue* q = test->GetQueue();
+    ASSERT_EQ(IoQueueServe(q, test->GetWorkers()), ZX_OK, "Failed to start server");
+    return true;
+}
+
+static bool ioqueue_shutdown(IoQueueTest* test) {
+    IoQueue* q = test->GetQueue();
     IoQueueShutdown(q);
-
     uint32_t count[3];
     test->GetCounts(count);
     printf("enq = %u, iss = %u, rel = %u\n", count[0], count[1], count[2]);
-    assert(count[0] == count[2]); // Enqueued == Released.
-    printf("%s done\n", __FUNCTION__);
+    ASSERT_EQ(count[0], count[2], "Ops enqueued do not equal ops released");
+    return true;
 }
 
-void open_test(IoQueueTest* test, int depth) {
-    printf("%s\n", __FUNCTION__);
-    IoQueue* q = test->GetQueue();
-    zx_status_t status = IoQueueOpenStream(q, 10, 0); // Open stream 0 at priority 10
-    assert(status == ZX_OK);
-
-    status = IoQueueOpenStream(q, 12, 2); // Open stream 2 at priority 12
-    assert(status == ZX_OK);
-
-    status = IoQueueOpenStream(q, 12, 1); // Open stream 1 at priority 12
-    assert(status == ZX_OK);
-
-    status = IoQueueOpenStream(q, 9, 4); // Open stream 4 at priority 9
-    assert(status == ZX_OK);
-
-    status = IoQueueOpenStream(q, 18, 2); // Open stream 2 at priority 18
-    // Failure expected, stream already open.
-    assert(status == ZX_ERR_ALREADY_EXISTS);
-
-    status = IoQueueOpenStream(q, kIoQueueMaxPri + 5, 7); // Open stream 7 at invalid priority.
-    // Failure expected.
-    assert(status == ZX_ERR_INVALID_ARGS);
-
-    // valid streams are 0, 1, 2, 4
-    if (depth) {
-        serve_test(test, depth - 1);
-    }
-
-    printf("%s done\n", __FUNCTION__);
+static void ioqueue_enqueue(IoQueueTest* test) {
+    memset(tops, 0, sizeof(tops));
+    tops[0].id = 100;
+    tops[0].op.stream_id = 0;
+    tops[1].id = 101;
+    tops[1].op.stream_id = 0;
+    test->Enqueue(&tops[0]);
+    test->Enqueue(&tops[1]);
+    tops[2].id = 102;
+    tops[2].op.stream_id = 2;
+    test->Enqueue(&tops[2]);
+    tops[3].id = 103;
+    tops[3].op.stream_id = 4;
+    tops[4].id = 104;
+    tops[4].op.stream_id = 0;
+    test->Enqueue(&tops[3]);
+    test->Enqueue(&tops[4]);
 }
 
-void create_test(int depth) {
-    printf("%s\n", __FUNCTION__);
-    IoQueue* q;
-
-    IoQueueTest test;
-    cb.context = static_cast<void*>(&test);
-
-    zx_status_t status = IoQueueCreate(&cb, &q);
-    assert(status == ZX_OK);
-    test.SetQueue(q);
-
-    if (depth) {
-        open_test(&test, depth - 1);
+static bool ioqueue_wait_for_completion(IoQueueTest* test) {
+    test->CloseInput(true);
+    uint32_t count[3];
+    test->GetCounts(count);
+    uint32_t enqueued = count[0];
+    for (uint32_t i = 0; i < enqueued; i++) {
+        ASSERT_TRUE(tops[i].enqueued, "Op not queued");
+        ASSERT_TRUE(tops[i].released, "Op not released");
     }
-
-    IoQueueDestroy(q);
-    printf("%s done\n\n", __FUNCTION__);
+    return true;
 }
 
-void do_tests() {
-    const int max_depth = 3;
-    num_workers = 1;
-    printf("num workers = %u\n", num_workers);
-    for (int i = 0; i <= max_depth; i++) {
-        create_test(i);
-    }
+static uint32_t use_num_threads = 1;
 
-    num_workers = 2;
-    printf("\nnum workers = %u\n", num_workers);
-    for (int i = 0; i <= max_depth; i++) {
-        create_test(i);
-    }
+static bool ioqueue_test_create() {
+    BEGIN_TEST;
+    IoQueueTest test(use_num_threads);
+    ASSERT_TRUE(ioqueue_create(&test), "Queue create failed");
+    ioqueue_destroy(&test);
+    END_TEST;
 }
 
-int main(int argc, char* argv[]) {
-    printf("IO Queue test\n");
-    while(1) {
-        do_tests();
-    }
-    return 0;
+static bool ioqueue_test_open() {
+    BEGIN_TEST;
+    IoQueueTest test(use_num_threads);
+    ASSERT_TRUE(ioqueue_create(&test), "Queue create failed");
+    ioqueue_open_streams(&test);
+    ioqueue_close_streams(&test);
+    ioqueue_destroy(&test);
+    END_TEST;
 }
+
+static bool ioqueue_test_serve() {
+    BEGIN_TEST;
+    IoQueueTest test(use_num_threads);
+    ASSERT_TRUE(ioqueue_create(&test), "Queue create failed");
+    if (ioqueue_open_streams(&test)) {
+        ioqueue_enqueue(&test);
+        if (ioqueue_serve(&test)) {
+            ioqueue_wait_for_completion(&test);
+            ioqueue_shutdown(&test);
+        } else {
+            ioqueue_close_streams(&test);
+        }
+    }
+    ioqueue_destroy(&test);
+    END_TEST;
+}
+
+BEGIN_TEST_CASE(ioqueue_tests)
+// RUN_TEST(ioqueue_test_create)
+// RUN_TEST(ioqueue_test_open)
+RUN_TEST(ioqueue_test_serve)
+END_TEST_CASE(ioqueue_tests)
+
+} // namespace tests
+
+int main(int argc, char** argv) {
+    bool success = unittest_run_all_tests(argc, argv);
+    return success ? 0 : -1;
+}
+

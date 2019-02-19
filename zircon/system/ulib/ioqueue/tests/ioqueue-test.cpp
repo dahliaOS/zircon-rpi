@@ -9,12 +9,13 @@
 
 #include "ioqueue-test.h"
 
-IoQueueTest::IoQueueTest() {
+IoQueueTest::IoQueueTest(uint32_t num_workers) : num_workers_(num_workers) {
     list_initialize(&in_list_);
 }
 
 void IoQueueTest::Enqueue(TestOp* top) {
     fbl::AutoLock lock(&lock_);
+    top->enqueued = true;
     list_add_tail(&in_list_, &top->node);
     in_avail_.Signal();
 }

@@ -88,15 +88,12 @@ void Worker::WorkerLoop() {
                 break;
             }
             // Issue slot acquired and op available. Execute it.
-            printf("worker: issue op %p\n", op);
             status = q_->IssueOp(op);
             if (status == ZX_ERR_ASYNC) {
                 continue;   // Op will be completed asynchronously.
             }
             // Op completed or failed synchronously. Release.
-            printf("worker: complete op %p\n", op);
             sched->CompleteOp(op, false);
-            printf("worker: release op %p\n", op);
             q_->ReleaseOp(op);
             op = nullptr; // Op freed in ops->release().
         }
@@ -115,7 +112,6 @@ zx_status_t Worker::AcquireOps(bool wait, size_t* out_num_ready) {
             return status;
         }
     } while (op_count == 0);
-    printf("worker: acquired %zu ops\n", op_count);
     Scheduler* sched = q_->GetScheduler();
     sched->InsertOps(op_list, op_count, out_num_ready);
     for (uint32_t i = 0; i < op_count; i++) {
