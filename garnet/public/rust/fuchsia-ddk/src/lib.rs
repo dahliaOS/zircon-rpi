@@ -74,6 +74,9 @@ impl<T> DerefMut for Ctx<T> {
 
 pub trait DeviceOps where Self: core::marker::Sized {
     fn unbind(_: &Device<Self>) -> () { }
+    fn message(_: &Device<Self>) -> Result<(), zx::Status> {
+        Err(zx::Status::NOT_SUPPORTED)
+    }
 //    fn close(_: &Device<Self>) -> () { }
 //    fn release(&mut self);
 }
