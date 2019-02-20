@@ -64,10 +64,10 @@ public:
 
     fbl::Mutex lock_;
     // These fields are protected by the above stream lock.
-    uint32_t flags_ = 0;
-    fbl::ConditionVariable event_unscheduled_;
-    list_node_t ready_op_list_;
-    list_node_t issued_op_list_;
+    uint32_t flags_ __TA_GUARDED(lock_) = 0;
+    fbl::ConditionVariable event_unscheduled_ __TA_GUARDED(lock_);
+    list_node_t ready_op_list_ __TA_GUARDED(lock_);
+    list_node_t issued_op_list_ __TA_GUARDED(lock_);
 };
 
 } // namespace

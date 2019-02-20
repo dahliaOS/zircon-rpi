@@ -41,7 +41,6 @@ zx_status_t Scheduler::AddStream(StreamRef stream) {
     if(stream_map_.find(stream->id_).IsValid()) {
         return ZX_ERR_ALREADY_EXISTS;
     }
-    stream->flags_ &= ~kIoStreamFlagClosed; // Flag as usable.
     stream_map_.insert(std::move(stream));
     return ZX_OK;
 }

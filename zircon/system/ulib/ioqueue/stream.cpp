@@ -8,15 +8,12 @@
 
 namespace ioqueue {
 
-Stream::Stream(uint32_t pri) {
-    priority_ = pri;
-    flags_ = kIoStreamFlagClosed;
+Stream::Stream(uint32_t pri) : priority_(pri), flags_(0) {
     list_initialize(&ready_op_list_);
     list_initialize(&issued_op_list_);
 }
 
 Stream::~Stream() {
-    assert(flags_ & kIoStreamFlagClosed);
     assert(list_is_empty(&ready_op_list_));
     assert(list_is_empty(&issued_op_list_));
 }
