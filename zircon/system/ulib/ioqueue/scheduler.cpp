@@ -14,8 +14,8 @@ static inline Op* node_to_op(list_node_t* node) {
 }
 
 Scheduler::Scheduler() {
-    sem_init(&issue_sem_, 0, SCHED_MAX_ISSUES);
-    max_issues_ = SCHED_MAX_ISSUES;     // Todo: make dynamic.
+    sem_init(&issue_sem_, 0, kIoQueueMaxIssues);
+    max_issues_ = kIoQueueMaxIssues;     // Todo: make dynamic.
     list_initialize(&completed_op_list_);
 }
 
@@ -130,8 +130,8 @@ zx_status_t Scheduler::GetNextOp(bool wait, Op** op_out) {
     }
     // Locate the first op in priority list
     StreamRef stream;
-    for (uint32_t i = 0; i < IO_SCHED_NUM_PRI; i++) {
-        uint32_t pri = IO_SCHED_MAX_PRI - i;
+    for (uint32_t i = 0; i < kIoQueueNumPri; i++) {
+        uint32_t pri = kIoQueueMaxPri - i;
         stream = pri_list_[pri].pop_front();
         if (stream != nullptr) {
             break;

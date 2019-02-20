@@ -20,7 +20,7 @@ Queue::~Queue() {
 }
 
 zx_status_t Queue::OpenStream(uint32_t priority, uint32_t id) {
-    if (priority > IO_SCHED_MAX_PRI) {
+    if (priority > kIoQueueMaxPri) {
         return ZX_ERR_INVALID_ARGS;
     }
     fbl::AllocChecker ac;
@@ -51,7 +51,7 @@ zx_status_t Queue::CloseStream(uint32_t id) {
         stream->flags_ |= kIoStreamFlagClosed;
         // Once closed, the stream cannot transition from idle to scheduled.
         if ((stream->flags_ & kIoStreamFlagScheduled) == 0) {
-            sched_.RemoveStreamLocked(stream);
+            sched_.RemoveStream(stream);
             return ZX_OK;
         }
         lock.release();
