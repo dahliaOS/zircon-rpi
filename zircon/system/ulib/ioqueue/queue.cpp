@@ -6,9 +6,10 @@
 
 #include "queue.h"
 
-#define MAX_ACQUIRE_WORKERS 1
-
 namespace ioqueue {
+
+// Todo: make this configurable.
+constexpr uint32_t kMaxAcquireWorkers = 1;
 
 Queue::Queue(const IoQueueCallbacks* cb) : sched_(), shutdown_(false), ops_(cb) {}
 
@@ -73,8 +74,7 @@ zx_status_t Queue::CloseStream(uint32_t id) {
 }
 
 zx_status_t Queue::Serve(uint32_t num_workers) {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
-    if ((num_workers == 0) || (num_workers > IO_QUEUE_MAX_WORKERS)) {
+    if ((num_workers == 0) || (num_workers > kIoQueueMaxWorkers)) {
         return ZX_ERR_INVALID_ARGS;
     }
 
@@ -128,7 +128,7 @@ void Queue::WorkerExited(uint32_t id) {
 
 zx_status_t Queue::GetAcquireSlot() {
     fbl::AutoLock lock(&lock_);
-    if (acquire_workers_ >= MAX_ACQUIRE_WORKERS) {
+    if (acquire_workers_ >= kMaxAcquireWorkers) {
         return ZX_ERR_SHOULD_WAIT;
     }
     acquire_workers_++;

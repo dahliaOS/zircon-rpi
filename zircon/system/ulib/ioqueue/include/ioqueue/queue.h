@@ -30,7 +30,12 @@ The queue core makes the following callbacks to the clients:
 The queue will perform one or more concurrent callbacks based on client-defined parameters.
 */
 
+// Maximum number of worker threads.
+constexpr int kIoQueueMaxWorkers = 8;
+
+// Maximum priority level for a stream.
 constexpr uint32_t kIoQueueMaxPri = 31;
+// Default priority level for a stream.
 constexpr uint32_t kIoQueueDefaultPri = 8;
 
 /*
