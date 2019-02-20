@@ -24,8 +24,6 @@ private:
     static int ThreadEntry(void* arg);
     void ThreadMain();
     void WorkerLoop();
-    zx_status_t AcquireLoop();
-    zx_status_t IssueLoop();
     zx_status_t AcquireOps(bool wait, size_t* out_num_ready);
 
     Queue* q_ = nullptr;

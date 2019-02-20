@@ -12,11 +12,6 @@
 
 namespace ioqueue {
 
-// constexpr uint32_t kOpFlagReadBarrier  = (1u << 0);
-// constexpr uint32_t kOpFlagWriteBarrier = (1u << 1);
-// constexpr uint32_t kOpFlagReorderBarrier = (1u << 2);
-// constexpr uint32_t kOpFlagFullBarrier = kOpFlagReadBarrier | kOpFlagWriteBarrier;
-
 // ioqueue::Op is the internal version of the public IoOp. They must match in size.
 struct Op {
     // These fields must be the same as IoOp.

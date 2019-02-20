@@ -39,25 +39,21 @@ int Worker::ThreadEntry(void* arg) {
 }
 
 void Worker::ThreadMain() {
-    // printf("worker %u: started\n", id_);
     WorkerLoop();
     q_->WorkerExited(id_);
 }
 
-#define NUM_COMPLETED_OPS 10
-
 void Worker::WorkerLoop() {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
-
     Scheduler* sched = q_->GetScheduler();
     do {
         zx_status_t status;
         size_t num_ready = 0;
         // Drain completed ops.
         for ( ; ; ) {
+            const uint32_t max_ops = 10;
             size_t op_count = 0;
-            Op* op_list[NUM_COMPLETED_OPS];
-            status = sched->GetCompletedOps(op_list, NUM_COMPLETED_OPS, &op_count);
+            Op* op_list[max_ops];
+            status = sched->GetCompletedOps(op_list, max_ops, &op_count);
             if ((status != ZX_OK) || (op_count == 0)) {
                 break;
             }
@@ -65,7 +61,7 @@ void Worker::WorkerLoop() {
                 q_->ReleaseOp(op_list[i]);
             }
         }
-         // Read new ops.
+        // Read new ops.
         if (!cancelled_) {
             status = AcquireOps(true, &num_ready);
             if (status == ZX_ERR_CANCELED) {
