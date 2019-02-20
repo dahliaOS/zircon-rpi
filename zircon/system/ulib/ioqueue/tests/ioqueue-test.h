@@ -8,6 +8,7 @@
 #include <ioqueue/queue.h>
 #include <zircon/listnode.h>
 
+// Wrapper around IoOp, the basic work unit of IoQueue.
 struct TestOp {
     IoOp op;
     list_node_t node;
@@ -19,19 +20,30 @@ struct TestOp {
 
 class IoQueueTest {
 public:
+    // Number of threads to use inside IO Queue.
     IoQueueTest(uint32_t num_workers);
-
-    void Enqueue(TestOp* top);
+    // Associate with IoQueue.
     void SetQueue(IoQueue* q) { q_ = q; }
+    // Return IoQueue.
     IoQueue* GetQueue() { return q_; }
+
+    // Add a test op to the op source from which IO Queue will acquire ops.
+    void Enqueue(TestOp* top);
+    // Wait for all currently enqueued ops to be acquired by IO Queue workers.
     void WaitForAcquired();
+    // Wait for all currently enqueued ops to be released by IO Queue workers.
     void WaitForReleased();
+    // Mark the op source as closed.
     void CloseInput();
 
+    // Return the number of ops enqueued, issued, and released.
     void GetCounts(uint32_t counts[3]);
     uint32_t GetWorkers() { return num_workers_; }
 
-    // Callbacks
+    //
+    // Callbacks called asynchronously by IO Queue library.
+    // See queue/queue.h for description.
+    //
     static zx_status_t cb_acquire(void* context, IoOp** op_list, size_t* op_count, bool wait) {
         IoQueueTest* test = static_cast<IoQueueTest*>(context);
         return test->AcquireOps(op_list, op_count, wait);
