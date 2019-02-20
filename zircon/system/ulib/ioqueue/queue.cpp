@@ -11,17 +11,15 @@ namespace ioqueue {
 // Todo: make this configurable.
 constexpr uint32_t kMaxAcquireWorkers = 1;
 
-Queue::Queue(const IoQueueCallbacks* cb) : sched_(), shutdown_(false), ops_(cb) {}
+Queue::Queue(const IoQueueCallbacks* cb) : sched_(), ops_(cb), shutdown_(false) {}
 
 Queue::~Queue() {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
     if (!shutdown_) {
         Shutdown();
     }
 }
 
 zx_status_t Queue::OpenStream(uint32_t priority, uint32_t id) {
-    // printf("%s:%u\n", __FUNCTION__, __LINE__);
     if (priority > IO_SCHED_MAX_PRI) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -31,19 +29,10 @@ zx_status_t Queue::OpenStream(uint32_t priority, uint32_t id) {
         return ZX_ERR_NO_MEMORY;
     }
     stream->id_ = id;
-    // {
-    //     fbl::AutoLock lock(&lock_);
-    //     assert(!shutdown_);
-    //     if (shutdown_) {
-    //         fprintf(stderr, "Attempted to open stream on closed queue.\n");
-    //         return ZX_ERR_BAD_STATE;
-    //     }
-    // }
     return sched_.AddStream(std::move(stream));
 }
 
 zx_status_t Queue::CloseStream(uint32_t id) {
-     // printf("%s:%u\n", __FUNCTION__, __LINE__);
     for (bool first = true; ; first = false) {
         fbl::AutoLock lock(&lock_);
         if (first) {
@@ -74,6 +63,7 @@ zx_status_t Queue::CloseStream(uint32_t id) {
 }
 
 zx_status_t Queue::Serve(uint32_t num_workers) {
+    fbl::AutoLock lock(&lock_);
     if ((num_workers == 0) || (num_workers > kIoQueueMaxWorkers)) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -92,8 +82,11 @@ zx_status_t Queue::Serve(uint32_t num_workers) {
 }
 
 void Queue::Shutdown() {
-    assert(shutdown_ == false);
-    shutdown_ = true;
+    {
+        fbl::AutoLock lock(&lock_);
+        assert(shutdown_ == false);
+        shutdown_ = true;
+    }
 
     // Wake threads blocking on incoming ops.
     ops_->cancel_acquire(ops_->context);
@@ -113,15 +106,12 @@ void Queue::Shutdown() {
             worker[i].Join();
         }
     }
-    // printf("q: shutdown complete\n");
 }
 
 void Queue::WorkerExited(uint32_t id) {
     fbl::AutoLock lock(&lock_);
     active_workers_--;
-    // printf("worker %u exiting, num_workers = %u\n", id, active_workers_);
     if (active_workers_ == 0) {
-        // printf("signalling all workers exited\n");
         event_workers_exited_.Broadcast();
     }
 }
