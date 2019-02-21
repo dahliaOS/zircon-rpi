@@ -15,17 +15,18 @@ namespace ioqueue {
 // ioqueue::Op is the internal version of the public IoOp. They must match in size.
 struct Op {
     // These fields must be the same as IoOp.
-    uint32_t opcode;
+    enum IoOpcode opcode;
     uint32_t flags;
     uint32_t stream_id;     // Stream id
     zx_status_t result;
+    void* cookie;           // User cookie, do not touch.
 
     // Private fields marked as reserved in IoOp.
     list_node_t node;       // 2x ptr size
-    uint64_t _unused[4];
+    uintptr_t _unused[6];
 
-    static IoOp* ToIoOp(Op* op) { return reinterpret_cast<IoOp*>(op); }
     static Op* FromIoOp(IoOp* iop) { return reinterpret_cast<Op*>(iop); }
+    static IoOp* ToIoOp(Op* op) { return reinterpret_cast<IoOp*>(op); }
     static IoOp** ToIoOpList(Op** list) { return reinterpret_cast<IoOp**>(list); }
 };
 
