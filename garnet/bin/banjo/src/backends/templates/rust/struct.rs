@@ -1,5 +1,5 @@
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct {name} {{
 {struct_fields}
 }}

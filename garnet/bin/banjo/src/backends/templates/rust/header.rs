@@ -9,5 +9,6 @@
 
 use fuchsia_zircon as zircon;
 use fuchsia_ddk as ddk;
+use ddk::{{LibcPtr, DefaultPtr}};
 
 {includes}

@@ -54,27 +54,30 @@ fn to_rust_type(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
             let Constant(ref size) = size;
             Ok(format!("[{ty}; {size}]", ty = to_rust_type(&ast, ty)?, size = size))
         },
-        ast::Ty::Voidptr => Ok(String::from("*mut libc::c_void /* Voidptr */ ")),
-        ast::Ty::Enum { .. } => Ok(String::from("*mut libc::c_void /* Enum not right*/")),
+        ast::Ty::Voidptr => Ok(String::from("LibcPtr /* Voidptr */ ")),
+        ast::Ty::Enum { .. } => Ok(String::from("LibcPtr /* Enum not right*/")),
         ast::Ty::Str { size, .. } => {
             match size {
                 Some(Constant(c)) => {
                     Ok(format!("[u8; {size}]", size = c))
                 },
-                None => Ok(String::from("*mut libc::c_void /* String */"))
+                None => Ok(String::from("LibcPtr /* String */"))
             }
         },
         ast::Ty::Vector { ref ty, size: _, nullable: _ } => to_rust_type(ast, ty),
         ast::Ty::Identifier { id, reference } => {
-            let ptr = if *reference { "*mut "} else { "" };
             if id.is_base_type() {
                 Ok(format!("zircon::sys::zx_{}_t", id.name()))
             } else {
                 match ast.id_to_type(id) {
                     ast::Ty::Interface => return Ok(c::to_c_name(id.name())),
                     ast::Ty::Struct => {
-                        let name = c::to_c_name(id.name());
-                        return Ok(format!("{ptr}{name}_t", ptr = ptr, name = name))
+                        let name = id.name();
+                        if *reference {
+                            Ok(format!("DefaultPtr< {name} >", name = name))
+                        } else {
+                            Ok(format!("{name}", name = name))
+                        }
                     }
                     t => to_rust_type(ast, &t),
                 }
@@ -351,7 +354,7 @@ impl<'a, W: io::Write> RustBackend<'a, W> {
                 }
                 accum.push(format!(
                     include_str!("templates/rust/struct.rs"),
-                    name = c::to_c_name(name.as_str()) + "_t",
+                    name = name.as_str(),
                     struct_fields = field_str.join("\n")
                 ));
             }

@@ -20,6 +20,26 @@ use {
 
 pub use fuchsia_ddk_macro::{device_ops, bind_entry_point};
 
+
+#[repr(transparent)]
+#[derive(Debug, PartialEq)]
+pub struct DefaultPtr<T>(pub *mut T);
+impl<T: Default> Default for DefaultPtr<T> {
+    fn default() -> Self {
+        DefaultPtr(&mut T::default())
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, PartialEq)]
+pub struct LibcPtr(pub *mut libc::c_void);
+impl Default for LibcPtr {
+    fn default() -> Self {
+        LibcPtr(core::ptr::null_mut())
+    }
+}
+
+
 /// OpaqueCtx is for parent devices where the type is unknown
 /// since it was not created by this driver.
 // TODO(bwb): Is there a way to make this only constructed by this crate
