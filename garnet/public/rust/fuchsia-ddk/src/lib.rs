@@ -12,7 +12,7 @@ extern crate alloc;
 use {
     alloc::prelude::*,
     core::slice,
-    fuchsia_ddk_sys::zx_device_t,
+    fuchsia_ddk_sys::{fidl_msg_t, fidl_txn_t, zx_device_t},
     fuchsia_zircon as zx,
     core::ops::{DerefMut, Deref},
     core::marker::PhantomData,
@@ -105,7 +105,7 @@ pub trait DeviceOps where Self: core::marker::Sized {
     //fn resume(_: &Device<Self>) -> () { }
     //fn suspend(_: &Device<Self>) -> () { }
     fn unbind(_: &Device<Self>) -> () { }
-    fn message(_: &Device<Self>) -> Result<(), zx::Status> {
+    unsafe fn message(_: &Device<Self>, _msg: *mut fidl_msg_t, _txn: *mut fidl_txn_t) -> Result<(), zx::Status> {
         Err(zx::Status::NOT_SUPPORTED)
     }
 //    fn close(_: &Device<Self>) -> () { }
@@ -218,11 +218,13 @@ pub unsafe extern "C" fn unbind_unsafe<T: DeviceOps>(ctx: *mut libc::c_void) {
 
 pub unsafe extern "C" fn message_unsafe<T: DeviceOps>(
     ctx: *mut libc::c_void,
-    _msg: *mut fuchsia_ddk_sys::fidl_msg_t,
-    _txn: *mut fuchsia_ddk_sys::fidl_txn_t,
+    msg: *mut fidl_msg_t,
+    txn: *mut fidl_txn_t,
 ) -> zx::sys::zx_status_t {
     // TODO verify unwrap here
     let ctx_ref: &Ctx<T> = &*(ctx as *mut Ctx<T>);
-    let _resp = T::message(ctx_ref.get_device()); // TODO message
-    zx::sys::ZX_OK
+    match T::message(ctx_ref.get_device(), msg, txn) {
+        Ok(_) => zx::sys::ZX_OK,
+        Err(e) => e.into_raw()
+    }
 }

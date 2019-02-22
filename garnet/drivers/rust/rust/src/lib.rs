@@ -24,11 +24,63 @@ pub struct Gpio {
 #[fuchsia_ddk::device_ops]
 impl DeviceOps for Gpio {
     fn unbind(device: &Device<Gpio>) {
-        device.remove();
+        //device.remove();
     }
-    fn message(device: &Device<Gpio>) -> Result</* TODO(bwb): fidl buffer */ (), zx::Status> {
-        eprintln!("message: driver name {}", device.get_name());
+    unsafe fn message(
+        device: &Device<Gpio>,
+        msg: *mut fidl_msg_t,
+        txn: *mut fidl_txn_t,
+    ) -> Result<(), zx::Status> {
         dbg!("message called in Gpio!");
+        let slice = unsafe {
+            std::slice::from_raw_parts((*msg).bytes as *mut u8, (*msg).num_bytes as usize)
+        };
+        // TODO better error
+        let (txn_header, body_bytes) =
+            fidl::encoding::decode_transaction_header(slice).map_err(|e| zx::Status::INTERNAL)?;
+        let mut handles: Vec<fuchsia_zircon::Handle> = vec![];
+        match txn_header.ordinal {
+            164944856 | 164944856 => {
+                // decode side
+                let mut req: (u32) = fidl::encoding::Decodable::new_empty();
+                fidl::encoding::Decoder::decode_into(
+                    body_bytes,
+                    handles.as_mut_slice(),
+                    &mut req,
+                )
+                .map_err(|e| zx::Status::INTERNAL)?;
+
+                // user implemented
+                let status: i32 = 0;
+                let name = Some("test-wat");
+                let mut response = (status, name);
+
+                // encode side
+                let header = fidl::encoding::TransactionHeader {
+                    tx_id: txn_header.tx_id,
+                    flags: 0,
+                    ordinal: txn_header.ordinal,
+                };
+
+                let mut msg = fidl::encoding::TransactionMessage {
+                        header,
+                        body: &mut response,
+                };
+
+                let (mut bytes, mut handles) = (&mut vec![], &mut vec![]);
+                fidl::encoding::Encoder::encode(bytes, handles, &mut msg).map_err(|e| zx::Status::INTERNAL)?;
+                if let Some(reply_fn) = (*txn).reply {
+                    reply_fn(txn, &fidl_msg_t {
+                        bytes: bytes.as_ptr() as *mut libc::c_void,
+                        handles: handles.as_ptr() as *mut u32,
+                        num_bytes: bytes.len() as u32,
+                        num_handles: 0,
+                    });
+                }
+            }
+            _ => return Err(zx::Status::NOT_SUPPORTED),
+        }
+        eprintln!("{:#?}", txn_header);
         Ok(())
     }
 }
@@ -71,4 +123,3 @@ fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status>
     eprintln!("[rust_example] nothing crashed on device add!: {}", example_device.get_name());
     Ok(())
 }
-

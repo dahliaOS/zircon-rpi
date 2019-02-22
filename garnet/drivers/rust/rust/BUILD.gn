@@ -10,6 +10,8 @@ rustc_staticlib("rust") {
   deps = [
     "//zircon/public/banjo/ddk-protocol-platform-device:ddk-protocol-platform-device-rustc",
     "//zircon/public/banjo/ddk-protocol-gpio:ddk-protocol-gpio-rustc",
+    "//zircon/public/fidl/fuchsia-hardware-light:fuchsia-hardware-light-rustc",
+    "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/fuchsia-zircon",
     "//garnet/public/rust/fuchsia-ddk",
     "//third_party/rust-crates/rustc_deps:libc",

@@ -28,13 +28,18 @@ pub struct zx_device_prop_t {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct fidl_msg_t {
-    _unused: [u8; 0],
+    pub bytes: *mut libc::c_void,
+    pub handles: *mut zx::sys::zx_handle_t,
+    pub num_bytes: u32,
+    pub num_handles: u32,
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct fidl_txn_t {
-    _unused: [u8; 0],
+    pub reply: ::core::option::Option<
+        unsafe extern "C" fn(txn: *mut fidl_txn_t, msg: *const fidl_msg_t) -> zx::sys::zx_status_t,
+    >,
 }
 
 // Max device name length, not including a null-terminator
