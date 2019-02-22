@@ -50,10 +50,20 @@ fn to_rust_type(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Error> {
         ast::Ty::Float32 => Ok(String::from("f32")),
         ast::Ty::Float64 => Ok(String::from("f64")),
         ast::Ty::USize => Ok(String::from("usize")),
-        ast::Ty::Array { .. } => Ok(String::from("*mut libc::c_void /* Array */ ")),
+        ast::Ty::Array { ty, size } => {
+            let Constant(ref size) = size;
+            Ok(format!("[{ty}; {size}]", ty = to_rust_type(&ast, ty)?, size = size))
+        },
         ast::Ty::Voidptr => Ok(String::from("*mut libc::c_void /* Voidptr */ ")),
         ast::Ty::Enum { .. } => Ok(String::from("*mut libc::c_void /* Enum not right*/")),
-        ast::Ty::Str { .. } => Ok(String::from("*mut libc::c_void /* String */")),
+        ast::Ty::Str { size, .. } => {
+            match size {
+                Some(Constant(c)) => {
+                    Ok(format!("[u8; {size}]", size = c))
+                },
+                None => Ok(String::from("*mut libc::c_void /* String */"))
+            }
+        },
         ast::Ty::Vector { ref ty, size: _, nullable: _ } => to_rust_type(ast, ty),
         ast::Ty::Identifier { id, reference } => {
             let ptr = if *reference { "*mut "} else { "" };

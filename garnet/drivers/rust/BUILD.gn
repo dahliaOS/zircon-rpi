@@ -24,15 +24,11 @@ driver_module("rust_example") {
     "example.c",
   ]
 
- # ldflags = [ "-L/usr/local/google/home/bwb/fuchsia/buildtools/linux-x64/rust/lib/rustlib/x86_64-fuchsia/lib" ]
-
- configs -= [ "//build/config/fuchsia:no_cpp_standard_library" ]
+  configs -= [ "//build/config/fuchsia:no_cpp_standard_library" ]
 
   deps = [
     "//garnet/drivers/rust/rust",
-#    "//garnet/drivers/rust/:crust",
-#    "//zircon/public/banjo/ddk-protocol-ethernet",
-#    "//zircon/public/banjo/ddk-protocol-usb",
+    "//zircon/public/lib/fdio",
     "//zircon/public/lib/ddk",
     "//zircon/public/lib/driver",
   ]

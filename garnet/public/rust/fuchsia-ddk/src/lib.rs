@@ -18,7 +18,7 @@ use {
     core::marker::PhantomData,
 };
 
-pub use fuchsia_ddk_macro::bind_entry_point;
+pub use fuchsia_ddk_macro::{device_ops, bind_entry_point};
 
 /// OpaqueCtx is for parent devices where the type is unknown
 /// since it was not created by this driver.
@@ -37,15 +37,16 @@ unsafe fn strlen(p: *const libc::c_char) -> usize {
 
 pub struct Ctx<T> {
     device: Device<T>,
-    real_ctx: Box<T>,
+    real_ctx: T,
 }
 
 impl<T> Ctx<T> {
-    pub fn new(context: T) -> Self {
+    pub fn new(context: T) -> Box<Self> {
+        Box::new(
         Ctx {
             device: Device::default(),
-            real_ctx: Box::new(context)
-        }
+            real_ctx: context
+        })
     }
 
     pub fn get_device(&self) -> &Device<T> {
@@ -73,6 +74,16 @@ impl<T> DerefMut for Ctx<T> {
 }
 
 pub trait DeviceOps where Self: core::marker::Sized {
+//    const OPS: sys::zx_protocol_device_t;
+    fn get_device_protocol() -> &'static sys::zx_protocol_device_t;
+
+    //fn get_protocol(_: &Device<Self>) -> () { }
+    //fn get_size(_: &Device<Self>) -> () { }
+    //fn open(_: &Device<Self>) -> () { }
+    //fn close(_: &Device<Self>) -> () { }
+    //fn release(_: &Device<Self>) -> () { }
+    //fn resume(_: &Device<Self>) -> () { }
+    //fn suspend(_: &Device<Self>) -> () { }
     fn unbind(_: &Device<Self>) -> () { }
     fn message(_: &Device<Self>) -> Result<(), zx::Status> {
         Err(zx::Status::NOT_SUPPORTED)
@@ -138,112 +149,60 @@ impl<T> Device<T> {
     /// Creates a child device and adds it to the devmgr
     /// TODO(bwb): Think about lifetimes. Consumes Device to prevent calls on the parent device
     /// after a potential release or failure. Might need to rethink if parent still needed in bind calls.
-    pub fn add_device_with_context<U>(self, name: String, context: Ctx<U>, device_ops: &sys::zx_protocol_device_t) -> Result<Device<U>, zx::Status> {
+    pub fn add_device_with_context<U: DeviceOps>(self, name: String, protocol_id: u32, mut context: Box<Ctx<U>>) -> Result<Device<U>, zx::Status> {
         let mut name_vec: Vec<u8> = name.clone().into();
         name_vec.reserve_exact(1);
         name_vec.push(0);
 
-        let ctx = Box::new(context);
-        let ctx_ptr = Box::into_raw(ctx);
+        let raw_device_ptr = &mut context.device.device as *mut _;
+        let ctx_ptr = Box::into_raw(context);
 
         // device_add_args_t values are copied, so device_add_args_t can be stack allocated.
         let mut args = sys::device_add_args_t {
             name: name_vec.as_ptr() as *mut libc::c_char,
             version: sys::DEVICE_ADD_ARGS_VERSION,
-            ops: device_ops as *const _,
+            ops: U::get_device_protocol() as *const _,
             ctx: ctx_ptr as *mut _ as *mut libc::c_void,
             props: core::ptr::null_mut(),
-            flags: 1,
+            flags: 0,
             prop_count: 0,
-            proto_id: 0,
+            proto_id: protocol_id,
             proto_ops: core::ptr::null_mut(),
             proxy_args: core::ptr::null_mut(),
             client_remote: 0, //handle
         };
 
-        let mut out_ptr = unsafe { (*ctx_ptr).device.device };
         let resp = unsafe {
             // TODO(bwb) think about validating out_ptr or trust invariants of call?
             sys::device_add_from_driver(
                 sys::__zircon_driver_rec__.driver,
                 self.get_ptr(),
                 &mut args,
-                &mut out_ptr,
+                raw_device_ptr,
             )
         };
         zx::Status::ok(resp).map(|_| {
             Device {
-                device: out_ptr,
+                device: unsafe { *raw_device_ptr },
                 ctx_type: PhantomData
             }
         })
     }
 }
 
-//#[doc(hidden)]
-//#[repr(transparent)]
-//pub struct Op<Ctx, Args, Return> {
-//    #[doc(hidden)]
-//    pub ptr: *const libc::c_void,
-//    #[doc(hidden)]
-//    pub _marker: PhantomData<(Ctx, Args, Return)>,
-//}
-//
-//unsafe impl<Ctx, Args, Return> Sync for Op<Ctx, Args, Return> { }
-//
-//#[repr(transparent)]
-//pub struct ProtocolDevice<T> {
-//    // TODO deref into ops instead of pub
-//    pub ops: sys::zx_protocol_device_t,
-//    phantom: PhantomData<T>,
-//}
-//
-//unsafe impl<T> Sync for ProtocolDevice<T> { }
-//
-//impl<Ctx> ProtocolDevice<Ctx> {
-//    pub const fn get_protocol(self, get_protocol: Op<Ctx, u32, *mut libc::c_void>) -> Self {
-//        Self {
-//            ops: sys::zx_protocol_device_t {
-//                get_protocol: get_protocol.ptr as *const libc::c_void,
-//                version: self.ops.version,
-//                close: self.ops.close,
-//                ioctl: self.ops.ioctl,
-//                message: self.ops.message,
-//                get_size: self.ops.get_size,
-//                open:   self.ops.open,
-//                open_at: self.ops.open_at,
-//                read:   self.ops.read,
-//                release: self.ops.release,
-//                resume: self.ops.resume,
-//                rxrpc:  self.ops.rxrpc,
-//                suspend: self.ops.suspend,
-//                unbind: self.ops.unbind,
-//                write:  self.ops.write,
-//            },
-//            phantom: PhantomData,
-//        }
-//    }
-//
-//    pub const fn unitialized() -> Self {
-//        Self {
-//            ops: sys::zx_protocol_device_t {
-//                version: sys::DEVICE_OPS_VERSION,
-//                close: core::ptr::null_mut(),
-//                ioctl: core::ptr::null_mut(),
-//                message: core::ptr::null_mut(),
-//                get_protocol: core::ptr::null_mut(),
-//                get_size: core::ptr::null_mut(),
-//                open: core::ptr::null_mut(),
-//                open_at: core::ptr::null_mut(),
-//                read: core::ptr::null_mut(),
-//                release: core::ptr::null_mut(),
-//                resume: core::ptr::null_mut(),
-//                rxrpc: core::ptr::null_mut(),
-//                suspend: core::ptr::null_mut(),
-//                unbind: core::ptr::null_mut(),
-//                write: core::ptr::null_mut(),
-//            },
-//            phantom: PhantomData,
-//        }
-//    }
-//}
+pub unsafe extern "C" fn unbind_unsafe<T: DeviceOps>(ctx: *mut libc::c_void) {
+    // TODO verify unwrap here
+    let ctx_ref: &Ctx<T> = &*(ctx as *mut Ctx<T>); // unsafe
+    T::unbind(ctx_ref.get_device())
+}
+
+pub unsafe extern "C" fn message_unsafe<T: DeviceOps>(
+    ctx: *mut libc::c_void,
+    _msg: *mut fuchsia_ddk_sys::fidl_msg_t,
+    _txn: *mut fuchsia_ddk_sys::fidl_txn_t,
+) -> zx::sys::zx_status_t {
+    // TODO verify unwrap here
+    let ctx_ref: &Ctx<T> = &*(ctx as *mut Ctx<T>);
+    let _resp = T::message(ctx_ref.get_device()); // TODO message
+    zx::sys::ZX_OK
+}

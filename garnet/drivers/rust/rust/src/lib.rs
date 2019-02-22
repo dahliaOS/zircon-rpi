@@ -15,63 +15,21 @@ use {
     std::marker::PhantomData,
 };
 
-//pub static DEVICE_OPS: zx_protocol_device_t = make_device_ops!(Gpio, [message, unbind, get_protocol]);
-
-// TODO make this a fancy proc_macro
-// annotate the whole crate with #![fuchsia_ddk::driver]
-// go through anything that is named DeviceOps and build the static ops table
-pub static DEVICE_OPS: zx_protocol_device_t = zx_protocol_device_t {
-    version: DEVICE_OPS_VERSION,
-    close: None,
-    ioctl: None,
-    message: Some(message_unsafe),
-    get_protocol: None,
-    get_size: None,
-    open: None,
-    open_at: None,
-    read: None,
-    release: None,
-    resume: None,
-    rxrpc: None,
-    suspend: None,
-    write: None,
-    unbind: Some(unbind_unsafe),
-};
-
-pub unsafe extern "C" fn unbind_unsafe(ctx: *mut libc::c_void) {
-    // TODO verify unwrap here
-    let ctx_ref: &Ctx<Gpio> = unsafe { &*(ctx as *mut Ctx<Gpio>) };
-    Gpio::unbind(ctx_ref.get_device())
-}
-
-pub unsafe extern "C" fn message_unsafe(
-    ctx: *mut libc::c_void,
-    msg: *mut fuchsia_ddk::sys::fidl_msg_t,
-    txn: *mut fuchsia_ddk::sys::fidl_txn_t,
-) -> zx::sys::zx_status_t {
-    eprintln!("message_unsafe called!");
-    dbg!("message_unsafe called!");
-    // TODO verify unwrap here
-    let ctx_ref: &Ctx<Gpio> = unsafe { &*(ctx as *mut Ctx<Gpio>) };
-    let resp = Gpio::unbind(ctx_ref.get_device()); // TODO message
-                                                   //resp
-    zx::sys::ZX_OK
-}
-
 #[derive(Default)]
 pub struct Gpio {
     // TODO(bwb): Check with todd that this is safe to have protocols Send + Sync
     gpios: Vec<GpioProtocol>,
 }
 
+#[fuchsia_ddk::device_ops]
 impl DeviceOps for Gpio {
     fn unbind(device: &Device<Gpio>) {
         device.remove();
     }
     fn message(device: &Device<Gpio>) -> Result</* TODO(bwb): fidl buffer */ (), zx::Status> {
+        eprintln!("message: driver name {}", device.get_name());
         dbg!("message called in Gpio!");
         Ok(())
-//        device.remove();
     }
 }
 
@@ -98,8 +56,8 @@ fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status>
         bti_count: 0,
         smc_count: 0,
         metadata_count: 0,
-        reserved: core::ptr::null_mut(),
-        name: core::ptr::null_mut(),
+        reserved: [0; 8],
+        name: [0; 32],
     };
 
     let mut ctx = Gpio::default();
@@ -128,16 +86,18 @@ fn rust_example_bind(parent_device: Device<OpaqueCtx>) -> Result<(), zx::Status>
     }
 
     let example_device = parent_device.add_device_with_context(
-        String::from("rust-gpio-example"),
-        Ctx::new(std::sync::Arc::new(ctx)),
-        &DEVICE_OPS,
+        String::from("rust-gpio-light"),
+        ZX_PROTOCOL_LIGHT,
+        Ctx::new(ctx),
+//        Ctx::new(std::sync::Arc::new(ctx)),
     )?;
 
     //std::thread::spawn(move || {
     //    eprintln!("{}", example_device.get_name());
     //});
 
-    eprintln!("[rust_example] nothing crashed on device add!");
+    eprintln!("[rust_example] nothing crashed on device add!: {}", example_device.get_name());
 
     Ok(())
 }
+
