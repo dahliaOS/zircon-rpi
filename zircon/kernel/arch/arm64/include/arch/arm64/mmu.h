@@ -275,7 +275,7 @@
                                          MMU_MAIR_ATTR4 | MMU_MAIR_ATTR5 | \
                                          MMU_MAIR_ATTR6 | MMU_MAIR_ATTR7 )
 
-#define MMU_TCR_IPS_DEFAULT MMU_TCR_IPS(2) /* TODO: read at runtime, or configure per platform */
+#define MMU_TCR_IPS_DEFAULT MMU_TCR_IPS(4) /* TODO: read at runtime, or configure per platform */
 
 /* Enable cached page table walks:
  * inner/outer (IRGN/ORGN): write-back + write-allocate
@@ -371,6 +371,9 @@
 #define MMU_PTE_IDENT_FLAGS \
     (MMU_PTE_IDENT_DESCRIPTOR | \
      MMU_PTE_KERNEL_RWX_FLAGS)
+#define MMU_PTE_IDENT_DEVICE_FLAGS \
+    (MMU_PTE_IDENT_DESCRIPTOR | \
+     MMU_INITIAL_MAP_DEVICE)
 // clang-format on
 
 #ifndef __ASSEMBLER__

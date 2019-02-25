@@ -62,15 +62,15 @@ FUNCTION(arch_invalidate_cache_all)
     mrs     x0, clidr_el1
     and     w3, w0, #0x07000000
     lsr     w3, w3, #23
-    cbz     w3, finished
+    cbz     w3, .Lfinished_inval
     mov     w10, #0
     mov     w8, #1
-loop1:
+1:
     add     w2, w10, w10, lsr #1
     lsr     w1, w0, w2
     and     w1, w1, #0x7
     cmp     w1, #2
-    b.lt    skip
+    b.lt    .Lskip_inval
     msr     csselr_el1, x10
     isb
     mrs     x1, ccsidr_el1
@@ -82,26 +82,75 @@ loop1:
 
     lsl     w16, w8, w5
 
-loop2:
+2:
     ubfx    w7, w1, #13, #15
     lsl     w7, w7, w2
     lsl     w17, w8, w2
-loop3:
+3:
     orr     w11, w10, w9
     orr     w11, w11, w7
     dc      isw, x11
     subs    w7, w7, w17
-    b.ge    loop3
+    b.ge    3b
 
     subs    x9, x9, x16
-    b.ge    loop2
-skip:
+    b.ge    2b
+.Lskip_inval:
     add     w10, w10, #2
     cmp     w3, w10
     dsb     sy
-    b.gt    loop1
-finished:
+    b.gt    1b
+.Lfinished_inval:
     ic      iallu
     ret
 END_FUNCTION(arch_invalidate_cache_all)
 
+
+/* void arch_clean_cache_all()
+ * write all data back to the PoC
+ */
+FUNCTION(arch_clean_cache_all)
+    mrs     x0, clidr_el1
+    and     w3, w0, #0x07000000
+    lsr     w3, w3, #23
+    cbz     w3, .Lfinished_clean
+    mov     w10, #0
+    mov     w8, #1
+1:
+    add     w2, w10, w10, lsr #1
+    lsr     w1, w0, w2
+    and     w1, w1, #0x7
+    cmp     w1, #2
+    b.lt    .Lskip_clean
+    msr     csselr_el1, x10
+    isb
+    mrs     x1, ccsidr_el1
+    and     w2, w1, #7
+    add     w2, w2, #4
+    ubfx    w4, w1, #3, #10
+    clz     w5, w4
+    lsl     w9, w4, w5
+
+    lsl     w16, w8, w5
+
+2:
+    ubfx    w7, w1, #13, #15
+    lsl     w7, w7, w2
+    lsl     w17, w8, w2
+3:
+    orr     w11, w10, w9
+    orr     w11, w11, w7
+    dc      csw, x11
+    subs    w7, w7, w17
+    b.ge    3b
+
+    subs    x9, x9, x16
+    b.ge    2b
+.Lskip_clean:
+    add     w10, w10, #2
+    cmp     w3, w10
+    dsb     sy
+    b.gt    1b
+.Lfinished_clean:
+    ret
+END_FUNCTION(arch_invalidate_cache_all)

@@ -66,8 +66,24 @@ FUNCTION(arm64_context_switch)
     ret
 END_FUNCTION(arm64_context_switch)
 
+.macro uart_putc, val
+uart_base               .req x23
+uart_tmp                .req x24
+
+    movlit   uart_base, 0x402020000
+9:
+    ldr      uart_tmp, [uart_base, 0x90]
+    tst      uart_tmp, #(1<<5) // test for tx fifo full
+    bne      9b
+
+    mov      uart_tmp, \val
+    str      uart_tmp, [uart_base, 0]
+.endm
+
 FUNCTION(arm64_elX_to_el1)
     mrs x9, CurrentEL
+
+    uart_putc 'a'
 
     // Check the current exception level.
     cmp x9, CURRENTEL_EL1
@@ -76,69 +92,92 @@ FUNCTION(arm64_elX_to_el1)
     beq .Lin_el2
     // Otherwise, we are in EL3.
 
+    uart_putc 'b'
+
     // Set EL2 to 64bit and enable the HVC instruction.
     mrs x9, scr_el3
     mov x10, SCR_EL3_NS | SCR_EL3_HCE | SCR_EL3_RW
     orr x9, x9, x10
     msr scr_el3, x9
 
+    uart_putc 'c'
     // Set the return address and exception level.
     adr x9, .Ltarget
     msr elr_el3, x9
     mov x9, SPSR_ELX_DAIF | SPSR_ELX_EL1H
     msr spsr_el3, x9
 
+    uart_putc 'd'
 .Lin_el2:
+    uart_putc 'e'
     // Set the init vector table for EL2.
     adr_global x9, arm64_el2_init_table
     msr vbar_el2, x9
 
+    uart_putc 'f'
     // Disable EL1 timer traps and the timer offset.
     mrs x9, cnthctl_el2
     orr x9, x9, CNTHCTL_EL2_EL1PCEN | CNTHCTL_EL2_EL1PCTEN
     msr cnthctl_el2, x9
     msr cntvoff_el2, xzr
 
+    uart_putc 'g'
     // Disable stage 2 translations.
-    msr vttbr_el2, xzr
+    //msr vttbr_el2, xzr
 
+    // HACK: clean all of the cache so that when we transition to EL1 with cache
+    // disabled, it is all there
+    mov x23, lr
+    bl arch_clean_cache_all
+    mov lr, x23
+
+    uart_putc 'h'
     // Disable EL2 coprocessor traps.
     mov x9, CPTR_EL2_RES1
     msr cptr_el2, x9
 
+    uart_putc 'i'
     // Disable EL1 FPU traps.
     mov x9, CPACR_EL1_FPEN
     msr cpacr_el1, x9
 
+    uart_putc 'j'
     // Check whether the GIC system registers are supported.
     mrs x9, id_aa64pfr0_el1
     and x9, x9, ID_AA64PFR0_EL1_GIC
     cbz x9, .Lno_gic_sr
 
+    uart_putc 'k'
     // Enable the GIC system registers in EL2, and allow their use in EL1.
     mrs x9, ICC_SRE_EL2
     mov x10, ICC_SRE_EL2_ENABLE | ICC_SRE_EL2_SRE
     orr x9, x9, x10
     msr ICC_SRE_EL2, x9
 
+    uart_putc 'l'
     // Disable the GIC virtual CPU interface.
     msr ICH_HCR_EL2, xzr
 
 .Lno_gic_sr:
+    uart_putc 'm'
     // Set EL1 to 64bit.
     mov x9, HCR_EL2_RW
     msr hcr_el2, x9
 
+    uart_putc 'n'
     // Set the return address and exception level.
     adr x9, .Ltarget
     msr elr_el2, x9
+    mov x10, x9
     mov x9, SPSR_ELX_DAIF | SPSR_ELX_EL1H
     msr spsr_el2, x9
 
+    uart_putc 'o'
     isb
     eret
 
 .Ltarget:
+    uart_putc 'p'
     ret
 END_FUNCTION(arm64_elX_to_el1)
 

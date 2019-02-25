@@ -30,11 +30,26 @@ page_table0             .req x20
 page_table1             .req x21
 kernel_vaddr            .req x22
 
+.macro uart_putc, val
+uart_base               .req x23
+uart_tmp                .req x24
+
+    movlit   uart_base, 0x402020000
+9:
+    ldr      uart_tmp, [uart_base, 0x90]
+    tst      uart_tmp, #(1<<5) // test for tx fifo full
+    bne      9b
+
+    mov      uart_tmp, \val
+    str      uart_tmp, [uart_base, 0]
+.endm
+
 // This code is purely position-independent and generates no relocations
 // that need boot-time fixup; gen-kaslr-fixup.sh ensures this (and would
 // ignore it if this code were in .text.boot, so don't put it there).
 .text
 FUNCTION(_start)
+    uart_putc 'a'
     /* Save the Boot info for the primary CPU only */
     mrs     cpuid, mpidr_el1
     ubfx    cpuid, cpuid, #0, #15 /* mask Aff0 and Aff1 fields */
@@ -51,8 +66,11 @@ FUNCTION(_start)
     str     x2, [tmp2, #:lo12:arch_boot_el]
 .Lno_save_bootinfo:
 
+    uart_putc 'b'
     bl      arm64_elX_to_el1
+    uart_putc 'c'
     bl      arch_invalidate_cache_all
+    uart_putc 'd'
 
     /* enable caches so atomics and spinlocks work */
     mrs     tmp, sctlr_el1
@@ -60,6 +78,7 @@ FUNCTION(_start)
     orr     tmp, tmp, #(1<<2)  /* Enable dcache/ucache */
     msr     sctlr_el1, tmp
 
+    uart_putc 'd'
     // This can be any arbitrary (page-aligned) address >= KERNEL_ASPACE_BASE.
     // TODO(SEC-31): Choose it randomly.
     adr_global  tmp, kernel_relocated_base
@@ -72,12 +91,14 @@ FUNCTION(_start)
     // Send secondary cpus over to a waiting spot for the primary to finish.
     cbnz    cpuid, .Lmmu_enable_secondary
 
+    uart_putc 'e'
     // The fixup code appears right after the kernel image (at __data_end in
     // our view).  Note this code overlaps with the kernel's bss!  It
     // expects x0 to contain the actual runtime address of __code_start.
     mov     x0, kernel_vaddr
     bl      __data_end
 
+    uart_putc 'f'
     /* clear out the kernel's bss using current physical location */
     /* NOTE: Relies on __bss_start and _end being 16 byte aligned */
 .Ldo_bss:
@@ -91,19 +112,23 @@ FUNCTION(_start)
     cbnz    tmp2, .Lbss_loop
 .Lbss_loop_done:
 
+    uart_putc 'g'
     /* set up a functional stack pointer */
     adr_global tmp, boot_cpu_kstack_end
     mov     sp, tmp
 
+    uart_putc 'h'
     /* make sure the boot allocator is given a chance to figure out where
      * we are loaded in physical memory. */
     bl      boot_alloc_init
 
+    uart_putc 'i'
     /* save the physical address the kernel is loaded at */
     adr_global x0, __code_start
     adr_global x1, kernel_base_phys
     str     x0, [x1]
 
+    uart_putc 'j'
     /* set up the mmu according to mmu_initial_mappings */
 
     /* clear out the kernel translation table */
@@ -154,6 +179,14 @@ FUNCTION(_start)
 
     str     tmp2, [page_table0, tmp, lsl #3]  /* tt_trampoline[paddr index] = pt entry */
 
+    /* HACK: identity map cavium's register block at 0x4.0000.0000 */
+    movlit  tmp, 0x400000000
+    lsr     tmp, tmp, #MMU_IDENT_TOP_SHIFT    /* tmp = paddr index */
+blah:
+    movlit  tmp2, MMU_PTE_IDENT_DEVICE_FLAGS
+    add     tmp2, tmp2, tmp, lsl #MMU_IDENT_TOP_SHIFT  /* tmp2 = pt entry */
+    str     tmp2, [page_table0, tmp, lsl #3]  /* tt_trampoline[paddr index] = pt entry */
+
     /* mark page tables as set up, so secondary cpus can fall through */
     adr_global tmp, page_tables_not_ready
     str     wzr, [tmp]
@@ -197,11 +230,14 @@ FUNCTION(_start)
     /* Turn on the MMU */
     orr     tmp, tmp, #0x1
 
+    uart_putc 'k'
+
     /* Write back SCTLR */
     msr     sctlr_el1, tmp
 .Lmmu_on_pc:
     isb
 
+    uart_putc 'l'
     // Map our current physical PC to the virtual PC and jump there.
     // PC = next_PC - __code_start + kernel_vaddr
     adr     tmp, .Lmmu_on_vaddr
@@ -212,10 +248,11 @@ FUNCTION(_start)
 
 .Lmmu_on_vaddr:
 
+    uart_putc 'm'
     /* Disable trampoline page-table in ttbr0 */
-    movlit  tmp, MMU_TCR_FLAGS_KERNEL
-    msr     tcr_el1, tmp
-    isb
+    //movlit  tmp, MMU_TCR_FLAGS_KERNEL
+    //msr     tcr_el1, tmp
+    //isb
 
     /* Invalidate TLB */
     tlbi    vmalle1
@@ -223,6 +260,7 @@ FUNCTION(_start)
 
     cbnz    cpuid, .Lsecondary_boot
 
+    uart_putc 'n'
     // set up the boot stack for real
     adr_global tmp, boot_cpu_kstack_end
     mov     sp, tmp
@@ -247,6 +285,7 @@ FUNCTION(_start)
     // Don't leak the value to other code.
     mov     x0, xzr
 
+    uart_putc 'z'
     bl  lk_main
     b   .
 
