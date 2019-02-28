@@ -62,9 +62,11 @@ zx_status_t Msm8x53::Create(zx_device_t* parent) {
 }
 
 int Msm8x53::Thread() {
-
     if (GpioInit() != ZX_OK) {
         zxlogf(ERROR, "GpioInit() failed\n");
+    }
+    if (UsbInit() != ZX_OK) {
+        zxlogf(ERROR, "UsbInit() failed\n");
     }
 
     return 0;

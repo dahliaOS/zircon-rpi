@@ -6,6 +6,7 @@ driver("msm8x53-som") {
   sources = [
     "msm8x53.cpp",
     "msm8x53-gpio.cpp",
+    "msm8x53-usb.cpp",
   ]
   deps = [
     "$zx/system/banjo/ddk-protocol-gpio",
