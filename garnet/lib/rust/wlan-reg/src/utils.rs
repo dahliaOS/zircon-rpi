@@ -3,12 +3,17 @@ use std::{fs, fs::File, io::prelude::*, path::PathBuf};
 use toml::value::Table;
 use toml::Value;
 
-pub fn load_toml(filepath: &str) -> Result<Table, Error> {
+pub fn load_file(filepath: &str) -> Result<String, Error> {
     let rel_path = PathBuf::from(filepath);
     let _abs_path = fs::canonicalize(&rel_path)?;
     let mut file = File::open(filepath)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+pub fn load_toml(filepath: &str) -> Result<Table, Error> {
+    let contents = load_file(filepath)?;
     let value = contents.parse::<Value>()?;
 
     match value {
@@ -45,4 +50,16 @@ pub fn get_chanlist(v: &Value) -> Vec<u8> {
         result.push(e.as_integer().unwrap() as u8);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_file() {
+        const FILENAME: &str = "./data/iso_alpha2.toml";
+        let result = load_file(FILENAME);
+        assert!(result.is_ok());
+    }
 }

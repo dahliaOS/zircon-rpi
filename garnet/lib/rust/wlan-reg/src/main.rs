@@ -1,5 +1,9 @@
 #![allow(unused)]
 
+#[macro_use]
+extern crate serde_derive;
+
+extern crate toml;
 extern crate wlan_reg;
 
 use failure::Error;
@@ -108,6 +112,19 @@ fn show_power_budget() {
     }
 }
 
+fn show_iso_alpha2() {
+    let result = match country::load_iso_alpha2() {
+        Err(e) => {
+            println!("\n[ISO Alpha2] None known");
+            return;
+        }
+        Ok(a) => a,
+    };
+
+    println!("\n[ISO Alpha2]");
+    println!("{:?}", result);
+}
+
 fn main() {
     println!("\nFuchsia WLAN Countries and Regulation Test\n");
 
@@ -125,4 +142,6 @@ fn main() {
 
     show_power_budget();
     println!("");
+
+    show_iso_alpha2();
 }
