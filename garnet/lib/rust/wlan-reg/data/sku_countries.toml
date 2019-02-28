@@ -1,0 +1,29 @@
+version = "0.1.0" # Schema version
+
+# This file defines the mapppings of SKU (Stock Keeping Units) - Eligible Jurisdiction.
+# A particular SKU is intended to be used in one of the eligible jurisdictions.
+
+# A jurisdiction is identified as its code.
+# As a Fuchsia convention,  2-character code is from ISO 3166-1 alpha-2 in UPPER case. eg. US
+# The Fuchsia's own extension uses the code of length greater than or equal to 4 characters. UPPER case. eg. EUROPE
+
+# Examples
+[sku_america]
+    wlan_country_code = "US"
+    countries = ["US", "MX"]
+
+[sku_asia]
+    wlan_country_code = "AU"
+    countries = ["AU", "SG", "KR", "NZ"]
+
+[sku_canada]
+    wlan_country_code = "CA"
+    countries = ["CA"]
+
+[sku_europe]
+    wlan_country_code = "GB"
+    countries = ["GB", "IT", "DK", "NL", "NO", "ES", "SE", "FR", "DE"]
+
+[sku_japan]
+    wlan_country_code = "JP"
+    countries = ["JP"]
