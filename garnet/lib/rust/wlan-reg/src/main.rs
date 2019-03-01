@@ -125,6 +125,18 @@ fn show_iso_alpha2() {
     println!("{:?}", result);
 }
 
+fn show_sku_table() {
+    let result = match sku::load_sku_table() {
+        Err(e) => {
+            println!("\n[SKU Table] failed to load: {}", e);
+            return;
+        }
+        Ok(a) => a,
+    };
+
+    println!("{:?}", result);
+}
+
 fn main() {
     println!("\nFuchsia WLAN Countries and Regulation Test\n");
 
@@ -144,4 +156,6 @@ fn main() {
     println!("");
 
     show_iso_alpha2();
+
+    show_sku_table();
 }

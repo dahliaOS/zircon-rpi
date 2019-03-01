@@ -8,9 +8,10 @@ version = "0.1.0" # Schema version
 # The Fuchsia's own extension uses the code of length greater than or equal to 4 characters. UPPER case. eg. EUROPE
 
 # Examples
+# Pattern: sku_ + {}
 [sku_america]
     wlan_country_code = "US"
-    countries = ["US", "MX"]
+    countries = ["US", "MX"] # Eligible countries to use this SKU
 
 [sku_asia]
     wlan_country_code = "AU"
