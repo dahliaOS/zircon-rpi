@@ -1,32 +1,39 @@
-//use super::utils;
-use super::tablewrap;
-use failure::Error;
+use super::utils;
+//use super::tablewrap;
+use failure::{bail, Error};
+
+extern crate toml;
 
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct SkuTable {
     pub version: String,
-    pub sku_vec: Vec<Sku>,
+    pub sku: Vec<SkuInfo>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Sku {
+pub struct SkuInfo {
+    pub name: String,
     pub wlan_country_code: String,
-    pub countries: Vec<String>,
+    pub eligible_country: Vec<String>,
 }
 
-pub fn load_sku_table() -> Result<SkuTable, Error> {
+pub fn read_sku() -> String {
+    "europe".to_string().to_lowercase()
+}
+
+pub fn get_sku_info(sku_name: String) -> Result<SkuInfo, Error> {
     const FILENAME: &str = "./data/sku_countries.toml";
-    let wrap = tablewrap::TableWrap::new(FILENAME);
-    //    let contents = utils::load_file(FILENAME)?;
-    //    let sku_table : SkuTable = toml::from_str(contents.as_str())?;
+    let contents = utils::load_file(FILENAME).unwrap();
 
-    //    validate_sku_table(sku_table)?;
+    println!("{:#?}", contents);
 
-    let sku_america = wrap.get_nested("sku_america");
-    println!("{:?}", sku_america.get_vec_str("countries"));
-    println!("{:?}", wrap.is_table_valid);
+    let sku_table: SkuTable = toml::from_str(contents.as_str())?;
+    for elem in sku_table.sku {
+        if sku_name == elem.name {
+            return Ok(elem);
+        }
+    }
 
-    let sku_table = SkuTable { version: "0.1.0".to_string(), sku_vec: vec![] };
-    Ok(sku_table)
+    bail!("SKU name {} was not found from the file {}", sku_name, FILENAME)
 }

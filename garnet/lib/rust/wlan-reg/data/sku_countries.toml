@@ -8,23 +8,28 @@ version = "0.1.0" # Schema version
 # The Fuchsia's own extension uses the code of length greater than or equal to 4 characters. UPPER case. eg. EUROPE
 
 # Examples
-# Pattern: sku_ + {}
-[sku_america]
+
+[[sku]]
+    name = "america" # This is not a conutry / region name. This is a SKU.
     wlan_country_code = "US"
-    countries = ["US", "MX"] # Eligible countries to use this SKU
+    eligible_country = ["US", "MX"] # Eligible eligible_country to use this SKU
 
-[sku_asia]
+[[sku]]
+    name = "asia"
     wlan_country_code = "AU"
-    countries = ["AU", "SG", "KR", "NZ"]
+    eligible_country = ["AU", "SG", "KR", "NZ"]
 
-[sku_canada]
+[[sku]]
+    name = "canada"
     wlan_country_code = "CA"
-    countries = ["CA"]
+    eligible_country = ["CA"]
 
-[sku_europe]
+[[sku]]
+    name = "europe"
     wlan_country_code = "GB"
-    countries = ["GB", "IT", "DK", "NL", "NO", "ES", "SE", "FR", "DE"]
+    eligible_country = ["GB", "IT", "DK", "NL", "NO", "ES", "SE", "FR", "DE"]
 
-[sku_japan]
+[[sku]]
+    name = "japan"
     wlan_country_code = "JP"
-    countries = ["JP"]
+    eligible_country = ["JP"]

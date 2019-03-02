@@ -126,15 +126,17 @@ fn show_iso_alpha2() {
 }
 
 fn show_sku_table() {
-    let result = match sku::load_sku_table() {
+    let sku_name = sku::read_sku();
+    let sku_info = match sku::get_sku_info(sku_name) {
+        Ok(s) => s,
         Err(e) => {
-            println!("\n[SKU Table] failed to load: {}", e);
+            println!("\n[SKU Table] got error: {}", e);
             return;
         }
-        Ok(a) => a,
     };
 
-    println!("{:?}", result);
+    println!("\n[SKU Table]");
+    println!("{:#?}", sku_info);
 }
 
 fn main() {
