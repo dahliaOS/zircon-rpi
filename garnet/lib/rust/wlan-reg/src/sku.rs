@@ -18,15 +18,20 @@ pub struct SkuInfo {
     pub eligible_country: Vec<String>,
 }
 
-pub fn read_sku() -> String {
-    "europe".to_string().to_lowercase()
+pub fn read_sku() -> Result<String, Error> {
+    const FILENAME: &str = "./data/sku.txt";
+    let contents = match utils::load_file(FILENAME) {
+        Err(e) => {
+            bail!("{} in reading {}", e, FILENAME);
+        }
+        Ok(c) => c,
+    };
+    Ok(contents.trim().to_string().to_lowercase())
 }
 
 pub fn get_sku_info(sku_name: String) -> Result<SkuInfo, Error> {
     const FILENAME: &str = "./data/sku_countries.toml";
-    let contents = utils::load_file(FILENAME).unwrap();
-
-    println!("{:#?}", contents);
+    let contents = utils::load_file(FILENAME)?;
 
     let sku_table: SkuTable = toml::from_str(contents.as_str())?;
     for elem in sku_table.sku {
@@ -35,5 +40,5 @@ pub fn get_sku_info(sku_name: String) -> Result<SkuInfo, Error> {
         }
     }
 
-    bail!("SKU name {} was not found from the file {}", sku_name, FILENAME)
+    bail!("SKU name '{}' was not found from the file {}", sku_name, FILENAME)
 }

@@ -126,8 +126,14 @@ fn show_iso_alpha2() {
 }
 
 fn show_sku_table() {
-    let sku_name = sku::read_sku();
-    let sku_info = match sku::get_sku_info(sku_name) {
+    let sku_name = match sku::read_sku() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("\n[SKU name] got error: {}", e);
+            return;
+        }
+    };
+    let sku_info = match sku::get_sku_info(sku_name.clone()) {
         Ok(s) => s,
         Err(e) => {
             println!("\n[SKU Table] got error: {}", e);
@@ -135,7 +141,7 @@ fn show_sku_table() {
         }
     };
 
-    println!("\n[SKU Table]");
+    println!("\n[SKU Table] for {}", sku_name);
     println!("{:#?}", sku_info);
 }
 
