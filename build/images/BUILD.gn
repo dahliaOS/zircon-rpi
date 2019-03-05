@@ -1539,3 +1539,13 @@ sdk_molecule("images_sdk") {
 
   deps = sdk_images
 }
+
+# Write a file that can be sourced by `fx`.  This file is produced
+# by `gn gen` and is not known to Ninja at all, so it has nothing to
+# do with the build itself.  Its sole purpose is to leave bread
+# crumbs about the settings `gn gen` used for `fx` to use later.
+_fx_board_config_lines = [
+  "USE_VBMETA='${use_vbmeta}'",
+]
+write_file("$root_build_dir/fx.board.config", _fx_board_config_lines)
+
