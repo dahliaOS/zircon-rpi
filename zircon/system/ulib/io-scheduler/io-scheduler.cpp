@@ -4,12 +4,14 @@
 
 #include <io-scheduler/io-scheduler.h>
 
+#include "stream.h"
+
 namespace ioscheduler {
 
 class Scheduler final : public IoScheduler {
 public:
     Scheduler(IoSchedulerCallbacks* cb) : callbacks_(cb) {}
-    ~Scheduler() {}
+    ~Scheduler();
 
     virtual zx_status_t Init();
     virtual void Shutdown();
@@ -23,7 +25,13 @@ public:
     void zzz() { callbacks_ = nullptr; }
 
 private:
+    using StreamList = Stream::ListUnsorted;
+
+    zx_status_t FindStreamForId(uint32_t id, StreamRef* out);
+    zx_status_t RemoveStreamForId(uint32_t id, StreamRef* out = nullptr);
+
     IoSchedulerCallbacks* callbacks_;
+    StreamList streams_;
 };
 
 zx_status_t Scheduler::Init() {
@@ -33,11 +41,27 @@ zx_status_t Scheduler::Init() {
 void Scheduler::Shutdown() { }
 
 zx_status_t Scheduler::StreamOpen(uint32_t id, uint32_t priority) {
+    if (priority > kMaxPri) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+
+    StreamRef stream;
+    zx_status_t status = FindStreamForId(id, &stream);
+    if (status != ZX_ERR_NOT_FOUND) {
+        return ZX_ERR_ALREADY_EXISTS;
+    }
+
+    fbl::AllocChecker ac;
+    stream = fbl::AdoptRef(new (&ac) Stream(id, priority));
+    if (!ac.check()) {
+        return ZX_ERR_NO_MEMORY;
+    }
+    streams_.push_back(std::move(stream));
     return ZX_OK;
 }
 
 zx_status_t Scheduler::StreamClose(uint32_t id) {
-    return ZX_OK;
+    return RemoveStreamForId(id);
 }
 
 zx_status_t Scheduler::Serve() {
@@ -48,10 +72,42 @@ void Scheduler::AsyncComplete() {
 
 }
 
+Scheduler::~Scheduler() {
+    Shutdown();
+}
+
+zx_status_t Scheduler::FindStreamForId(uint32_t id, StreamRef* out) {
+    for (auto iter = streams_.begin(); iter.IsValid(); ++iter) {
+        if (iter->Id() == id) {
+            *out = iter.CopyPointer();
+            return ZX_OK;
+        }
+    }
+    return ZX_ERR_NOT_FOUND;
+}
+
+zx_status_t Scheduler::RemoveStreamForId(uint32_t id, StreamRef* out) {
+    for (auto iter = streams_.begin(); iter.IsValid(); ++iter) {
+        if (iter->Id() == id) {
+            if (out) {
+                *out = iter.CopyPointer();
+            }
+            streams_.erase(iter);
+            return ZX_OK;
+        }
+    }
+    return ZX_ERR_NOT_FOUND;
+}
+
+
 // IoScheduler implementation
 
 zx_status_t IoScheduler::Create(IoSchedulerCallbacks* cb, IoSchedulerUniquePtr* out) {
-    IoSchedulerUniquePtr ios(new Scheduler(cb));
+    fbl::AllocChecker ac;
+    IoSchedulerUniquePtr ios(new (&ac) Scheduler(cb));
+    if (!ac.check()) {
+        return ZX_ERR_NO_MEMORY;
+    }
     *out = std::move(ios);
     return ZX_OK;
 }

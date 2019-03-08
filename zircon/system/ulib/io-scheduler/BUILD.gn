@@ -6,6 +6,7 @@ library("io-scheduler") {
   static = true
   sources = [
     "io-scheduler.cpp",
+    "stream.cpp",
   ]
   deps = [
     "$zx/system/ulib/fbl",

@@ -69,6 +69,13 @@ static bool iosched_run(TestLevel test_level) {
         // Stream open test.
         status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
         ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+
+        status = sched->StreamOpen(0, ioscheduler::kDefaultPri);
+        ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+
+        status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
+        ASSERT_NE(status, ZX_OK, "Expected failure to open duplicate stream");
+
         if (test_level == kTestLevelOpen) break;
 
         // Serve test.
@@ -84,6 +91,7 @@ static bool iosched_run(TestLevel test_level) {
     case kTestLevelOpen:
         status = sched->StreamClose(5);
         ASSERT_EQ(status, ZX_OK, "Failed to close stream");
+        // Stream 0 intentionally left open here.
         __FALLTHROUGH;
     case kTestLevelInit:
         sched->Shutdown();
