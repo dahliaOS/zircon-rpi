@@ -15,8 +15,34 @@ namespace tests {
 
 using IoScheduler = ioscheduler::IoScheduler;
 using IoSchedulerUniquePtr = ioscheduler::IoSchedulerUniquePtr;
+using IoSchedOp = ioscheduler::IoSchedOp;
 
-ioscheduler::IoSchedulerCallbacks callbacks;
+static bool can_reorder(void* context, IoSchedOp* first, IoSchedOp* second) {
+    return false;
+}
+
+static zx_status_t acquire(void* context, IoSchedOp** sop_list, size_t list_count,
+                           size_t* actual_count, bool wait) {
+    return ZX_OK;
+}
+
+static zx_status_t issue(void* context, IoSchedOp* sop) {
+    return ZX_OK;
+}
+
+static void release(void* context, IoSchedOp* sop) { }
+static void cancel(void* context) { }
+static void fatal(void* context) { }
+
+ioscheduler::IoSchedulerCallbacks callbacks = {
+    .context = nullptr,
+    .CanReorder = can_reorder,
+    .Acquire = acquire,
+    .Issue = issue,
+    .Release = release,
+    .CancelAcquire = cancel,
+    .Fatal = fatal,
+};
 
 enum TestLevel {
     kTestLevelCreate,
