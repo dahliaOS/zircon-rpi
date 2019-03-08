@@ -15,64 +15,73 @@ namespace tests {
 
 using IoScheduler = ioscheduler::IoScheduler;
 using IoSchedulerUniquePtr = ioscheduler::IoSchedulerUniquePtr;
-using IoSchedulerCallbacks = ioscheduler::IoSchedulerCallbacks;
 
-IoSchedulerCallbacks callbacks;
+ioscheduler::IoSchedulerCallbacks callbacks;
 
-static bool iosched_test_create() {
+enum TestLevel {
+    kTestLevelCreate,
+    kTestLevelInit,
+    kTestLevelOpen,
+    kTestLevelServe,
+};
+
+static bool iosched_run(TestLevel test_level) {
     BEGIN_TEST;
 
     IoSchedulerUniquePtr sched;
     zx_status_t status = IoScheduler::Create(&callbacks, &sched);
     ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
 
+    do {
+        if (test_level == kTestLevelCreate) break;
+
+        // Init test.
+        status = sched->Init();
+        ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
+        if (test_level == kTestLevelInit) break;
+
+        // Stream open test.
+        status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
+        ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+        if (test_level == kTestLevelOpen) break;
+
+        // Serve test.
+        status = sched->Serve();
+        ASSERT_EQ(status, ZX_OK, "Failed to being service");
+        if (test_level == kTestLevelServe) break;
+
+        ASSERT_TRUE(false, "Unexpected test level");
+    } while (false);
+
+    switch (test_level) {
+    case kTestLevelServe:
+    case kTestLevelOpen:
+        status = sched->StreamClose(5);
+        ASSERT_EQ(status, ZX_OK, "Failed to close stream");
+        __FALLTHROUGH;
+    case kTestLevelInit:
+        sched->Shutdown();
+        __FALLTHROUGH;
+    case kTestLevelCreate:
+        break;
+    default:
+        ASSERT_TRUE(false, "Unexpected test level");
+    }
+
     sched.release();
     END_TEST;
+}
+
+static bool iosched_test_create() {
+    return iosched_run(kTestLevelCreate);
 }
 
 static bool iosched_test_open() {
-    BEGIN_TEST;
-
-    IoSchedulerUniquePtr sched;
-    zx_status_t status = IoScheduler::Create(&callbacks, &sched);
-    ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
-
-    status = sched->Init();
-    ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
-
-    status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
-    ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-
-    status = sched->StreamClose(5);
-    ASSERT_EQ(status, ZX_OK, "Failed to close stream");
-
-    sched->Shutdown();
-    sched.release();
-    END_TEST;
+    return iosched_run(kTestLevelOpen);
 }
 
 static bool iosched_test_serve() {
-    BEGIN_TEST;
-
-    IoSchedulerUniquePtr sched;
-    zx_status_t status = IoScheduler::Create(&callbacks, &sched);
-    ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
-
-    status = sched->Init();
-    ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
-
-    status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
-    ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-
-    status = sched->Serve();
-    ASSERT_EQ(status, ZX_OK, "Failed to being service");
-
-    status = sched->StreamClose(5);
-    ASSERT_EQ(status, ZX_OK, "Failed to close stream");
-
-    sched->Shutdown();
-    sched.release();
-    END_TEST;
+    return iosched_run(kTestLevelServe);
 }
 
 BEGIN_TEST_CASE(test_case_iosched)
