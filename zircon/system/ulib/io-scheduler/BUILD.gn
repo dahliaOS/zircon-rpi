@@ -22,6 +22,7 @@ test("io-scheduler-test") {
   deps = [
     "$zx/system/ulib/fbl",
     "$zx/system/ulib/fdio",
+    "$zx/system/ulib/fzl",
     "$zx/system/ulib/io-scheduler",
     "$zx/system/ulib/unittest",
     "$zx/system/ulib/zxcpp",
