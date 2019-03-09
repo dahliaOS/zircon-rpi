@@ -8,19 +8,19 @@
 
 namespace ioscheduler {
 
-class Scheduler final : public IoScheduler {
+class Scheduler {
 public:
-    Scheduler(IoSchedulerCallbacks* cb) : callbacks_(cb) {}
+    Scheduler(SchedulerCallbacks* cb) : callbacks_(cb) {}
     ~Scheduler();
 
-    virtual zx_status_t Init();
-    virtual void Shutdown();
+    zx_status_t Init();
+    void Shutdown();
 
-    virtual zx_status_t StreamOpen(uint32_t id, uint32_t priority);
-    virtual zx_status_t StreamClose(uint32_t id);
-    virtual zx_status_t Serve();
+    zx_status_t StreamOpen(uint32_t id, uint32_t priority);
+    zx_status_t StreamClose(uint32_t id);
+    zx_status_t Serve();
 
-    virtual void AsyncComplete();
+    void AsyncComplete(SchedOp* sop);
 
     void zzz() { callbacks_ = nullptr; }
 
@@ -30,7 +30,7 @@ private:
     zx_status_t FindStreamForId(uint32_t id, StreamRef* out);
     zx_status_t RemoveStreamForId(uint32_t id, StreamRef* out = nullptr);
 
-    IoSchedulerCallbacks* callbacks_;
+    SchedulerCallbacks* callbacks_;
     StreamList streams_;
 };
 
@@ -68,7 +68,7 @@ zx_status_t Scheduler::Serve() {
     return ZX_OK;
 }
 
-void Scheduler::AsyncComplete() {
+void Scheduler::AsyncComplete(SchedOp* sop) {
 
 }
 
@@ -99,22 +99,44 @@ zx_status_t Scheduler::RemoveStreamForId(uint32_t id, StreamRef* out) {
     return ZX_ERR_NOT_FOUND;
 }
 
+// Scheduler API
 
-// IoScheduler implementation
-
-zx_status_t IoScheduler::Create(IoSchedulerCallbacks* cb, IoSchedulerUniquePtr* out) {
+zx_status_t SchedulerCreate(SchedulerCallbacks* cb, Scheduler** out) {
     fbl::AllocChecker ac;
-    IoSchedulerUniquePtr ios(new (&ac) Scheduler(cb));
+    Scheduler* sched = new (&ac) Scheduler(cb);
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
-    *out = std::move(ios);
+    *out = sched;
     return ZX_OK;
 }
 
-void IoScheduler::Destroy(IoScheduler* sched) {
-    Scheduler* s = static_cast<Scheduler*>(sched);
-    delete s;
+void SchedulerDestroy(Scheduler* scheduler) {
+    delete scheduler;
+}
+
+zx_status_t SchedulerInit(Scheduler* scheduler) {
+    return scheduler->Init();
+}
+
+zx_status_t SchedulerStreamOpen(Scheduler* scheduler, uint32_t id, uint32_t priority) {
+    return scheduler->StreamOpen(id, priority);
+}
+
+zx_status_t SchedulerStreamClose(Scheduler* scheduler, uint32_t id) {
+    return scheduler->StreamClose(id);
+}
+
+zx_status_t SchedulerServe(Scheduler* scheduler) {
+   return scheduler->Serve();
+}
+
+void SchedulerShutdown(Scheduler* scheduler) {
+   scheduler->Shutdown();
+}
+
+void AsyncComplete(Scheduler* scheduler, SchedOp* sop) {
+   scheduler->AsyncComplete(sop);
 }
 
 } // namespace

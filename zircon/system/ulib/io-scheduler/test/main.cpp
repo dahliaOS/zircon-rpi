@@ -14,9 +14,9 @@
 
 namespace tests {
 
-using IoScheduler = ioscheduler::IoScheduler;
-using IoSchedulerUniquePtr = ioscheduler::IoSchedulerUniquePtr;
-using IoSchedOp = ioscheduler::IoSchedOp;
+using IoScheduler = ioscheduler::Scheduler;
+using IoSchedulerUniquePtr = ioscheduler::SchedulerUniquePtr;
+using SchedOp = ioscheduler::SchedOp;
 
 constexpr uint32_t kMaxFifoDepth = (4096 / sizeof(void*));
 
@@ -32,16 +32,16 @@ public:
     IoScheduler* Scheduler() { return sched_; }
     zx_status_t CreateFifo();
 
-    zx_status_t AcquireOps(IoSchedOp** sop_list, size_t list_count,
+    zx_status_t AcquireOps(SchedOp** sop_list, size_t list_count,
                            size_t* actual_count, bool wait) {
         return ZX_OK;
     }
 
-    zx_status_t IssueOp(IoSchedOp* sop) {
+    zx_status_t IssueOp(SchedOp* sop) {
         return ZX_OK;
     }
 
-    zx_status_t ReleaseOp(IoSchedOp* sop) {
+    zx_status_t ReleaseOp(SchedOp* sop) {
         return ZX_OK;
     }
 
@@ -49,22 +49,22 @@ public:
 
     void Fatal() {}
 
-    static bool CanReorder(void* context, IoSchedOp* first, IoSchedOp* second) {
+    static bool CanReorder(void* context, SchedOp* first, SchedOp* second) {
         return false;
     }
 
-    static zx_status_t AcquireCallback(void* context, IoSchedOp** sop_list, size_t list_count,
+    static zx_status_t AcquireCallback(void* context, SchedOp** sop_list, size_t list_count,
                                        size_t* actual_count, bool wait) {
         TestContext* test = static_cast<TestContext*>(context);
         return test->AcquireOps(sop_list, list_count, actual_count, wait);
     }
 
-    static zx_status_t IssueCallback(void* context, IoSchedOp* sop) {
+    static zx_status_t IssueCallback(void* context, SchedOp* sop) {
         TestContext* test = static_cast<TestContext*>(context);
         return test->IssueOp(sop);
     }
 
-    static void ReleaseCallback(void* context, IoSchedOp* sop) {
+    static void ReleaseCallback(void* context, SchedOp* sop) {
         TestContext* test = static_cast<TestContext*>(context);
         test->ReleaseOp(sop);
     }
@@ -89,7 +89,7 @@ zx_status_t TestContext::CreateFifo() {
     return fzl::create_fifo(kMaxFifoDepth, 0, &fifo_to_server_, &fifo_from_server_);
 }
 
-ioscheduler::IoSchedulerCallbacks callbacks = {
+ioscheduler::SchedulerCallbacks callbacks = {
     .context = nullptr,
     .CanReorder = TestContext::CanReorder,
     .Acquire = TestContext::AcquireCallback,
@@ -109,11 +109,11 @@ enum TestLevel {
 static bool iosched_run(TestLevel test_level) {
     BEGIN_TEST;
 
-    IoSchedulerUniquePtr sched;
-    zx_status_t status = IoScheduler::Create(&callbacks, &sched);
+    IoScheduler* scheduler;
+    zx_status_t status = ioscheduler::SchedulerCreate(&callbacks, &scheduler);
     ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
-    TestContext test(sched.get());
-
+    TestContext test(scheduler);
+    IoSchedulerUniquePtr sched(scheduler);
     callbacks.context = &test;
 
     do {
@@ -123,21 +123,21 @@ static bool iosched_run(TestLevel test_level) {
 
         // Init test.
         // --------------------------------
-        status = sched->Init();
+        status = ioscheduler::SchedulerInit(sched.get());
         ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
         if (test_level == kTestLevelInit) break;
 
         // Stream open test.
         // --------------------------------
-        status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
+        status = ioscheduler::SchedulerStreamOpen(sched.get(), 5, ioscheduler::kDefaultPri);
         ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-        status = sched->StreamOpen(0, ioscheduler::kDefaultPri);
+        status = ioscheduler::SchedulerStreamOpen(sched.get(), 0, ioscheduler::kDefaultPri);
         ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-        status = sched->StreamOpen(5, ioscheduler::kDefaultPri);
+        status = ioscheduler::SchedulerStreamOpen(sched.get(), 5, ioscheduler::kDefaultPri);
         ASSERT_NE(status, ZX_OK, "Expected failure to open duplicate stream");
-        status = sched->StreamOpen(3, 100000);
+        status = ioscheduler::SchedulerStreamOpen(sched.get(), 3, 100000);
         ASSERT_NE(status, ZX_OK, "Expected failure to open with invalid priority");
-        status = sched->StreamOpen(3, 1);
+        status = ioscheduler::SchedulerStreamOpen(sched.get(), 3, 1);
         ASSERT_EQ(status, ZX_OK, "Failed to open stream");
         if (test_level == kTestLevelOpen) break;
 
@@ -145,7 +145,7 @@ static bool iosched_run(TestLevel test_level) {
         // --------------------------------
         status = test.CreateFifo();
         ASSERT_EQ(status, ZX_OK, "Internal test failure");
-        status = sched->Serve();
+        status = ioscheduler::SchedulerServe(sched.get());
         ASSERT_EQ(status, ZX_OK, "Failed to begin service");
         if (test_level == kTestLevelServe) break;
 
@@ -159,16 +159,16 @@ static bool iosched_run(TestLevel test_level) {
     case kTestLevelOpen:
         // Stream open test.
         // --------------------------------
-        status = sched->StreamClose(5);
+        status = ioscheduler::SchedulerStreamClose(sched.get(), 5);
         ASSERT_EQ(status, ZX_OK, "Failed to close stream");
-        status = sched->StreamClose(3);
+        status = ioscheduler::SchedulerStreamClose(sched.get(), 3);
         ASSERT_EQ(status, ZX_OK, "Failed to close stream");
         // Stream 0 intentionally left open here.
         __FALLTHROUGH;
     case kTestLevelInit:
         // Init test.
         // --------------------------------
-        sched->Shutdown();
+        ioscheduler::SchedulerShutdown(sched.get());
         __FALLTHROUGH;
     case kTestLevelCreate:
         // Create test.

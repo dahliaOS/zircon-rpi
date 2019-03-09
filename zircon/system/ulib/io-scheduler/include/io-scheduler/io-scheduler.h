@@ -27,51 +27,41 @@ constexpr uint32_t kOpClassFullBarrier = 66;
 
 constexpr size_t kOpReservedQuads = 12;
 
-struct IoSchedOp {
+struct SchedOp {
     uint32_t op_class;
     uint32_t flags;
     zx_status_t cookie;
     uint64_t _reserved[kOpReservedQuads];
 };
 
-struct IoSchedulerCallbacks {
+struct SchedulerCallbacks {
     void* context;
-    fbl::Function<bool(void* context, IoSchedOp* first, IoSchedOp* second)> CanReorder;
-    fbl::Function<zx_status_t(void* context, IoSchedOp** sop_list, size_t list_count,
+    fbl::Function<bool(void* context, SchedOp* first, SchedOp* second)> CanReorder;
+    fbl::Function<zx_status_t(void* context, SchedOp** sop_list, size_t list_count,
                               size_t* actual_count, bool wait)> Acquire;
-    fbl::Function<zx_status_t(void* context, IoSchedOp* sop)> Issue;
-    fbl::Function<void(void* context, IoSchedOp* sop)> Release;
+    fbl::Function<zx_status_t(void* context, SchedOp* sop)> Issue;
+    fbl::Function<void(void* context, SchedOp* sop)> Release;
     fbl::Function<void(void* context)> CancelAcquire;
     fbl::Function<void(void* context)> Fatal;
 };
 
-class IoSchedulerUniquePtr;
+//class SchedulerUniquePtr;
+class Scheduler;
 
-class IoScheduler {
+zx_status_t SchedulerCreate(SchedulerCallbacks* cb, Scheduler** out);
+zx_status_t SchedulerInit(Scheduler* scheduler);
+zx_status_t SchedulerStreamOpen(Scheduler* scheduler, uint32_t id, uint32_t priority);
+zx_status_t SchedulerStreamClose(Scheduler* scheduler, uint32_t id);
+zx_status_t SchedulerServe(Scheduler* scheduler);
+void SchedulerShutdown(Scheduler* scheduler);
+void SchedulerDestroy(Scheduler* scheduler);
+
+void AsyncComplete(Scheduler* scheduler, SchedOp* sop);
+
+class SchedulerUniquePtr : public std::unique_ptr<Scheduler, decltype(&SchedulerDestroy)> {
 public:
-    IoScheduler() {};
-    ~IoScheduler() {};
-
-    static zx_status_t Create(IoSchedulerCallbacks* cb, IoSchedulerUniquePtr* out);
-    static void Destroy(IoScheduler* sched);
-
-    virtual zx_status_t Init();
-    virtual void Shutdown();
-
-    virtual zx_status_t StreamOpen(uint32_t id, uint32_t priority);
-    virtual zx_status_t StreamClose(uint32_t id);
-    virtual zx_status_t Serve();
-
-    virtual void AsyncComplete();
-
-private:
-};
-
-// A unique_ptr wrapper for IoScheduler
-class IoSchedulerUniquePtr : public std::unique_ptr<IoScheduler, decltype(&IoScheduler::Destroy)> {
-public:
-    IoSchedulerUniquePtr(IoScheduler* sched = nullptr) :
-        std::unique_ptr<IoScheduler, decltype(&IoScheduler::Destroy)>(sched, IoScheduler::Destroy) {
+    SchedulerUniquePtr(Scheduler* sched = nullptr) :
+        std::unique_ptr<Scheduler, decltype(&SchedulerDestroy)>(sched, SchedulerDestroy) {
     }
 };
 
