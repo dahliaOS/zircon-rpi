@@ -25,12 +25,14 @@ constexpr uint32_t kOpClassReadBarrier = 64;
 constexpr uint32_t kOpClassWriteBarrier = 65;
 constexpr uint32_t kOpClassFullBarrier = 66;
 
-constexpr size_t kOpReservedQuads = 12;
+constexpr size_t kOpReservedQuads = 13;
 
 struct SchedOp {
     uint32_t op_class;
     uint32_t flags;
-    zx_status_t cookie;
+    uint32_t _unused;
+    zx_status_t result;
+    void* cookie;
     uint64_t _reserved[kOpReservedQuads];
 };
 
