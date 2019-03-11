@@ -45,7 +45,6 @@ struct SchedulerCallbacks {
     fbl::Function<void(void* context)> Fatal;
 };
 
-//class SchedulerUniquePtr;
 class Scheduler;
 
 zx_status_t SchedulerCreate(SchedulerCallbacks* cb, Scheduler** out);

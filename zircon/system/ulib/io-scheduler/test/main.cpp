@@ -106,7 +106,80 @@ enum TestLevel {
     kTestLevelServe,
 };
 
-static bool iosched_run(TestLevel test_level) {
+bool iosched_up(TestLevel test_level, TestContext* test) {
+    zx_status_t status;
+    IoScheduler* sched = test->Scheduler();
+    // Create test.
+    // --------------------------------
+    if (test_level == kTestLevelCreate) return true;
+
+    // Init test.
+    // --------------------------------
+    status = ioscheduler::SchedulerInit(sched);
+    ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
+
+    if (test_level == kTestLevelInit) return true;
+
+    // Stream open test.
+    // --------------------------------
+    status = ioscheduler::SchedulerStreamOpen(sched, 5, ioscheduler::kDefaultPri);
+    ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+    status = ioscheduler::SchedulerStreamOpen(sched, 0, ioscheduler::kDefaultPri);
+    ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+    status = ioscheduler::SchedulerStreamOpen(sched, 5, ioscheduler::kDefaultPri);
+    ASSERT_NE(status, ZX_OK, "Expected failure to open duplicate stream");
+    status = ioscheduler::SchedulerStreamOpen(sched, 3, 100000);
+    ASSERT_NE(status, ZX_OK, "Expected failure to open with invalid priority");
+    status = ioscheduler::SchedulerStreamOpen(sched, 3, 1);
+    ASSERT_EQ(status, ZX_OK, "Failed to open stream");
+
+    if (test_level == kTestLevelOpen) return true;
+
+    // Serve test.
+    // --------------------------------
+    status = test->CreateFifo();
+    ASSERT_EQ(status, ZX_OK, "Internal test failure");
+    status = ioscheduler::SchedulerServe(sched);
+    ASSERT_EQ(status, ZX_OK, "Failed to begin service");
+    if (test_level == kTestLevelServe) return true;
+
+    ASSERT_TRUE(false, "Unexpected test level");
+    return false;
+}
+
+bool iosched_down(TestLevel test_level, TestContext* test) {
+    zx_status_t status;
+    IoScheduler* sched = test->Scheduler();
+    switch (test_level) {
+    case kTestLevelServe:
+        // Serve test.
+        // --------------------------------
+    case kTestLevelOpen:
+        // Stream open test.
+        // --------------------------------
+        status = ioscheduler::SchedulerStreamClose(sched, 5);
+        ASSERT_EQ(status, ZX_OK, "Failed to close stream");
+        status = ioscheduler::SchedulerStreamClose(sched, 3);
+        ASSERT_EQ(status, ZX_OK, "Failed to close stream");
+        // Stream 0 intentionally left open here.
+        __FALLTHROUGH;
+    case kTestLevelInit:
+        // Init test.
+        // --------------------------------
+        ioscheduler::SchedulerShutdown(sched);
+        __FALLTHROUGH;
+    case kTestLevelCreate:
+        // Create test.
+        // --------------------------------
+        break;
+    default:
+        ASSERT_TRUE(false, "Unexpected test level");
+        return false;
+    }
+    return true;
+}
+
+bool iosched_run(TestLevel test_level) {
     BEGIN_TEST;
 
     IoScheduler* scheduler;
@@ -116,67 +189,9 @@ static bool iosched_run(TestLevel test_level) {
     IoSchedulerUniquePtr sched(scheduler);
     callbacks.context = &test;
 
-    do {
-        // Create test.
-        // --------------------------------
-        if (test_level == kTestLevelCreate) break;
+    iosched_up(test_level, &test);
 
-        // Init test.
-        // --------------------------------
-        status = ioscheduler::SchedulerInit(sched.get());
-        ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
-        if (test_level == kTestLevelInit) break;
-
-        // Stream open test.
-        // --------------------------------
-        status = ioscheduler::SchedulerStreamOpen(sched.get(), 5, ioscheduler::kDefaultPri);
-        ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-        status = ioscheduler::SchedulerStreamOpen(sched.get(), 0, ioscheduler::kDefaultPri);
-        ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-        status = ioscheduler::SchedulerStreamOpen(sched.get(), 5, ioscheduler::kDefaultPri);
-        ASSERT_NE(status, ZX_OK, "Expected failure to open duplicate stream");
-        status = ioscheduler::SchedulerStreamOpen(sched.get(), 3, 100000);
-        ASSERT_NE(status, ZX_OK, "Expected failure to open with invalid priority");
-        status = ioscheduler::SchedulerStreamOpen(sched.get(), 3, 1);
-        ASSERT_EQ(status, ZX_OK, "Failed to open stream");
-        if (test_level == kTestLevelOpen) break;
-
-        // Serve test.
-        // --------------------------------
-        status = test.CreateFifo();
-        ASSERT_EQ(status, ZX_OK, "Internal test failure");
-        status = ioscheduler::SchedulerServe(sched.get());
-        ASSERT_EQ(status, ZX_OK, "Failed to begin service");
-        if (test_level == kTestLevelServe) break;
-
-        ASSERT_TRUE(false, "Unexpected test level");
-    } while (false);
-
-    switch (test_level) {
-    case kTestLevelServe:
-        // Serve test.
-        // --------------------------------
-    case kTestLevelOpen:
-        // Stream open test.
-        // --------------------------------
-        status = ioscheduler::SchedulerStreamClose(sched.get(), 5);
-        ASSERT_EQ(status, ZX_OK, "Failed to close stream");
-        status = ioscheduler::SchedulerStreamClose(sched.get(), 3);
-        ASSERT_EQ(status, ZX_OK, "Failed to close stream");
-        // Stream 0 intentionally left open here.
-        __FALLTHROUGH;
-    case kTestLevelInit:
-        // Init test.
-        // --------------------------------
-        ioscheduler::SchedulerShutdown(sched.get());
-        __FALLTHROUGH;
-    case kTestLevelCreate:
-        // Create test.
-        // --------------------------------
-        break;
-    default:
-        ASSERT_TRUE(false, "Unexpected test level");
-    }
+    iosched_down(test_level, &test);
 
     sched.release();
     END_TEST;
