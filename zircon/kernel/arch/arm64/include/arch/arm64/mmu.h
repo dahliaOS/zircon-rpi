@@ -19,7 +19,6 @@
 #define NBITS32(n)      IFTE((n) >> 16, 16 + NBITS16((n) >> 16), NBITS16(n))
 #define NBITS(n)        IFTE((n) >> 32, 32 + NBITS32((n) >> 32), NBITS32(n))
 
-#ifndef MMU_KERNEL_SIZE_SHIFT
 #define KERNEL_ASPACE_BITS (NBITS(0xffffffffffffffff-KERNEL_ASPACE_BASE))
 
 #if KERNEL_ASPACE_BITS < 25
@@ -27,14 +26,16 @@
 #else
 #define MMU_KERNEL_SIZE_SHIFT (KERNEL_ASPACE_BITS)
 #endif
-#endif
 
 #ifndef MMU_USER_SIZE_SHIFT
 #define MMU_USER_SIZE_SHIFT 48
 #endif
 
 #ifndef MMU_IDENT_SIZE_SHIFT
-#define MMU_IDENT_SIZE_SHIFT 42 /* Max size supported by block mappings */
+/* Use 64K page granules to construct an identity mapped page table during
+ * initial boot. 42 bits allows for a single top level 64k page table.
+ */
+#define MMU_IDENT_SIZE_SHIFT 42
 #endif
 
 // See ARM DDI 0487B.b, Table D4-25 for the maximum IPA range that can be used.

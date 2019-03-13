@@ -135,7 +135,8 @@ FUNCTION(_start)
     bl      arm64_boot_map
 
     /* Prepare tt_trampoline page table.
-     * this will identity map the 1GB page holding the physical address of this code.
+     * this will identity map the large page holding the physical address of this code.
+     * Large pages may be 1GB or 512MB, depending on the base page granule being used.
      * Used to temporarily help us get switched to the upper virtual address. */
 
     /* Zero tt_trampoline translation tables */
@@ -312,7 +313,7 @@ LOCAL_DATA(boot_cpu_unsafe_kstack_end)
 END_DATA(boot_cpu_unsafe_kstack)
 #endif
 
-.section .bss.prebss.translation_table, "aw", @nobits
+.section .bss
 .align 3 + MMU_PAGE_TABLE_ENTRIES_IDENT_SHIFT
 DATA(tt_trampoline)
     .skip 8 * MMU_PAGE_TABLE_ENTRIES_IDENT
