@@ -5,11 +5,10 @@ use super::country;
 use super::device_cap;
 use super::operclass;
 use super::regulation;
+use super::regulation::RegulationTable;
 
 use failure::Error;
 use std::collections::HashMap;
-use toml::value::Table;
-use toml::Value;
 
 #[derive(Debug)]
 pub struct PowerBudgetByRange {
@@ -19,31 +18,23 @@ pub struct PowerBudgetByRange {
 }
 
 pub fn build_power_budget_by_range(
-    table: &Table,
+    table: &RegulationTable,
     role_in_query: &str,
 ) -> Result<Vec<PowerBudgetByRange>, Error> {
     let mut result: Vec<PowerBudgetByRange> = vec![];
-    for (_, elem) in table.iter() {
-        if elem.get("do_not_use").is_some() {
-            continue;
+
+    for s in &table.subband {
+        for r in &s.role {
+            if r.role != "any" && r.role != role_in_query {
+                continue;
+            }
+
+            result.push(PowerBudgetByRange {
+                chan_idx_beg: s.chan_idx_beg,
+                chan_idx_end: s.chan_idx_end,
+                max_conduct_power: r.max_conduct_power,
+            });
         }
-        let subband_table = match elem {
-            Value::Table(s) => s,
-            _ => continue,
-        };
-
-        let role_table = if subband_table.get(&format!("role-{}", role_in_query)).is_some() {
-            &subband_table[&format!("role-{}", role_in_query)]
-        } else if subband_table.get("role-any").is_some() {
-            &subband_table["role-any"]
-        } else {
-            continue;
-        };
-
-        let chan_idx_beg = subband_table["chan_idx_beg"].as_integer().unwrap() as u8;
-        let chan_idx_end = subband_table["chan_idx_end"].as_integer().unwrap() as u8;
-        let max_conduct_power = role_table["max_conduct_power"].as_integer().unwrap() as i8;
-        result.push(PowerBudgetByRange { chan_idx_beg, chan_idx_end, max_conduct_power });
     }
     Ok(result)
 }
@@ -78,8 +69,8 @@ pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {
     let chan_groups = channel::build_legitimate_group(&operclass_toml, &oper_classes);
 
     let reg_filepath = regulation::get_filepath(&juris);
-    let reg_toml = regulation::load_toml(&reg_filepath)?;
-    let budget_by_range = build_power_budget_by_range(&reg_toml, role)?;
+    let reg_table = regulation::load_regulations(&reg_filepath)?;
+    let budget_by_range = build_power_budget_by_range(&reg_table, role)?;
 
     Ok(build_power_budget_by_chan_idx(budget_by_range, chan_groups.all))
 }

@@ -13,12 +13,13 @@ jurisdiction = "US"
 
 # Subband
 # [{Beginning frequency in MHz}{dash}{Ending frequency in MHz}]
-[5350-5460]
-    do_not_use = true # Corresponds to channel 68 - 96. FCC CFR Subpart C 15.205
+#[[subband]]
+#    freq_beg = 5.350
+#    freq_end = 5.460
+#    do_not_use = true # Corresponds to channel 68 - 96. FCC CFR Subpart C 15.205
 
 
-# Two blank lines
-[2400-2483]  # 2400 - 2483.5.
+[[subband]]
     freq_beg = 2.400  # GHz
     freq_end = 2.4835 # GHz
     chan_idx_beg = 1  # TODO(porce): This is not universal. Consider referring to Operating Classes.
@@ -27,7 +28,7 @@ jurisdiction = "US"
     is_indoor = true
     is_outdoor = true
 
-    [2400-2483.role-any]
+    [[subband.role]]
         role = "any"
         # Summed across all antennas. 15.247.b.3. For up to 6 dBi antenna
         # See 15.247.c for variations.
@@ -35,8 +36,7 @@ jurisdiction = "US"
         max_ant_gain = 6 # dBi  # For the stated max conducted power
 
 
-# 15.407.a
-[5150-5250]
+[[subband]] # 15.407.a
     # Note the beginning frequency is _not_ 5.170 GHz, which corresponds to channel 36.
     freq_beg = 5.150
     freq_end = 5.250
@@ -46,36 +46,34 @@ jurisdiction = "US"
     is_indoor = true
     is_outdoor = true
 
-    [5150-5250.role-indoor_ap]
+    [[subband.role]]
         role = "indoor_ap"
         max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 6 # dBi
         max_eirp_30degree = 21 # dBm. 125 mWatts
 
-    [5150-5250.role-outdoor_ap]
+    [[subband.role]]
         role = "outdoor_ap"
         max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 6 # dBi
         max_eirp_30degree = 21 # dBm. 125 mWatts
 
-    [5150-5250.role-fixed_p2p_ap] # Note. This is for AP.
-        role = "fixed_p2p_ap"        
+    [[subband.role]] # Note. This is for AP.
+        role = "fixed_p2p_ap"
         max_conduct_power = 30 # dBm. 1000 mWatts
         max_psd = 17 # dBm/MHz
         max_ant_gain = 23 # dBi
 
-    [5150-5250.role-client]
+    [[subband.role]]
         role = "client"
         max_conduct_power = 24 # dBm. 250 mWatts
         max_psd = 11 # dBm/MHz
         max_ant_gain = 6 # dBi
 
 
-# FCC KDB905462 D02 v02
-[5250-5350]
-    is_dfs = true
+[[subband]] # FCC KDB905462 D02 v02
 
     freq_beg = 5.250
     freq_end = 5.350
@@ -85,17 +83,19 @@ jurisdiction = "US"
     is_indoor = true
     is_outdoor = true
 
-    # See FCC KDB905462 D02 v02 Table 3.
-    dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
-    dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+    [subband.dfs]
+        # See FCC KDB905462 D02 v02 Table 3.
+        is_dfs = true
+        dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
+        dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
 
-    dfs_channel_availability_check_time = 60000 # msec. 60 sec
-    dfs_channel_move_time = 10000 # msec. 10 sec.
-    dfs_channel_closing_tx_time = 200 # msec
-    dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
-    dfs_non_occupancy_period = 1800000 # msec. 30 minutes
+        dfs_channel_availability_check_time = 60000 # msec. 60 sec
+        dfs_channel_move_time = 10000 # msec. 10 sec.
+        dfs_channel_closing_tx_time = 200 # msec
+        dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
+        dfs_non_occupancy_period = 1800000 # msec. 30 minutes
 
-    [5250-5350.role-any]
+    [[subband.role]]
         role = "any"
         # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
         # At least 6 dB below the mean EIRP of 30 dBm.
@@ -104,10 +104,7 @@ jurisdiction = "US"
         max_ant_gain = 6 # dBi
 
 
-
-# FCC KDB905462 D02 v02
-[5470-5725]
-    is_dfs = true
+[[subband]] # FCC KDB905462 D02 v02
 
     freq_beg = 5.470
     freq_end = 5.725
@@ -117,7 +114,20 @@ jurisdiction = "US"
     is_indoor = true
     is_outdoor = true
 
-    [5470-5725.role-any]
+    [subband.dfs]
+        # See FCC KDB905462 D02 v02 Table 3.
+        # Use the same values for subband 5250-5350 MHz. Double check with FCC.
+        is_dfs = true
+        dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
+        dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+
+        dfs_channel_availability_check_time = 60000 # msec. 60 sec
+        dfs_channel_move_time = 10000 # msec. 10 sec.
+        dfs_channel_closing_tx_time = 200 # msec
+        dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
+        dfs_non_occupancy_period = 1800000 # msec. 30 minutes
+
+    [[subband.role]]
         role = "any"
         # 250 mWatts or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
         max_conduct_power = 24 # dBm
@@ -125,7 +135,7 @@ jurisdiction = "US"
         max_ant_gain = 6 # dBi
 
 
-[5725-5850]
+[[subband]]
     freq_beg = 5.725 # GHz
     freq_end = 5.850 # GHz
     chan_idx_beg = 144 # ish. Note Channel 142, 144 overlap with UNII-2C and UNII-3 both.
@@ -134,13 +144,13 @@ jurisdiction = "US"
     is_indoor = true
     is_outdoor = true
 
-    [5725-5850.role-any]
+    [[subband.role]]
         role = "any"
         max_conduct_power = 30 # dBm. 1000 mWatts. 15.247.b.3. For up to 6 dBi antenna
         max_psd = 33 # dBm/MHz. In the clause, 30 dBm in any 500 kHz band.
         max_ant_gain = 6 # dBi
 
-    [5725-5850.role-fixed_p2p] # Note. Not necessarily for AP.
+    [[subband.role]] # Note. Not necessarily for AP.
         role = "fixed_p2p"
         max_conduct_power = 30 # dBm. 1000 mWatts. 15.247.b.3. For up to 6 dBi antenna
         max_psd = 33 # dBm/MHz. In the clause, 30 dBm in any 500 kHz band.

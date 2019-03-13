@@ -14,8 +14,8 @@ pub struct SkuTable {
 #[derive(Deserialize, Debug)]
 pub struct SkuInfo {
     pub name: String,
-    pub wlan_country_code: String,
-    pub eligible_country: Vec<String>,
+    pub wlan_country_code: String,     // ISO alpha-2
+    pub eligible_country: Vec<String>, // ISO alpha-2
 }
 
 pub fn read_sku() -> Result<String, Error> {

@@ -27,7 +27,7 @@ fn show_operclass() {
 fn show_regulation() {
     let juris = country::get_jurisdiction();
     let filepath = regulation::get_filepath(&juris);
-    let is_valid = regulation::load_toml(&filepath.to_string()).is_ok();
+    let is_valid = regulation::load_regulations(&filepath.to_string()).is_ok();
 
     println!(
         "{:20}: {:10} {}",

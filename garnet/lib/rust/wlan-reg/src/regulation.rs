@@ -3,105 +3,129 @@ extern crate serde_derive;
 extern crate toml;
 
 use super::utils;
-use super::vec_string;
 use failure::{bail, Error};
-use toml::value::Table;
-use toml::Value;
 
-/// Take the file path for an Operating Class TOML file,
-/// returns TOML Value if validated, otherwise, error.
-pub fn load_toml(filepath: &str) -> Result<Table, Error> {
-    let toml = utils::load_toml(filepath)?;
-    validate(toml)
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
+pub struct RegulationTable {
+    pub version: String, // ISO alpha-2
+    pub jurisdiction: String,
+    pub subband: Vec<Subband>,
 }
 
-/// Passes the validation if mandatory fields are present.
-/// Optional fields, or unidentifiable fields are don't care ones.
-pub fn validate(v: Table) -> Result<Table, Error> {
-    const MANDATORY_FIELDS: &'static [&'static str] = &["version", "jurisdiction"];
-    for f in MANDATORY_FIELDS.iter() {
-        if !v.contains_key(&f.to_string()) {
-            bail!("mandatory field missing: {}", f);
-        };
-    }
-    for (k, vv) in v.iter() {
-        let subband = match vv {
-            Value::Table(t) => t,
-            _ => continue,
-        };
-        if let Err(e) = validate_subband(subband) {
-            bail!("Key {} has error: {}", k, e);
-        }
-    }
-    Ok(v)
+#[derive(Deserialize, Debug)]
+pub struct Subband {
+    pub freq_beg: f64,    // GHz
+    pub freq_end: f64,    // GHz
+    pub chan_idx_beg: u8, // unitless IEEE index
+    pub chan_idx_end: u8, // unitless IEEE index
+
+    pub is_indoor: bool,  // at least one role is legal to use indoor, if true.
+    pub is_outdoor: bool, // at least one role is legal to use outdoor, if true.
+
+    pub role: Vec<Role>,
+    pub dfs: Option<Dfs>,
 }
 
-fn validate_subband(v: &Table) -> Result<(), Error> {
-    if v.get("do_not_use").is_some() {
-        return Ok(());
-    }
-
-    let mandatory_fields1 = vec_string!["freq_beg", "freq_end"];
-    for m in mandatory_fields1.iter() {
-        if !v.contains_key(m) {
-            bail!("mandatory field missing: {}", m);
-        };
-        if !v[m].is_float() {
-            bail!("field {} is non-float: {} ", m, v[m]);
-        }
-    }
-    let freq_beg = v["freq_beg"].as_float().unwrap() as f64;
-    let freq_end = v["freq_end"].as_float().unwrap() as f64;
-    if freq_beg > freq_end {
-        bail!("freq_beg {} is greater than freq_end {}", freq_beg, freq_end);
-    }
-
-    let mandatory_fields2 = vec_string!["chan_idx_beg", "chan_idx_end"];
-    for m in mandatory_fields2.iter() {
-        if !v.contains_key(m) {
-            bail!("mandatory field missing: {}", m);
-        };
-        if !v[m].is_integer() {
-            bail!("field {} is non-integer: {} ", m, v[m]);
-        }
-    }
-    let chan_idx_beg = v["chan_idx_beg"].as_integer().unwrap() as u64;
-    let chan_idx_end = v["chan_idx_end"].as_integer().unwrap() as u64;
-    if chan_idx_beg > chan_idx_end {
-        bail!("chan_idx_beg {} is greater than chan_idx_end {}", chan_idx_beg, chan_idx_end);
-    }
-
-    let choice_fields = vec_string!["role-any", "role-client"];
-    let mut found_choice = false;
-    for f in choice_fields.iter() {
-        if v.contains_key(f) {
-            found_choice = true;
-            break;
-        };
-    }
-    if found_choice == false {
-        bail!("choice field missing: {:?}", choice_fields);
-    }
-
-    validate_power_budget(v)
+#[derive(Deserialize, Debug)]
+pub struct Role {
+    pub role: String,
+    pub max_conduct_power: i8, // dBm
+    pub max_ant_gain: u8,      // dBi
 }
 
-fn validate_power_budget(v: &Table) -> Result<(), Error> {
-    const MANDATORY_FIELDS: &'static [&'static str] =
-        &["role", "max_conduct_power", "max_ant_gain"];
-    for (k, vv) in v.iter() {
-        if let Value::Table(_) = vv {
-            if !k.starts_with("role-") {
-                bail!("found a non-role specific table: {}", k);
-            }
-            for f in MANDATORY_FIELDS.iter() {
-                if vv.get(f).is_none() {
-                    bail!("table {} misses a mandatory field: {}", k, f);
-                }
+#[derive(Deserialize, Debug, Clone)]
+pub struct Dfs {
+    pub is_dfs: bool,
+    pub dfs_detect_thresh: i8,                     // dBm
+    pub dfs_detect_thresh_for_lower_eirp: i8,      // dBm
+    pub dfs_channel_availability_check_time: u32,  // msec
+    pub dfs_channel_move_time: u32,                // msec
+    pub dfs_channel_closing_tx_time: u32,          // msec
+    pub dfs_channel_closing_tx_time_leftover: u32, // msec
+    pub dfs_non_occupancy_period: u32,             // msec
+}
+
+pub fn load_regulations(filepath: &str) -> Result<RegulationTable, Error> {
+    let contents = match utils::load_file(filepath) {
+        Err(e) => {
+            bail!("{} in reading {}", e, filepath);
+        }
+        Ok(c) => c,
+    };
+    let reg_table: RegulationTable = toml::from_str(contents.as_str())?;
+
+    // println!("{:#?}", reg_table);
+    validate_regulations(&reg_table)?;
+    Ok(reg_table)
+}
+
+pub fn validate_regulations(reg_table: &RegulationTable) -> Result<(), Error> {
+    // jurisdiction should be ISO alpha-2
+
+    for s in &reg_table.subband {
+        let name = format!("subband [{}, {}]", s.freq_beg, s.freq_end);
+        // freq_beg > freq_end
+        if s.freq_beg >= s.freq_end {
+            bail!("{} frequency range is invalid", name);
+        }
+
+        // chan_idx_beg > chan_idx_end
+        if s.chan_idx_beg > s.chan_idx_end {
+            bail!(
+                "{} channel index range is invalid: [{}, {}]",
+                name,
+                s.chan_idx_beg,
+                s.chan_idx_end
+            );
+        }
+
+        // at least one should be true: is_indoor, is_outdoor
+        if !(s.is_indoor || s.is_outdoor) {
+            bail!("{} supports none of indoor and outdoor", name)
+        }
+
+        // role should be one of "any", "indoor_ap", "outdoor_ap", "fixed_p2p_ap", "client"
+        let valid_roles =
+            vec!["any", "indoor_ap", "outdoor_ap", "fixed_p2p_ap", "fixed_p2p", "client"];
+        for r in &s.role {
+            if !valid_roles.contains(&r.role.as_str()) {
+                bail!("{} has invalid role: {}", name, r.role);
             }
         }
-    }
 
+        if s.dfs.is_some() {
+            let dfs = s.dfs.clone().unwrap();
+            // dfs_detect_thresh is expected to be negative
+            if dfs.dfs_detect_thresh >= 0 {
+                bail!("{} has non-negative dfs_detect_thresh {}", name, dfs.dfs_detect_thresh);
+            }
+            // dfs_detect_thresh_for_lower_eirp is expected to be negative
+            if dfs.dfs_detect_thresh_for_lower_eirp >= 0 {
+                bail!(
+                    "{} has non-negative dfs_detect_thresh_for_lower_eirp {}",
+                    name,
+                    dfs.dfs_detect_thresh_for_lower_eirp
+                );
+            }
+            // dfs_channel_availability_check_time > dfs_channel_move_time
+            if dfs.dfs_channel_availability_check_time < dfs.dfs_channel_move_time {
+                bail!(
+                    "{} dfs_channel_availability_check_time is smaller than dfs_channel_move_time",
+                    name
+                );
+            }
+            // dfs_channel_move_time > dfs_channel_closing_tx_time + dfs_channel_closing_tx_time_leftover
+            if dfs.dfs_channel_move_time
+                < dfs.dfs_channel_closing_tx_time + dfs.dfs_channel_closing_tx_time_leftover
+            {
+                bail!(
+                    "{} dfs_channel_move_time, closing_tx_time, closing_tx_time_leftover mismatch",
+                    name
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -131,10 +155,10 @@ mod tests {
     }
 
     #[test]
-    fn test_load_toml() {
+    fn test_load() {
         const FILES: [&str; 2] = ["./data/regulation_US.toml", "./data/regulation_GLOBAL.toml"];
         for f in FILES.iter() {
-            match load_toml(f) {
+            match load_regulations(f) {
                 Ok(_) => (),
                 Err(e) => {
                     println!("Error while processing {} : {}", f, e);

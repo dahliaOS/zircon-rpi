@@ -8,19 +8,22 @@ jurisdiction = "GLOBAL"
 # of all jurisdiction on the Earth
 
 
-[2402-2472]
+[[subband]]
     freq_beg = 2.402  # GHz
     freq_end = 2.472 # GHz
     chan_idx_beg = 1
     chan_idx_end = 11
 
-    [2402-2472.role-any]
+    is_indoor = true
+    is_outdoor = true
+
+    [[subband.role]]
         role = "any"
         max_conduct_power = 20 # dBm
         max_ant_gain = 0 # dBi. Unknown
 
 
-[5170-5250]
+[[subband]]
     # Note the beginning frequency is _not_ 5.170 GHz, which corresponds to channel 36.
     freq_beg = 5.170
     freq_end = 5.250
@@ -31,18 +34,16 @@ jurisdiction = "GLOBAL"
     is_outdoor = false
 
     # CBW20 only is to be controlled by the Operating Class
-    [5170-5250.role-any]
+    [[subband.role]]
         role = "any"
         max_conduct_power = 20 # dBm
         max_psd = 17 # dBm/MHz
         max_ant_gain = 0 # dBi. Unknown
 
 
-[5250-5350]
+[[subband]]
     # TODO(porce): Figure out the common rule for the DFS
     # before this subband is decided to be usable.
-    do_not_use = true
-
     is_dfs = true
 
     freq_beg = 5.250
@@ -55,17 +56,20 @@ jurisdiction = "GLOBAL"
 
     # For reference, this is the rule from FCC.
     # See FCC KDB905462 D02 v02 Table 3.
-    dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
-    dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+    [subband.dfs]
+        # See FCC KDB905462 D02 v02 Table 3.
+        is_dfs = true
+        dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
+        dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
 
-    dfs_channel_availability_check_time = 60000 # msec. 60 sec
-    dfs_channel_move_time = 10000 # msec. 10 sec.
-    dfs_channel_closing_tx_time = 200 # msec
-    dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
-    dfs_non_occupancy_period = 1800000 # msec. 30 minutes
+        dfs_channel_availability_check_time = 60000 # msec. 60 sec
+        dfs_channel_move_time = 10000 # msec. 10 sec.
+        dfs_channel_closing_tx_time = 200 # msec
+        dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
+        dfs_non_occupancy_period = 1800000 # msec. 30 minutes
 
     # CBW20 only is to be controlled by the Operating Class
-    [5250-5350.role-any]
+    [[subband.role]]
         role = "any"
         # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
         # At least 6 dB below the mean EIRP of 30 dBm.
