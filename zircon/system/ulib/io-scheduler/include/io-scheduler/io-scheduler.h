@@ -12,24 +12,45 @@
 
 namespace ioscheduler {
 
+constexpr uint32_t kSchedOptReorderReads  = (1u << 0);
+constexpr uint32_t kSchedOptReorderWrites = (1u << 1);
+constexpr uint32_t kSchedOptReorderReadsAheadOfWrites = (1u << 3);
+
+constexpr uint32_t kSchedOptFullyInOrder    = 0;
+constexpr uint32_t kSchedOptFullyOutOfOrder = (kSchedOptReorderReads |
+                                               kSchedOptReorderWrites |
+                                               kSchedOptReorderReadsAheadOfWrites);
+
 constexpr uint32_t kMaxPri = 31;
 constexpr uint32_t kDefaultPri = 8;
 
+// Operation types. These are only used to determine respective ordering requirements.
+// Operations that can optionally be reordered.
 constexpr uint32_t kOpClassUnknown = 0;
 constexpr uint32_t kOpClassRead = 1;
 constexpr uint32_t kOpClassWrite = 2;
 constexpr uint32_t kOpClassDiscard = 3;
 constexpr uint32_t kOpClassRename = 4;
-constexpr uint32_t kOpClassSync = 5;
-constexpr uint32_t kOpClassReadBarrier = 64;
-constexpr uint32_t kOpClassWriteBarrier = 65;
-constexpr uint32_t kOpClassFullBarrier = 66;
 
-constexpr size_t kOpReservedQuads = 13;
+// Operations that cannot be reordered.
+constexpr uint32_t kOpClassUnknownOrdered = 32;
+constexpr uint32_t kOpClassSync           = 33;
+
+// Barrier operations.
+constexpr uint32_t kOpClassReadBarrier    = 64;
+constexpr uint32_t kOpClassWriteBarrier   = 65;
+constexpr uint32_t kOpClassFullBarrier    = 66;
+
+constexpr uint32_t kOpFlagComplete =    (1u << 0);
+constexpr uint32_t kOpFlagGroupLeader = (1u << 8);
+
+constexpr size_t kOpReservedQuads = 12;
 
 struct SchedOp {
     uint32_t op_class;
     uint32_t flags;
+    uint32_t group_id;
+    uint32_t group_members;
     uint32_t _unused;
     zx_status_t result;
     void* cookie;
@@ -49,8 +70,8 @@ struct SchedulerCallbacks {
 
 class Scheduler;
 
-zx_status_t SchedulerCreate(SchedulerCallbacks* cb, Scheduler** out);
-zx_status_t SchedulerInit(Scheduler* scheduler);
+zx_status_t SchedulerCreate(Scheduler** out);
+zx_status_t SchedulerInit(Scheduler* scheduler, SchedulerCallbacks* cb, uint32_t options);
 zx_status_t SchedulerStreamOpen(Scheduler* scheduler, uint32_t id, uint32_t priority);
 zx_status_t SchedulerStreamClose(Scheduler* scheduler, uint32_t id);
 zx_status_t SchedulerServe(Scheduler* scheduler);

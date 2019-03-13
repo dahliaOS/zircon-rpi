@@ -26,10 +26,11 @@ struct TestOp {
 
 class TestContext {
 public:
-    TestContext(IoScheduler* sched) : sched_(sched) {}
+    TestContext() {}
     ~TestContext() {}
 
     IoScheduler* Scheduler() { return sched_; }
+    void SetScheduler(IoScheduler* sched) { sched_ = sched; }
     zx_status_t CreateFifo();
 
     zx_status_t AcquireOps(SchedOp** sop_list, size_t list_count,
@@ -115,7 +116,7 @@ bool iosched_up(TestLevel test_level, TestContext* test) {
 
     // Init test.
     // --------------------------------
-    status = ioscheduler::SchedulerInit(sched);
+    status = ioscheduler::SchedulerInit(sched, &callbacks, ioscheduler::kSchedOptFullyInOrder);
     ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
 
     if (test_level == kTestLevelInit) return true;
@@ -182,12 +183,13 @@ bool iosched_down(TestLevel test_level, TestContext* test) {
 bool iosched_run(TestLevel test_level) {
     BEGIN_TEST;
 
-    IoScheduler* scheduler;
-    zx_status_t status = ioscheduler::SchedulerCreate(&callbacks, &scheduler);
-    ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
-    TestContext test(scheduler);
-    IoSchedulerUniquePtr sched(scheduler);
+    TestContext test;
     callbacks.context = &test;
+    IoScheduler* scheduler;
+    zx_status_t status = ioscheduler::SchedulerCreate(&scheduler);
+    ASSERT_EQ(status, ZX_OK, "Failed to create scheduler");
+    test.SetScheduler(scheduler);
+    IoSchedulerUniquePtr sched(scheduler);
 
     iosched_up(test_level, &test);
 

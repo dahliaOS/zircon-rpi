@@ -10,10 +10,10 @@ namespace ioscheduler {
 
 class Scheduler {
 public:
-    Scheduler(SchedulerCallbacks* cb) : callbacks_(cb) {}
+    Scheduler() {}
     ~Scheduler();
 
-    zx_status_t Init();
+    zx_status_t Init(SchedulerCallbacks* cb, uint32_t options);
     void Shutdown();
 
     zx_status_t StreamOpen(uint32_t id, uint32_t priority);
@@ -30,11 +30,13 @@ private:
     zx_status_t FindStreamForId(uint32_t id, StreamRef* out);
     zx_status_t RemoveStreamForId(uint32_t id, StreamRef* out = nullptr);
 
-    SchedulerCallbacks* callbacks_;
+    SchedulerCallbacks* callbacks_ = nullptr;
+    uint32_t options_ = 0;
     StreamList streams_;
 };
 
-zx_status_t Scheduler::Init() {
+zx_status_t Scheduler::Init(SchedulerCallbacks* cb, uint32_t options) {
+    options_ = options;
     return ZX_OK;
 }
 
@@ -101,9 +103,9 @@ zx_status_t Scheduler::RemoveStreamForId(uint32_t id, StreamRef* out) {
 
 // Scheduler API
 
-zx_status_t SchedulerCreate(SchedulerCallbacks* cb, Scheduler** out) {
+zx_status_t SchedulerCreate(Scheduler** out) {
     fbl::AllocChecker ac;
-    Scheduler* sched = new (&ac) Scheduler(cb);
+    Scheduler* sched = new (&ac) Scheduler();
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
@@ -115,8 +117,8 @@ void SchedulerDestroy(Scheduler* scheduler) {
     delete scheduler;
 }
 
-zx_status_t SchedulerInit(Scheduler* scheduler) {
-    return scheduler->Init();
+zx_status_t SchedulerInit(Scheduler* scheduler, SchedulerCallbacks* cb, uint32_t options) {
+    return scheduler->Init(cb, options);
 }
 
 zx_status_t SchedulerStreamOpen(Scheduler* scheduler, uint32_t id, uint32_t priority) {
