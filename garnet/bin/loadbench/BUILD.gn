@@ -1,0 +1,38 @@
+# Copyright 2019 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//build/testing/environments.gni")
+
+executable("bin") {
+  output_name = "loadbench"
+  sources = [
+    "loadbench.cpp",
+  ]
+  deps = [
+    "//zircon/public/lib/fbl",
+    "//zircon/public/lib/fdio",
+    "//zircon/public/lib/zx",
+    "//zircon/public/lib/perftest",
+    "//third_party/rapidjson",
+  ]
+  public_deps = [
+    "//zircon/public/lib/perftest",
+  ]
+}
+
+package("loadbench") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "loadbench"
+
+  meta = [
+    {
+      path = rebase_path("meta/loadbench.cmx")
+      dest = "loadbench.cmx"
+    },
+  ]
+}

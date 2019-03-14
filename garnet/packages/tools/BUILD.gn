@@ -55,6 +55,7 @@ group("all") {
     "//garnet/packages/tools:fidlmerge",
     "//garnet/packages/tools:gidl",
     "//garnet/packages/tools:iperf",
+    "//garnet/packages/tools:loadbench",
     "//garnet/packages/tools:magma",
     "//garnet/packages/tools:make-efi",
     "//garnet/packages/tools:make-fuchsia-vol",
@@ -194,5 +195,12 @@ group("fidlcat") {
   testonly = true
   public_deps = [
     "//garnet/bin/fidlcat:fidlcat_host",
+  ]
+}
+
+group("loadbench") {
+  testonly = true
+  public_deps = [
+    "//garnet/bin/loadbench",
   ]
 }
