@@ -41,12 +41,16 @@ fn show_device_cap() {
     let filepath = device_cap::get_filepath();
     let is_valid = device_cap::load_toml(&filepath.to_string()).is_ok();
 
+    let juris = country::get_jurisdiction();
+    let active_oper_class_indices = device_cap::get_operating_classes(juris.as_str()).unwrap();
+
     println!(
-        "{:20}: {:10} {}",
+        "\n{:20}: {:10} {}",
         "TOML for DeviceCap",
         if is_valid { "[Valid]" } else { "[Invalid]" },
         filepath
     );
+    println!("\tDevice OperClasses: {:?}", active_oper_class_indices);
 }
 
 fn show_legit_chan_group() {
@@ -57,7 +61,7 @@ fn show_legit_chan_group() {
             println!("{:?}", e);
         }
         Ok(l) => {
-            println!("\n[Legit Channel Group]\n{}", l);
+            println!("\n[Channel Groups supported by the device in that Jurisdiction]\n{}", l);
         }
     }
 }
@@ -106,9 +110,15 @@ fn show_power_budget() {
     }
     budget_vec.sort();
 
+    let mut cnt = 0;
     println!("\n[Power Budget]");
     for (k, v) in budget_vec.iter() {
-        println!("Chan {:>4} : {:>3} dBm", k, v);
+        print!("Chan {:>4} : {:>3} dBm {:>8}", k, v, "");
+        cnt += 1;
+        if cnt == 4 {
+            println!("");
+            cnt = 0;
+        }
     }
 }
 
