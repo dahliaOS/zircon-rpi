@@ -64,9 +64,9 @@ pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {
     let juris = country::get_jurisdiction();
 
     let operclass_filepath = operclass::get_filepath(&juris);
-    let operclass_toml = operclass::load_toml(&operclass_filepath)?;
-    let oper_classes = device_cap::get_operating_classes(juris.as_str())?;
-    let chan_groups = channel::build_legitimate_group(&operclass_toml, &oper_classes);
+    let operclass_table = operclass::load_operclasses(&operclass_filepath)?;
+    let active_operclasses = device_cap::get_operating_classes(juris.as_str())?;
+    let chan_groups = channel::build_legitimate_group(&operclass_table, &active_operclasses);
 
     let reg_filepath = regulation::get_filepath(&juris);
     let reg_table = regulation::load_regulations(&reg_filepath)?;

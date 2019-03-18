@@ -3,11 +3,11 @@ extern crate toml;
 use super::country;
 use super::device_cap;
 use super::operclass;
-use super::utils;
+//use super::utils;
 
 use failure::Error;
 use std::fmt;
-use toml::value::Table;
+//use toml::value::Table;
 
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct ChannelGroups {
@@ -42,7 +42,10 @@ impl fmt::Display for ChannelGroups {
 /// A Legitimate Channel Groups is a set of channel lists
 /// defined in the jurisdiction of the device operation.
 /// See also A Operation Channel Groups for comparison.
-pub fn build_legitimate_group(t: &Table, active_operclasses: &Vec<u8>) -> ChannelGroups {
+pub fn build_legitimate_group(
+    table: &operclass::OperClassTable,
+    active_operclasses: &Vec<u8>,
+) -> ChannelGroups {
     let mut dfs = vec![];
     let mut band_2ghz = vec![];
     let mut band_5ghz = vec![];
@@ -51,59 +54,43 @@ pub fn build_legitimate_group(t: &Table, active_operclasses: &Vec<u8>) -> Channe
     let mut cbw80center = vec![];
     let mut cbw160center = vec![];
 
-    let juris = t["jurisdiction"].as_str().expect("should have jurisdiction field");
-    let beg_pattern = format!("{}-", juris);
+    const START_FREQ_5GHZ_BAND: f64 = 5.000;
+    const START_FREQ_2GHZ_BAND: f64 = 2.407;
+    const SPACING_80MHZ: f64 = 80.0;
+    const SPACING_160MHZ: f64 = 160.0;
 
-    let mut operclass_cnt = 0;
-    for (key, v) in t.iter() {
-        if !key.starts_with(beg_pattern.as_str()) {
-            continue;
-        }
-        let token = key.rsplit("-").collect::<Vec<_>>()[0];
-        if token.parse::<u8>().is_err() {
+    for o in &table.operclass {
+        if !active_operclasses.contains(&o.idx) {
             continue;
         }
 
-        let idx = token.parse::<u8>().unwrap();
-        if !active_operclasses.contains(&idx) {
-            continue;
-        }
-        operclass_cnt += 1;
-
-        let channel_set = utils::get_chanlist(&v["set"]);
-        let center_channel_set = utils::get_chanlist(&v["center_freq_idx"]);
-
-        let start_freq = v["start_freq"].as_float().unwrap() as f64;
-        let spacing = v["spacing"].as_integer().unwrap() as u8;
-
-        if start_freq == 5.000 {
-            band_5ghz.extend(&channel_set);
+        if o.start_freq == START_FREQ_5GHZ_BAND {
+            band_5ghz.extend(&o.set);
         }
 
-        if start_freq == 2.407 {
-            band_2ghz.extend(&channel_set);
-        }
-        if utils::is_set(v, "dfs_50_100") {
-            dfs.extend(&channel_set);
+        if o.start_freq == START_FREQ_2GHZ_BAND {
+            band_2ghz.extend(&o.set);
         }
 
-        if utils::is_set(v, "primary_chan_lower") {
-            cbw40above.extend(&channel_set);
+        if o.dfs_50_100 {
+            dfs.extend(&o.set);
         }
-        if utils::is_set(v, "primary_chan_upper") {
-            cbw40below.extend(&channel_set);
-        }
-        if spacing == 80 {
-            cbw80center.extend(&center_channel_set);
-        }
-        if spacing == 160 {
-            cbw160center.extend(&center_channel_set);
-        }
-    }
 
-    if operclass_cnt == 0 {
-        // error!("The input Value carries no operating class. Are you sure?");
-        println!("The input Value carries no operating class. Are you sure?");
+        if o.primary_chan_lower {
+            cbw40above.extend(&o.set);
+        }
+
+        if o.primary_chan_upper {
+            cbw40below.extend(&o.set);
+        }
+
+        if o.spacing == SPACING_80MHZ {
+            cbw80center.extend(&o.center_freq_idx);
+        }
+
+        if o.spacing == SPACING_160MHZ {
+            cbw160center.extend(&o.center_freq_idx);
+        }
     }
 
     band_2ghz.sort();
@@ -260,9 +247,9 @@ pub fn get_blocked_chanidx_list() -> Vec<u8> {
 pub fn get_legitimate_group() -> Result<ChannelGroups, Error> {
     let juris = country::get_jurisdiction();
     let operclass_filepath = operclass::get_filepath(&juris);
-    let operclass_toml = operclass::load_toml(&operclass_filepath)?;
-    let oper_classes = device_cap::get_operating_classes(juris.as_str())?;
-    Ok(build_legitimate_group(&operclass_toml, &oper_classes))
+    let operclass_table = operclass::load_operclasses(&operclass_filepath)?;
+    let active_oper_class_indices = device_cap::get_operating_classes(juris.as_str())?;
+    Ok(build_legitimate_group(&operclass_table, &active_oper_class_indices))
 }
 
 pub fn get_operation_group() -> Result<ChannelGroups, Error> {

@@ -8,8 +8,8 @@ use failure::{bail, Error};
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct RegulationTable {
-    pub version: String, // ISO alpha-2
-    pub jurisdiction: String,
+    pub version: String,
+    pub jurisdiction: String, // ISO alpha-2
     pub subband: Vec<Subband>,
 }
 

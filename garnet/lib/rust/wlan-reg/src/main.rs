@@ -14,7 +14,7 @@ use wlan_reg::*;
 fn show_operclass() {
     let juris = country::get_jurisdiction();
     let filepath = operclass::get_filepath(&juris);
-    let is_valid = operclass::load_toml(&filepath.to_string()).is_ok();
+    let is_valid = operclass::load_operclasses(filepath.as_str()).is_ok();
 
     println!(
         "{:20}: {:10} {}",
