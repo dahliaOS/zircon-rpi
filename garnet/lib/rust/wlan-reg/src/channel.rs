@@ -248,7 +248,7 @@ pub fn get_legitimate_group() -> Result<ChannelGroups, Error> {
     let juris = country::get_jurisdiction();
     let operclass_filepath = operclass::get_filepath(&juris);
     let operclass_table = operclass::load_operclasses(&operclass_filepath)?;
-    let active_oper_class_indices = device_cap::get_operating_classes(juris.as_str())?;
+    let active_oper_class_indices = device_cap::get_operclasses(juris.as_str())?;
     Ok(build_legitimate_group(&operclass_table, &active_oper_class_indices))
 }
 

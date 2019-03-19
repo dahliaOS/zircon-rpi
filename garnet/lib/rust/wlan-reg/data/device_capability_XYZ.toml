@@ -3,11 +3,16 @@
 
 version = "0.1.0" # Schema version
 
-# The channel list a radio can support can be queried usually.
-# This list is used as a mock.
+# The channel list a radio can support.
+# This is usually queried dynamically from the chipset via device driver.
+# Below list is a mock.
 channels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165]
 
-[operating_classes]
+[[juris]]
     # TODO(porce): Why 26 instaed of 25. Why 31 instead of 30.
-    "US" = [1, 2, 3, 4, 5, 12, 22, 23, 24, 26, 27, 28, 29, 31, 32, 34, 128, 129, 130]
-    "GLOBAL" = [81, 115]
+    name = "US"
+    operclass = [1, 2, 3, 4, 5, 12, 22, 23, 24, 26, 27, 28, 29, 31, 32, 34, 128, 129, 130]
+
+[[juris]]
+    name = "GLOBAL"
+    operclass = [81, 115]

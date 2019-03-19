@@ -39,10 +39,10 @@ fn show_regulation() {
 
 fn show_device_cap() {
     let filepath = device_cap::get_filepath();
-    let is_valid = device_cap::load_toml(&filepath.to_string()).is_ok();
+    let is_valid = device_cap::load_device_caps(&filepath.to_string()).is_ok();
 
     let juris = country::get_jurisdiction();
-    let active_oper_class_indices = device_cap::get_operating_classes(juris.as_str()).unwrap();
+    let active_oper_class_indices = device_cap::get_operclasses(juris.as_str()).unwrap();
 
     println!(
         "\n{:20}: {:10} {}",

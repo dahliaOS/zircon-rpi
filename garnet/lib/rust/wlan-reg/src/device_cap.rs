@@ -2,42 +2,46 @@ extern crate toml;
 
 use super::utils;
 use failure::{bail, Error};
-use toml::value::Table;
-use toml::Value;
 
-/// Take the file path for an Operating Class TOML file,
-/// returns TOML Value if validated, otherwise, error.
-pub fn load_toml(filepath: &str) -> Result<Table, Error> {
-    let toml = utils::load_toml(filepath)?;
-    match validate(&toml) {
-        Ok(()) => Ok(toml),
-        Err(e) => {
-            bail!("{}", e);
-        }
-    }
+#[derive(Deserialize, Debug)]
+pub struct DeviceCaps {
+    pub version: String,
+    pub channels: Vec<u8>,
+    pub juris: Vec<JurisdictionCap>,
 }
 
-pub fn validate(v: &Table) -> Result<(), Error> {
-    const MANDATORY_FIELDS: &'static [&'static str] = &["version", "channels", "operating_classes"];
-    for f in MANDATORY_FIELDS.iter() {
-        if !v.contains_key(&f.to_string()) {
-            bail!("mandatory field missing: {}", f);
-        };
-    }
-    let table = match &v["operating_classes"] {
-        Value::Table(t) => t,
-        _ => {
-            bail!("not a table! :");
-        }
-    };
+#[derive(Deserialize, Debug)]
+pub struct JurisdictionCap {
+    pub name: String,
+    pub operclass: Vec<u8>,
+}
 
-    for (k, vv) in table.iter() {
-        if !vv.is_array() {
-            bail!("Field {} is not an array", k);
+pub fn load_device_caps(filepath: &str) -> Result<DeviceCaps, Error> {
+    let contents = match utils::load_file(filepath) {
+        Err(e) => {
+            bail!("{} in reading {}", e, filepath);
         }
-        if vv.get(0).is_some() && !vv[0].is_integer() {
-            bail!("Field 'set' is non-integer");
-        };
+        Ok(c) => c,
+    };
+    let device_caps: DeviceCaps = toml::from_str(contents.as_str())?;
+
+    // println!("DeviceCaps\n{:#?}", device_caps);
+    validate_device_caps(&device_caps)?;
+    Ok(device_caps)
+}
+
+pub fn validate_device_caps(device_caps: &DeviceCaps) -> Result<(), Error> {
+    // TODO(porce): Validate version
+
+    if device_caps.juris.len() == 0 {
+        bail!("given device_caps table has no jurisdictions defined");
+    }
+
+    for j in &device_caps.juris {
+        // TODO(porce): Validate the name
+        if j.operclass.len() == 0 {
+            bail!("given device_caps table's jurisdiction {} has empty operclass", j.name);
+        }
     }
 
     Ok(())
@@ -53,15 +57,24 @@ pub fn get_filepath() -> String {
 
 pub fn get_channels() -> Result<Vec<u8>, Error> {
     let filepath = get_filepath();
-    let toml = load_toml(filepath.as_str())?;
-    Ok(utils::get_chanlist(&toml["channels"]))
+    let device_caps = load_device_caps(filepath.as_str())?;
+    Ok(device_caps.channels.clone())
 }
 
-pub fn get_operating_classes(juris: &str) -> Result<Vec<u8>, Error> {
+/// Returns the operclasses the underlying device can utilize in that jurisdiction.
+/// Note, the operclasses vary greatly from jurisdiction to jurisdiction.
+pub fn get_operclasses(juris: &str) -> Result<Vec<u8>, Error> {
     let filepath = get_filepath();
-    let toml = load_toml(filepath.as_str())?;
-    let ops = &toml["operating_classes"][juris];
-    Ok(utils::get_chanlist(&ops))
+
+    let device_caps = load_device_caps(filepath.as_str())?;
+    for j in &device_caps.juris {
+        if j.name != juris {
+            continue;
+        }
+        return Ok(j.operclass.clone());
+    }
+
+    bail!("the device capability does not support the requested jurisdiction: {}", juris)
 }
 
 #[cfg(test)]
@@ -80,10 +93,10 @@ mod tests {
     }
 
     #[test]
-    fn test_get_operating_classes() {
+    fn test_get_operclasses() {
         let want: Vec<u8> =
             vec![1, 2, 3, 4, 5, 12, 22, 23, 24, 26, 27, 28, 29, 31, 32, 34, 128, 129, 130];
-        if let Ok(got) = get_operating_classes("US") {
+        if let Ok(got) = get_operclasses("US") {
             assert_eq!(got, want);
         }
     }
