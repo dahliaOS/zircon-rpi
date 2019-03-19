@@ -9,7 +9,6 @@ pub mod operclass;
 pub mod power;
 pub mod regulation;
 pub mod sku;
-pub mod tablewrap;
 pub mod utils;
 
 #[macro_export]
