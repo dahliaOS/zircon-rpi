@@ -10,11 +10,16 @@ failure = ""
 serde = ""
 serde_derive = ""
 log = ""
+structopt = ""
 
 [lib]
 name = "wlan_reg"
 path = "src/lib.rs"
 
 [[bin]]
-name = "run_wlan_reg"
+name = "dumper"
 path = "src/main.rs"
+
+[[bin]]
+name = "wlan-reg"
+path = "src/cli/bin/main.rs"
