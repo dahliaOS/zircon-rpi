@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use wlan_reg::*;
 
 fn show_operclass() {
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
     let filepath = operclass::get_filepath(&juris);
     let is_valid = operclass::load_operclasses(filepath.as_str()).is_ok();
 
@@ -25,7 +25,7 @@ fn show_operclass() {
 }
 
 fn show_regulation() {
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
     let filepath = regulation::get_filepath(&juris);
     let is_valid = regulation::load_regulations(&filepath.to_string()).is_ok();
 
@@ -41,7 +41,7 @@ fn show_device_cap() {
     let filepath = device_cap::get_filepath();
     let is_valid = device_cap::load_device_caps(&filepath.to_string()).is_ok();
 
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
     let active_oper_class_indices = device_cap::get_operclasses(juris.as_str()).unwrap();
 
     println!(
@@ -158,7 +158,7 @@ fn show_sku_table() {
 fn main() {
     println!("\nFuchsia WLAN Countries and Regulation Test\n");
 
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
     println!("{:20}: {}", "Jurisdiction", juris);
 
     show_operclass();

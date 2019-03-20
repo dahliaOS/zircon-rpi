@@ -34,7 +34,7 @@ fn show(cmd: opts::ShowCommand) {
 
 fn show_operclass(jurisdiction: &str) {
     // TODO(porce): Change this to Jurisdiction from ISO alpha2
-    let result = match get_jurisdictions() {
+    let result = match get_supported_jurisdictions() {
         Err(e) => {
             println!("\nError: Failed to load jurisdiction file: {}", e);
             return;
@@ -52,7 +52,7 @@ fn show_operclass(jurisdiction: &str) {
 
 fn show_regulation(jurisdiction: &str) {
     // TODO(porce): Change this to Jurisdiction from ISO alpha2
-    let result = match get_jurisdictions() {
+    let result = match get_supported_jurisdictions() {
         Err(e) => {
             println!("\nError: Failed to load jurisdiction file: {}", e);
             return;
@@ -68,14 +68,14 @@ fn show_regulation(jurisdiction: &str) {
     println!("\nJuridiction {} is valid", jurisdiction);
 }
 
-fn get_jurisdictions() -> Result<Vec<String>, Error> {
+fn get_supported_jurisdictions() -> Result<Vec<String>, Error> {
     let mut result = country::load_iso_alpha2()?;
     result.sort();
     Ok(result)
 }
 
 fn show_jurisdictions() {
-    let jurisdictions = match get_jurisdictions() {
+    let jurisdictions = match get_supported_jurisdictions() {
         Err(e) => {
             println!("\nError: Failed to load jurisdiction file: {}", e);
             return;

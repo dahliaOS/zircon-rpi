@@ -245,7 +245,7 @@ pub fn get_blocked_chanidx_list() -> Vec<u8> {
 }
 
 pub fn get_legitimate_group() -> Result<ChannelGroups, Error> {
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
     let operclass_filepath = operclass::get_filepath(&juris);
     let operclass_table = operclass::load_operclasses(&operclass_filepath)?;
     let active_oper_class_indices = device_cap::get_operclasses(juris.as_str())?;

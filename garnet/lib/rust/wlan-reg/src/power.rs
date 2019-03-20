@@ -61,7 +61,7 @@ pub fn get_power_budget_for_client() -> Result<HashMap<u8, i8>, Error> {
 }
 
 pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {
-    let juris = country::get_jurisdiction();
+    let juris = country::which_country_am_i_in();
 
     let operclass_filepath = operclass::get_filepath(&juris);
     let operclass_table = operclass::load_operclasses(&operclass_filepath)?;
