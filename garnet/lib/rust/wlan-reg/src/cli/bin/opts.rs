@@ -16,8 +16,8 @@ pub enum ShowCommand {
         jurisdiction: String,
     },
 
-    #[structopt(name = "jurisdictions", help = "show all jurisdictions")]
-    Jurisdiction,
+    #[structopt(name = "jurisdictions-all", help = "show all jurisdictions supported")]
+    AllJurisdictions,
 
     #[structopt(name = "regulation")]
     Regulation {
@@ -27,6 +27,9 @@ pub enum ShowCommand {
 
     #[structopt(name = "device-meta")]
     DeviceMeta,
+
+    #[structopt(name = "jurisdiction-active", help = "show the active jurisdiction")]
+    ActiveJurisdiction,
 }
 
 //struct Opt {

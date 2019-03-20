@@ -20,8 +20,11 @@ fn main() {
 
 fn show(cmd: opts::ShowCommand) {
     match cmd {
-        opts::ShowCommand::Jurisdiction => {
-            show_jurisdictions();
+        opts::ShowCommand::AllJurisdictions => {
+            show_all_jurisdictions();
+        }
+        opts::ShowCommand::ActiveJurisdiction => {
+            show_active_jurisdiction();
         }
         opts::ShowCommand::OperClass { jurisdiction } => {
             show_operclass(jurisdiction.as_str());
@@ -41,7 +44,7 @@ fn get_supported_jurisdictions() -> Result<Vec<String>, Error> {
     Ok(result)
 }
 
-fn show_jurisdictions() {
+fn show_all_jurisdictions() {
     let jurisdictions = match get_supported_jurisdictions() {
         Err(e) => {
             println!("\nError: Failed to load jurisdiction file: {}", e);
@@ -61,6 +64,10 @@ fn show_jurisdictions() {
             println!("");
         }
     }
+}
+
+fn show_active_jurisdiction() {
+    println!("\nActive jurisdiction: {} (faked for development)\n", country::get_active_jurisdiction());
 }
 
 fn show_operclass(jurisdiction: &str) {

@@ -58,7 +58,7 @@ pub fn validate_jurisdictions(jurisdictions: &Jurisdictions) -> Result<(), Error
     Ok(())
 }
 
-pub fn which_country_am_i_in() -> String {
+pub fn get_active_jurisdiction() -> String {
     return "US".to_string();
 }
 
