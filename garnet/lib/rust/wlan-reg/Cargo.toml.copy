@@ -18,7 +18,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "dumper"
-path = "src/main.rs"
+path = "src/dumper/bin/main.rs"
 
 [[bin]]
 name = "wlan-reg"
