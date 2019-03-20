@@ -1,4 +1,7 @@
-//#[macro_use]
+// Copyright 2019 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 extern crate structopt;
 use structopt::StructOpt;
 
@@ -12,7 +15,7 @@ pub enum Opt {
 pub enum ShowCommand {
     #[structopt(
         name = "operclass",
-        about = "Shows operating classes defined in the specified jurisdiction."
+        about = "Shows operating classes defined in the specified jurisdiction"
     )]
     OperClass {
         #[structopt(raw(required = "true"))]
@@ -24,7 +27,7 @@ pub enum ShowCommand {
 
     #[structopt(
         name = "regulation",
-        about = "Shows regulations defined in the specified jurisdiction."
+        about = "Shows regulations defined in the specified jurisdiction"
     )]
     Regulation {
         #[structopt(raw(required = "true"))]
@@ -46,18 +49,3 @@ pub enum ShowCommand {
     )]
     ChannelGroups,
 }
-
-//struct Opt {
-//    /// Activate debug mode
-//    #[structopt(short = "d", long = "debug")]
-//    debug: bool,
-//    /// Set speed
-//    #[structopt(short = "s", long = "speed", default_value = "42")]
-//    speed: f64,
-//    /// Input file
-//    #[structopt(parse(from_os_str))]
-//    input: PathBuf,
-//    /// Output file, stdout if not present
-//    #[structopt(parse(from_os_str))]
-//    output: Option<PathBuf>,
-//}

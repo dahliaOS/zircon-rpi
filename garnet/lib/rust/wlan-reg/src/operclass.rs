@@ -1,12 +1,13 @@
+// Copyright 2019 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 extern crate log;
 extern crate serde_derive;
 extern crate toml;
 
 use super::utils;
-//use super::vec_string;
 use failure::{bail, Error};
-//use toml::value::Table;
-//use toml::Value;
 
 #[derive(Deserialize, Debug)]
 pub struct OperClassTable {
