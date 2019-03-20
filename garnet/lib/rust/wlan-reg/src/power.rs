@@ -7,7 +7,7 @@ use super::operclass;
 use super::regulation;
 use super::regulation::RegulationTable;
 
-use failure::Error;
+use failure::{bail, Error};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -56,8 +56,20 @@ pub fn build_power_budget_by_chan_idx(
     budget_by_chan_idx
 }
 
-pub fn get_power_budget_for_client() -> Result<HashMap<u8, i8>, Error> {
-    get_power_budget("client")
+pub fn get_power_budget_for_client() -> Result<Vec<(u8, i8)>, Error> {
+    let budget = match get_power_budget("client") {
+        Err(e) => {
+            bail!("failed to get power budget for client: {}", e);
+        }
+        Ok(b) => b,
+    };
+
+    let mut budget_vec: Vec<(u8, i8)> = vec![];
+    for (k, v) in budget.iter() {
+        budget_vec.push((*k, *v));
+    }
+    budget_vec.sort();
+    Ok(budget_vec)
 }
 
 pub fn get_power_budget(role: &str) -> Result<HashMap<u8, i8>, Error> {

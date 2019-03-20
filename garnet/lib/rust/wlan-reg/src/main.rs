@@ -95,20 +95,13 @@ fn show_sample_chan_config() {
 }
 
 fn show_power_budget() {
-    let budget = match power::get_power_budget_for_client() {
+    let budget_vec = match power::get_power_budget_for_client() {
         Err(e) => {
-            println!("\n[Power Budget (Chan index: dBm)]\n{}", "[Invalid]");
+            println!("\n[Power Budget (Chan index: dBm)]\n{}", e);
             return;
         }
         Ok(b) => b,
     };
-
-    let mut budget_vec: Vec<(u8, i8)> = vec![];
-
-    for (k, v) in budget.iter() {
-        budget_vec.push((*k, *v));
-    }
-    budget_vec.sort();
 
     let mut cnt = 0;
     println!("\n[Power Budget]");

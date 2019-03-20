@@ -30,6 +30,9 @@ pub enum ShowCommand {
 
     #[structopt(name = "jurisdiction-active", help = "show the active jurisdiction")]
     ActiveJurisdiction,
+
+    #[structopt(name = "power-budget", help = "show power budget in the active jurisdiction")]
+    PowerBudget,
 }
 
 //struct Opt {

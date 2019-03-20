@@ -35,6 +35,9 @@ fn show(cmd: opts::ShowCommand) {
         opts::ShowCommand::DeviceMeta => {
             show_device_meta();
         }
+        opts::ShowCommand::PowerBudget => {
+            show_power_budget();
+        }
     };
 }
 
@@ -67,7 +70,10 @@ fn show_all_jurisdictions() {
 }
 
 fn show_active_jurisdiction() {
-    println!("\nActive jurisdiction: {} (faked for development)\n", country::get_active_jurisdiction());
+    println!(
+        "\nActive jurisdiction: {} (faked for development)\n",
+        country::get_active_jurisdiction()
+    );
 }
 
 fn show_operclass(jurisdiction: &str) {
@@ -141,10 +147,31 @@ fn show_device_meta() {
         Err(e) => {
             println!("cannot find device meta capabilities for underlying device: {}", e);
             return;
-        },
+        }
         Ok(d) => d,
     };
     println!("\nFor device meta capability\n");
     println!("{:#?}", device_meta);
+}
 
+fn show_power_budget() {
+    let budget_vec = match power::get_power_budget_for_client() {
+        Err(e) => {
+            println!("\n[Power Budget] for Client role");
+            println!("{}", e);
+            return;
+        }
+        Ok(b) => b,
+    };
+
+    let mut cnt = 0;
+    println!("\n[Power Budget] for Client role");
+    for (k, v) in budget_vec.iter() {
+        print!("Chan {:>3}: {:>2} dBm {:>6}", k, v, "");
+        cnt += 1;
+        if cnt == 6 {
+            println!("");
+            cnt = 0;
+        }
+    }
 }
