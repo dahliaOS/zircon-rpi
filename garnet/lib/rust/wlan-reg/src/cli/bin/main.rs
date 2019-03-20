@@ -20,11 +20,11 @@ fn main() {
 
 fn show(cmd: opts::ShowCommand) {
     match cmd {
-        opts::ShowCommand::OperClass { jurisdiction } => {
-            show_operclass(jurisdiction.as_str());
-        }
         opts::ShowCommand::Jurisdiction => {
             show_jurisdictions();
+        }
+        opts::ShowCommand::OperClass { jurisdiction } => {
+            show_operclass(jurisdiction.as_str());
         }
         opts::ShowCommand::Regulation { jurisdiction } => {
             show_regulation(jurisdiction.as_str());
@@ -32,44 +32,8 @@ fn show(cmd: opts::ShowCommand) {
     };
 }
 
-fn show_operclass(jurisdiction: &str) {
-    // TODO(porce): Change this to Jurisdiction from ISO alpha2
-    let result = match get_supported_jurisdictions() {
-        Err(e) => {
-            println!("\nError: Failed to load jurisdiction file: {}", e);
-            return;
-        }
-        Ok(a) => a,
-    };
-
-    if !result.contains(&jurisdiction.to_string()) {
-        println!("\nError: jurididction {} unknown", jurisdiction);
-        return;
-    }
-
-    println!("\nJuridiction {} is valid", jurisdiction);
-}
-
-fn show_regulation(jurisdiction: &str) {
-    // TODO(porce): Change this to Jurisdiction from ISO alpha2
-    let result = match get_supported_jurisdictions() {
-        Err(e) => {
-            println!("\nError: Failed to load jurisdiction file: {}", e);
-            return;
-        }
-        Ok(a) => a,
-    };
-
-    if !result.contains(&jurisdiction.to_string()) {
-        println!("\nError: jurididction {} unknown", jurisdiction);
-        return;
-    }
-
-    println!("\nJuridiction {} is valid", jurisdiction);
-}
-
 fn get_supported_jurisdictions() -> Result<Vec<String>, Error> {
-    let mut result = country::load_iso_alpha2()?;
+    let mut result = country::load_supported_jurisdictions()?;
     result.sort();
     Ok(result)
 }
@@ -94,4 +58,70 @@ fn show_jurisdictions() {
             println!("");
         }
     }
+}
+
+fn show_operclass(jurisdiction: &str) {
+    // TODO(porce): Change this to Jurisdiction from ISO alpha2
+    let result = match get_supported_jurisdictions() {
+        Err(e) => {
+            println!("\nError: Failed to load jurisdiction file: {}", e);
+            return;
+        }
+        Ok(a) => a,
+    };
+
+    if !result.contains(&jurisdiction.to_string()) {
+        println!("\nError: jurididction {} unknown", jurisdiction);
+        return;
+    }
+
+    let filepath_juris = operclass::get_filepath(jurisdiction);
+    let operclasses = match operclass::load_operclasses(filepath_juris.as_str()) {
+        Err(e) => {
+            // Unexpected situation, since get_supported_jurisdictions()
+            // already passed the validation.
+            println!(
+                "jurisdiction {} does not have a corresponding and valid OperClass file: {}",
+                jurisdiction, e
+            );
+            return;
+        }
+        Ok(o) => o,
+    };
+
+    println!("\nFor juridiction {}\n", jurisdiction);
+    println!("{:#?}", operclasses);
+}
+
+fn show_regulation(jurisdiction: &str) {
+    // TODO(porce): Change this to Jurisdiction from ISO alpha2
+    let result = match get_supported_jurisdictions() {
+        Err(e) => {
+            println!("\nError: Failed to load jurisdiction file: {}", e);
+            return;
+        }
+        Ok(a) => a,
+    };
+
+    if !result.contains(&jurisdiction.to_string()) {
+        println!("\nError: jurididction {} unknown", jurisdiction);
+        return;
+    }
+
+    let filepath_reg = regulation::get_filepath(jurisdiction);
+    let reg = match regulation::load_regulations(&filepath_reg) {
+        Err(e) => {
+            // Unexpected situation, since get_supported_jurisdictions()
+            // already passed the validation.
+            println!(
+                "jurisdiction {} does not have a corresponding and valid Regulation file: {}",
+                jurisdiction, e
+            );
+            return;
+        }
+        Ok(r) => r,
+    };
+
+    println!("\nFor juridiction {}\n", jurisdiction);
+    println!("{:#?}", reg);
 }
