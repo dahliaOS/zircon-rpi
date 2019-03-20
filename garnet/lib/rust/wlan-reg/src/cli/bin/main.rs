@@ -29,6 +29,9 @@ fn show(cmd: opts::ShowCommand) {
         opts::ShowCommand::Regulation { jurisdiction } => {
             show_regulation(jurisdiction.as_str());
         }
+        opts::ShowCommand::DeviceMeta => {
+            show_device_meta();
+        }
     };
 }
 
@@ -121,7 +124,20 @@ fn show_regulation(jurisdiction: &str) {
         }
         Ok(r) => r,
     };
-
     println!("\nFor juridiction {}\n", jurisdiction);
     println!("{:#?}", reg);
+}
+
+fn show_device_meta() {
+    let filepath = device_cap::get_filepath();
+    let device_meta = match device_cap::load_device_caps(&filepath.to_string()) {
+        Err(e) => {
+            println!("cannot find device meta capabilities for underlying device: {}", e);
+            return;
+        },
+        Ok(d) => d,
+    };
+    println!("\nFor device meta capability\n");
+    println!("{:#?}", device_meta);
+
 }

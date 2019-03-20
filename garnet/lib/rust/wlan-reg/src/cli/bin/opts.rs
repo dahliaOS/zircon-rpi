@@ -24,6 +24,9 @@ pub enum ShowCommand {
         #[structopt(raw(required = "true"))]
         jurisdiction: String,
     },
+
+    #[structopt(name = "device-meta")]
+    DeviceMeta,
 }
 
 //struct Opt {
