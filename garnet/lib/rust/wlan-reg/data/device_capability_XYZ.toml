@@ -2,6 +2,7 @@
 # that can't be dynamically queried from the underlying radio.
 
 version = "0.1.0" # Schema version
+device_name = "XYZ"
 
 # The channel list a radio can support.
 # This is usually queried dynamically from the chipset via device driver.

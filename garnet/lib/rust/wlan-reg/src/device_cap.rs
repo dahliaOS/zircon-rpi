@@ -6,6 +6,7 @@ use failure::{bail, Error};
 #[derive(Deserialize, Debug)]
 pub struct DeviceCaps {
     pub version: String,
+    pub device_name: String,
     pub channels: Vec<u8>,
     pub juris: Vec<JurisdictionCap>,
 }
@@ -26,11 +27,20 @@ pub fn load_device_caps(filepath: &str) -> Result<DeviceCaps, Error> {
     let device_caps: DeviceCaps = toml::from_str(contents.as_str())?;
 
     // println!("DeviceCaps\n{:#?}", device_caps);
-    validate_device_caps(&device_caps)?;
+    validate_device_caps(&device_caps, filepath)?;
     Ok(device_caps)
 }
 
-pub fn validate_device_caps(device_caps: &DeviceCaps) -> Result<(), Error> {
+pub fn validate_device_caps(device_caps: &DeviceCaps, filepath: &str) -> Result<(), Error> {
+    // TODO(porce): Or use Path::file
+    let strs = filepath.split(|x| (x == '.') || (x == '_')).collect::<Vec<&str>>();
+    if strs.len() < 2 {
+        bail!("filepath does not look valid: {}", filepath);
+    }
+    if device_caps.device_name != strs[strs.len() - 2] {
+        bail!("filepath {} does not match the device name {}", filepath, device_caps.device_name);
+    }
+
     // TODO(porce): Validate version
 
     if device_caps.juris.len() == 0 {
