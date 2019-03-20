@@ -33,6 +33,12 @@ pub enum ShowCommand {
 
     #[structopt(name = "power-budget", help = "show power budget in the active jurisdiction")]
     PowerBudget,
+
+    #[structopt(
+        name = "channel-groups",
+        help = "show channel groups for the underlying device in the active jurisdiction"
+    )]
+    ChannelGroups,
 }
 
 //struct Opt {

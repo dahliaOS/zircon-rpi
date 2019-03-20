@@ -38,6 +38,9 @@ fn show(cmd: opts::ShowCommand) {
         opts::ShowCommand::PowerBudget => {
             show_power_budget();
         }
+        opts::ShowCommand::ChannelGroups => {
+            show_channel_groups();
+        }
     };
 }
 
@@ -172,6 +175,46 @@ fn show_power_budget() {
         if cnt == 6 {
             println!("");
             cnt = 0;
+        }
+    }
+}
+
+fn show_channel_groups() {
+    println!("\nActive jurisdiction: {}", country::get_active_jurisdiction());
+    println!("\n[Channel Groups (Legitimate)]");
+    match channel::get_legitimate_group() {
+        Err(e) => {
+            println!("{}", e);
+        }
+        Ok(l) => {
+            println!("{}", l);
+        }
+    }
+
+    println!("\n[Channel Groups (Config, DeviceCap)] (faked for development)");
+    match device_cap::get_channels() {
+        Err(e) => {
+            println!("{:20} : {}", "Device capabilities", e);
+        }
+        Ok(v) => {
+            println!("{:20} : {:?}", "Device capabilities", v);
+        }
+    };
+    println!(
+        "{:20} : {:?}",
+        "Planned Non-operate",
+        channel::get_planned_non_operation_chanidx_list()
+    );
+    println!("{:20} : {:?}", "Blocked", channel::get_blocked_chanidx_list());
+
+    println!("\n[Channel Groups (Active)]");
+    let oper_chan_group = channel::get_operation_group();
+    match oper_chan_group {
+        Err(e) => {
+            println!("{}", e);
+        }
+        Ok(l) => {
+            println!("{}", l);
         }
     }
 }
