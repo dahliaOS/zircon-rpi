@@ -116,7 +116,7 @@ bool iosched_up(TestLevel test_level, TestContext* test) {
 
     // Init test.
     // --------------------------------
-    status = ioscheduler::SchedulerInit(sched, &callbacks, ioscheduler::kSchedOptFullyInOrder);
+    status = ioscheduler::SchedulerInit(sched, &callbacks, ioscheduler::kSchedOptStrictlyOrdered);
     ASSERT_EQ(status, ZX_OK, "Failed to init scheduler");
 
     if (test_level == kTestLevelInit) return true;
