@@ -21,6 +21,8 @@ namespace qcom_pil {
 enum class TzService : uint8_t {
     Boot = 1,
     Pil,
+    Info = 6,
+    MemoryProtection = 0xC,
 };
 
 enum class PasId : uint64_t {
@@ -45,12 +47,18 @@ enum class ArgType : uint64_t {
     Bufval,
 };
 
-enum class Cmd : uint8_t {
+enum class PilCmd : uint8_t {
     InitImage = 1,
     MemSetup,
     AuthAndReset = 5,
     Shutdown,
     QuerySupport,
+    GetMemoryArea = 9,
+    ValidateElf = 16,
+};
+
+enum class MpCmd : uint8_t {
+    DisableXpu = 4,
 };
 
 // Not class for integer usage below.
@@ -97,7 +105,7 @@ static constexpr uint32_t CreateFunctionId(CallType call_type,
             ((call & kCallMask) << kCallShift));
 }
 
-static constexpr uint32_t CreatePilFunctionId(Cmd cmd) {
+static constexpr uint32_t CreatePilFunctionId(PilCmd cmd) {
     return CreateFunctionId(kYieldingCall, kSmc32CallConv, kSipService,
                             static_cast<uint8_t>(TzService::Pil),
                             static_cast<uint8_t>(cmd));
@@ -111,13 +119,34 @@ static constexpr uint64_t CreateScmArgs(uint32_t n_args, uint32_t arg0 = 0, uint
            (arg5 << 14) | (arg6 << 16) | (arg7 << 18) | (arg8 << 20) | (arg9 << 22);
 }
 
-static constexpr zx_smc_parameters_t CreatePilSmcParams(Cmd cmd, uint64_t args, PasId pas_id,
+static constexpr zx_smc_parameters_t CreatePilSmcParams(PilCmd cmd, uint64_t args, PasId pas_id,
                                                         uint64_t arg3 = 0, uint64_t arg4 = 0,
                                                         uint64_t arg5 = 0, uint64_t arg6 = 0,
                                                         uint16_t client_id = 0,
                                                         uint16_t secure_os_id = 0) {
     return {CreatePilFunctionId(cmd), args,
             static_cast<uint64_t>(pas_id), arg3, arg4, arg5, arg6, client_id, secure_os_id};
+}
+
+static constexpr zx_smc_parameters_t CreateSmcParams(uint64_t arg0,
+                                                     uint64_t arg1, uint64_t arg2,
+                                                     uint64_t arg3 = 0, uint64_t arg4 = 0,
+                                                     uint64_t arg5 = 0, uint64_t arg6 = 0,
+                                                     uint16_t client_id = 0,
+                                                     uint16_t secure_os_id = 0) {
+    return {(uint32_t)arg0, arg1, arg2, arg3, arg4, arg5, arg6, client_id, secure_os_id};
+}
+
+static constexpr zx_smc_parameters_t CreateSmcParams2(TzService svc, uint8_t cmd,
+                                                     uint64_t args, uint64_t arg2,
+                                                     uint64_t arg3 = 0, uint64_t arg4 = 0,
+                                                     uint64_t arg5 = 0, uint64_t arg6 = 0,
+                                                     uint16_t client_id = 0,
+                                                     uint16_t secure_os_id = 0) {
+    return {CreateFunctionId(kYieldingCall, kSmc32CallConv, kSipService,
+                             static_cast<uint8_t>(svc),
+                             static_cast<uint8_t>(cmd)),
+                             args, arg2,arg3, arg4, arg5, arg6, client_id, secure_os_id};
 }
 
 class PilDevice;
@@ -127,8 +156,10 @@ class PilDevice : public DeviceType {
 public:
     static zx_status_t Create(zx_device_t* parent);
 
-    explicit PilDevice(zx_device_t* parent)
-        : DeviceType(parent), pdev_(parent) {}
+    explicit PilDevice(zx_device_t* parent, mmio_buffer_t mmio)
+        : DeviceType(parent),
+          pdev_(parent),
+          mmio_(mmio) {}
 
     zx_status_t Bind();
     zx_status_t Init();
@@ -139,10 +170,12 @@ public:
 
 private:
     void ShutDown();
+    zx_status_t SmcCall(zx_smc_parameters_t* params, zx_smc_result_t* result);
 
     ddk::PDev pdev_;
     zx::resource smc_;
     zx::bti bti_;
+    ddk::MmioBuffer mmio_;
     zx::vmo buffer_;
     fzl::PinnedVmo pinned_buffer_;
 };

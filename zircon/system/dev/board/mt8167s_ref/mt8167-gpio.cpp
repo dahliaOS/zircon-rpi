@@ -35,6 +35,11 @@ zx_status_t Mt8167::GpioInit() {
             .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
         },
     };
+    static constexpr pbus_bti_t btis[] = {
+        {
+            .iommu_index = 0,
+            .bti_id = BTI_DELETE,
+        }};
 
     pbus_dev_t gpio_dev = {};
     gpio_dev.name = "gpio";
@@ -44,6 +49,8 @@ zx_status_t Mt8167::GpioInit() {
     gpio_dev.mmio_count = countof(gpio_mmios);
     gpio_dev.irq_list = gpio_irqs;
     gpio_dev.irq_count = countof(gpio_irqs);
+    gpio_dev.bti_list = btis;
+    gpio_dev.bti_count = countof(btis);
 
     zx_status_t status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_GPIO_IMPL, &gpio_dev);
     if (status != ZX_OK) {

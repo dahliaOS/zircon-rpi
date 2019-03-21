@@ -23,6 +23,11 @@ zx_status_t Msm8x53::PilInit() {
             .iommu_index = 0,
             .bti_id = 0,
         }};
+    const pbus_mmio_t mmios[] = {
+        { //clock
+            .base = 0x180'0000,
+            .length = 0x8'0000,
+        }};
 
     pbus_dev_t dev = {};
     dev.name = "msm8x53-pil";
@@ -32,6 +37,8 @@ zx_status_t Msm8x53::PilInit() {
     dev.smc_count = countof(smcs);
     dev.bti_list = btis;
     dev.bti_count = countof(btis);
+    dev.mmio_list = mmios;
+    dev.mmio_count = countof(mmios);
     zx_status_t status;
     if ((status = pbus_.DeviceAdd(&dev)) != ZX_OK) {
         zxlogf(ERROR, "%s: Could not add dev %d\n", __func__, status);

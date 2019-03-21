@@ -10,16 +10,85 @@
 #include <ddk/device.h>
 #include <fbl/alloc_checker.h>
 #include <fbl/unique_ptr.h>
+#include <lib/fzl/pinned-vmo.h>
 #include <hw/reg.h>
 #include <soc/mt8167/mt8167-hw.h>
 #include <zircon/syscalls/port.h>
 #include <zircon/types.h>
+#include <ddk/device.h>
+#include <ddk/io-buffer.h>
 
 #include "mt8167-gpio.h"
 
 namespace gpio {
+//    buffer_.set_cache_policy(ZX_CACHE_POLICY_UNCACHED_DEVICE);
+    // status = pinned_buffer_.Pin(buffer_, bti_, ZX_VM_PERM_READ | ZX_VM_PERM_WRITE);
+    // if (status != ZX_OK) {
+    //     zxlogf(ERROR, "%s failed to pin ring buffer vmo - %d\n", __func__, status);
+    //     return status;
+    // }
+    // if (pinned_buffer_.region_count() != 1) {
+    //     zxlogf(ERROR, "%s buffer is not contiguous", __func__);
+    //     return ZX_ERR_NO_MEMORY;
+    // }
+
+    // zxlogf(INFO, "%s phys addr 0x%016lX  size %lu\n", __func__, pinned_buffer_.region(0).phys_addr,
+    //     pinned_buffer_.region(0).size);
+
+
+    // status =
+    //     load_firmware(parent(),
+    //                   "adsp.mdt",
+    //                   buffer_.reset_and_get_address(), &size);
+    // if (status != ZX_OK) {
+    //     zxlogf(ERROR, "%s: Failed to load firmware\n", __FILE__);
+    //     return status;
+    // }
+    // zxlogf(INFO, "%s FW size %lu\n", __func__, size);
 
 int Mt8167GpioDevice::Thread() {
+//    zx::bti bti_;
+    zx::vmo buffer_;
+    fzl::PinnedVmo pinned_buffer_;
+    zx_paddr_t pa = 0x4440'0000;//0xa100'0000;//0x8d600000;//0x08600720;//0x8840'0000;
+        //0x8d60'0000;//0x8cc00000;//0x8e70'0000;//0x8000'0000;//0x8a20'0000;// 0x8d60'0000
+    size_t size = 4 * 1024;
+    auto status = zx_vmo_create_physical(get_root_resource(), pa, size, buffer_.reset_and_get_address());
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: Failed to create physical %d\n", __FILE__, status);
+        return status;
+    }
+
+    zx_vaddr_t address = 0;
+    zx_vmar_map(zx_vmar_root_self(),  ZX_VM_PERM_READ | ZX_VM_PERM_WRITE,
+                0, buffer_.get(), 0, 0x1000, &address);
+
+    uint8_t b[8];
+    uint8_t a[8] = {1,2,3,4, 5, 6, 7,8};
+    for (int i = 0; i < 8; i += 8) {
+        uint8_t* p = (uint8_t*)a + i;
+        zxlogf(INFO, "0 %02X%02X%02X%02X %02X%02X%02X%02X\n",
+               *(p+0), *(p+1), *(p+2), *(p+3), *(p+4), *(p+5), *(p+6), *(p+7));
+        memcpy((uint8_t*)address + i, p, 8);
+    }
+    //  buffer_.write(a, 0, 8);
+    // buffer_.read(b, 0, 8);
+    for (int i = 0; i < 8; i += 8) {
+        memcpy((uint8_t*)b + i, (uint8_t*)address + i, 8);
+        uint8_t* p = (uint8_t*)b + i;
+        zxlogf(INFO, "1 %02X%02X%02X%02X %02X%02X%02X%02X\n",
+               *(p+0), *(p+1), *(p+2), *(p+3), *(p+4), *(p+5), *(p+6), *(p+7));
+    }
+
+    uint8_t* p = (uint8_t*)address;
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "vmar failed %d\n", status);
+    }
+    if (p) {
+        zxlogf(INFO, "2 %p %02X%02X%02X%02X %02X%02X%02X%02X\n", p,
+               *(p+0), *(p+1), *(p+2), *(p+3), *(p+4), *(p+5), *(p+6), *(p+7));
+    }
+
     while (1) {
         zx_port_packet_t packet;
         zx_status_t status = port_.wait(zx::time::infinite(), &packet);
@@ -234,6 +303,11 @@ zx_status_t Mt8167GpioDevice::Bind() {
         zxlogf(ERROR, "%s ZX_PROTOCOL_PDEV not available %d \n", __FUNCTION__, status);
         return status;
     }
+    // status = pdev_get_bti(&pdev, 0, bti_.reset_and_get_address());
+    // if (status != ZX_OK) {
+    //     zxlogf(ERROR, "%s GetSmc failed %d\n", __func__, status);
+    //     return status;
+    // }
 
     status = pdev_get_interrupt(&pdev, 0, 0, int_.reset_and_get_address());
     if (status != ZX_OK) {
@@ -298,6 +372,7 @@ zx_status_t Mt8167GpioDevice::Init() {
         ShutDown();
         return status;
     }
+
     return ZX_OK;
 }
 

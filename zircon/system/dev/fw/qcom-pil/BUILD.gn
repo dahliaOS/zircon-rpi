@@ -25,6 +25,6 @@ driver("qcom-pil") {
 
 firmware("firmware") {
   sources = [
-    "$firmware_dir/adsp.mbn",
+    "$firmware_dir/adsp.mdt",
   ]
 }

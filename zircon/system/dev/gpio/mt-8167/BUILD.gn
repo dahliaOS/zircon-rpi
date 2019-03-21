@@ -22,6 +22,7 @@ driver("mt-8167") {
     "$zx/system/ulib/zircon",
     "$zx/system/ulib/zx",
     "$zx/system/ulib/zxcpp",
+    "$zx/system/ulib/fzl",
   ]
 }
 
@@ -48,5 +49,6 @@ test("mtk-gpio") {
     "$zx/system/ulib/zx",
     "$zx/system/ulib/zxcpp",
     "$zx/system/ulib/zxtest",
+    "$zx/system/ulib/fzl",
   ]
 }
