@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use super::{device_cap, operclass, regulation, utils};
-/// Returns the jurisdiction of operation.
-/// Never fails to return. The fallback is "GLOBAL".
 use failure::{bail, Error};
 
 #[allow(dead_code)]
@@ -72,7 +70,6 @@ pub fn load_iso_alpha2() -> Result<Vec<String>, Error> {
     let iso_alpha2: IsoAlpha2 = toml::from_str(contents.as_str())?;
 
     validate_iso_alpha2(&iso_alpha2)?;
-
     Ok(iso_alpha2.country_codes)
 }
 
@@ -82,7 +79,6 @@ fn validate_iso_alpha2(iso_alpha2: &IsoAlpha2) -> Result<(), Error> {
         if c.len() != 2 {
             bail!("Country code '{}' is not 2 bytes long", c);
         }
-
         let is_ascii = c.to_ascii_uppercase() == *c;
         if !is_ascii {
             bail!("Country code '{}' is not ASCII uppercase", c);

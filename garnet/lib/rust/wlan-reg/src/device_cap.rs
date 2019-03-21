@@ -29,8 +29,6 @@ pub fn load_device_caps(filepath: &str) -> Result<DeviceCaps, Error> {
         Ok(c) => c,
     };
     let device_caps: DeviceCaps = toml::from_str(contents.as_str())?;
-
-    // println!("DeviceCaps\n{:#?}", device_caps);
     validate_device_caps(&device_caps, filepath)?;
     Ok(device_caps)
 }

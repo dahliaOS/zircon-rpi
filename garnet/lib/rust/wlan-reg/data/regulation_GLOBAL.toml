@@ -6,15 +6,13 @@ version = "0.1.0" # Schema version
 jurisdiction = "GLOBAL"
 
 # TODO(porce): Add references
-
-
 # GLOBAL regulation is defined as the intersection of the regulations
 # of all jurisdiction on the Earth
 
 
 [[subband]]
     freq_beg = 2.402  # GHz
-    freq_end = 2.472 # GHz
+    freq_end = 2.472  # GHz
     chan_idx_beg = 1
     chan_idx_end = 11
 
@@ -24,7 +22,7 @@ jurisdiction = "GLOBAL"
     [[subband.role]]
         role = "any"
         max_conduct_power = 20 # dBm
-        max_ant_gain = 0 # dBi. Unknown
+        max_ant_gain = 0       # dBi. Unknown
 
 
 [[subband]]
@@ -41,8 +39,8 @@ jurisdiction = "GLOBAL"
     [[subband.role]]
         role = "any"
         max_conduct_power = 20 # dBm
-        max_psd = 17 # dBm/MHz
-        max_ant_gain = 0 # dBi. Unknown
+        max_psd = 17           # dBm/MHz
+        max_ant_gain = 0       # dBi. Unknown
 
 
 [[subband]]
@@ -63,14 +61,14 @@ jurisdiction = "GLOBAL"
     [subband.dfs]
         # See FCC KDB905462 D02 v02 Table 3.
         is_dfs = true
-        dfs_detect_thresh = -64 # dBm for devices with maximum EIRP 23 ~ 30 dBm
-        dfs_detect_thresh_for_lower_eirp = -62 # dBm for devices with max EIRP less than 23 dBm.
+        dfs_detect_thresh = -64                     # dBm for devices with maximum EIRP 23 ~ 30 dBm
+        dfs_detect_thresh_for_lower_eirp = -62      # dBm for devices with max EIRP less than 23 dBm.
 
         dfs_channel_availability_check_time = 60000 # msec. 60 sec
-        dfs_channel_move_time = 10000 # msec. 10 sec.
-        dfs_channel_closing_tx_time = 200 # msec
-        dfs_channel_closing_tx_time_leftover = 60 # msec for the remaining channel_move_time.
-        dfs_non_occupancy_period = 1800000 # msec. 30 minutes
+        dfs_channel_move_time = 10000               # msec. 10 sec.
+        dfs_channel_closing_tx_time = 200           # msec
+        dfs_channel_closing_tx_time_leftover = 60   # msec for the remaining channel_move_time.
+        dfs_non_occupancy_period = 1800000          # msec. 30 minutes
 
     # CBW20 only is to be controlled by the Operating Class
     [[subband.role]]
@@ -78,5 +76,5 @@ jurisdiction = "GLOBAL"
         # or 11 dBm + 10 log B, where B is 26 dB emission bandwidth in MHz, whichever less.
         # At least 6 dB below the mean EIRP of 30 dBm.
         max_conduct_power = 20 # dBm
-        max_psd = 17 # dBm/MHz
-        max_ant_gain = 0 # dBi
+        max_psd = 17           # dBm/MHz
+        max_ant_gain = 0       # dBi

@@ -10,7 +10,6 @@ use super::device_cap;
 use super::operclass;
 use super::regulation;
 use super::regulation::RegulationTable;
-
 use failure::{bail, Error};
 use std::collections::HashMap;
 

@@ -8,11 +8,11 @@ jurisdiction = "US"
 # [{jurisdiction}{dash}{operating class}]
 [[operclass]]
     # Mandatory fields
-    idx = 1                     # Must match the table name suffix.
-    start_freq = 5.000                 # GHz
-    spacing = 20                       # MHz
-    set = [36, 40, 44, 48]
-    center_freq_idx = [] # Channel index corresponding to the center frequency
+    idx = 1
+    start_freq = 5.000        # GHz
+    spacing = 20              # MHz
+    set = [36, 40, 44, 48]    # IEEE channel indices
+    center_freq_idx = []      # Channel index corresponding to the center frequency
 
     # Behavior limits set.
     # Optional. Absence is considered to be false.

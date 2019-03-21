@@ -7,11 +7,8 @@ extern crate toml;
 use super::country;
 use super::device_cap;
 use super::operclass;
-//use super::utils;
-
 use failure::Error;
 use std::fmt;
-//use toml::value::Table;
 
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct ChannelGroups {
@@ -30,15 +27,26 @@ pub struct ChannelGroups {
 
 impl fmt::Display for ChannelGroups {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}",
-            "2 GHz", self.band_2ghz,
-            "5 GHz", self.band_5ghz,
-            "DFS", self.dfs,
-            "CBW40 Above", self.cbw40above,
-            "CBW40 Below", self.cbw40below,
-            "CBW80 Center", self.cbw80center,
-            "CBW160 Center", self.cbw160center,
-            "All", self.all,
+        write!(
+            f,
+            "{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: {:?}\n{:20}: \
+             {:?}\n{:20}: {:?}\n{:20}: {:?}",
+            "2 GHz",
+            self.band_2ghz,
+            "5 GHz",
+            self.band_5ghz,
+            "DFS",
+            self.dfs,
+            "CBW40 Above",
+            self.cbw40above,
+            "CBW40 Below",
+            self.cbw40below,
+            "CBW80 Center",
+            self.cbw80center,
+            "CBW160 Center",
+            self.cbw160center,
+            "All",
+            self.all,
         )
     }
 }
@@ -67,31 +75,24 @@ pub fn build_legitimate_group(
         if !active_operclasses.contains(&o.idx) {
             continue;
         }
-
         if o.start_freq == START_FREQ_5GHZ_BAND {
             band_5ghz.extend(&o.set);
         }
-
         if o.start_freq == START_FREQ_2GHZ_BAND {
             band_2ghz.extend(&o.set);
         }
-
         if o.dfs_50_100 {
             dfs.extend(&o.set);
         }
-
         if o.primary_chan_lower {
             cbw40above.extend(&o.set);
         }
-
         if o.primary_chan_upper {
             cbw40below.extend(&o.set);
         }
-
         if o.spacing == SPACING_80MHZ {
             cbw80center.extend(&o.center_freq_idx);
         }
-
         if o.spacing == SPACING_160MHZ {
             cbw160center.extend(&o.center_freq_idx);
         }
