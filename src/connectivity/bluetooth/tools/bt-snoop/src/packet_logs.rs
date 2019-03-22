@@ -4,6 +4,8 @@
 
 use {
     fidl_fuchsia_bluetooth_snoop::SnoopPacket,
+    fuchsia_inspect::vmo::{self as finspect, Property},
+    itertools::Itertools,
     std::{
         collections::{
             vec_deque::{Iter as VecDequeIter, VecDeque},
@@ -43,6 +45,10 @@ pub(crate) struct PacketLogs {
     log_age: Duration,
     inner: HashMap<DeviceId, PacketLog>,
     insertion_order: VecDeque<DeviceId>,
+
+    // Inspect Data
+    inspect: finspect::Node,
+    logging_for_devices: finspect::StringProperty,
 }
 
 impl PacketLogs {
@@ -54,14 +60,22 @@ impl PacketLogs {
     /// Note that the `log_size_bytes` and `log_age` values are set on a _per device_ basis.
     ///
     /// Panics if `max_device_count` is 0.
-    pub fn new(max_device_count: usize, log_size_bytes: usize, log_age: Duration) -> PacketLogs {
+    pub fn new(
+        max_device_count: usize,
+        log_size_bytes: usize,
+        log_age: Duration,
+        inspect: finspect::Node,
+    ) -> PacketLogs {
         assert!(max_device_count != 0, "Cannot create a `PacketLog` with a max_device_count of 0");
+        let logging_for_devices = inspect.create_string("logging_active_for_devices", "");
         PacketLogs {
             max_device_count,
             log_size_bytes,
             log_age,
             inner: HashMap::new(),
             insertion_order: VecDeque::new(),
+            inspect,
+            logging_for_devices,
         }
     }
 
@@ -74,21 +88,33 @@ impl PacketLogs {
         }
         // Add log and update insertion order metadata
         self.insertion_order.push_back(device.clone());
-        self.inner.insert(device, BoundedQueue::new(self.log_size_bytes, self.log_age));
+        let bounded_queue_metrics = self.inspect.create_child(&format!("device_{}", device));
+        self.inner.insert(
+            device.clone(),
+            BoundedQueue::new(self.log_size_bytes, self.log_age, bounded_queue_metrics),
+        );
 
         // Remove old log and its insertion order metadata if there are too many logs
         //
         // TODO (belgum): This is a first pass at an algorithm to determine which log to drop in
         // the case of too many logs. Alternatives that can be explored in the future include
         // variations of LRU or LFU caching which may or may not account for empty device logs.
-        if self.inner.len() > self.max_device_count {
-            let oldest_key =
-                self.insertion_order.pop_front().expect("insertion list shouldn't be empty");
-            self.inner.remove(&oldest_key);
-            Some(oldest_key)
-        } else {
-            None
-        }
+        let removed =
+            if self.inner.len() > self.max_device_count { Some(self.drop_oldest()) } else { None };
+
+        let device_ids = self.device_ids().map(|id| format!("{:?}", id)).join(", ");
+        self.logging_for_devices.set(&device_ids);
+
+        removed
+    }
+
+    // This method requires that there are logs for at least 1 device.
+    // Panics if empty.
+    fn drop_oldest(&mut self) -> DeviceId {
+        let oldest_key =
+            self.insertion_order.pop_front().expect("insertion list shouldn't be empty");
+        self.inner.remove(&oldest_key);
+        oldest_key
     }
 
     /// Get a mutable reference to a single log by `DeviceId`

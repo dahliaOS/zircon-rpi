@@ -58,6 +58,7 @@ impl Snooper {
     pub fn new(device_path: PathBuf) -> Result<Snooper, Error> {
         let hci_device = OpenOptions::new().read(true).write(true).open(&device_path)?;
         let channel = hci::open_snoop_channel(&hci_device)?;
+        println!("Opened snoop channel: {:?}", channel);
         Snooper::from_channel(channel, device_path)
     }
 
