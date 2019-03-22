@@ -13,9 +13,6 @@ use wlan_reg::*;
 
 fn main() {
     let opt = opts::Opt::from_args();
-
-    println!("{:?}", opt);
-
     match opt {
         opts::Opt::Show(cmd) => show(cmd),
     }
@@ -36,13 +33,13 @@ fn show(cmd: opts::ShowCommand) {
             show_active_jurisdiction();
         }
         opts::ShowCommand::OperClass { jurisdiction } => {
-            show_operclass(jurisdiction.as_str());
+            show_operclass(jurisdiction.to_uppercase().as_str());
         }
         opts::ShowCommand::PowerBudget => {
             show_power_budget();
         }
         opts::ShowCommand::Regulation { jurisdiction } => {
-            show_regulation(jurisdiction.as_str());
+            show_regulation(jurisdiction.to_uppercase().as_str());
         }
     };
 }
@@ -126,11 +123,12 @@ fn show_all_jurisdictions() {
             println!("");
         }
     }
+    println!("\n");
 }
 
 fn show_active_jurisdiction() {
     println!(
-        "\nActive jurisdiction: {} (faked for development)\n",
+        "\nActive jurisdiction:\n{:>10} (faked for development)\n",
         country::get_active_jurisdiction()
     );
 }
