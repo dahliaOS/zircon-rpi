@@ -46,12 +46,12 @@ enum class OpClass : uint32_t {
     // Operations that can optionally be reordered.
 
     kOpClassUnknown = 0, // Always reordered.
-    kOpClassRead    = 1, // Read class ordering.
-    kOpClassWrite   = 2, // Write class order.
-    kOpClassDiscard = 3, // Write class order.
-    kOpClassRename  = 4, // Read and Write class order.
-    kOpClassSync    = 5, // Write class order.
-    kOpClassCommand = 6, // Read and Write class order.
+    kOpClassRead    = 1, // Read ordering.
+    kOpClassWrite   = 2, // Write order.
+    kOpClassDiscard = 3, // Write order.
+    kOpClassRename  = 4, // Read and Write order.
+    kOpClassSync    = 5, // Write order.
+    kOpClassCommand = 6, // Read and Write order.
 
     // Operations that cannot be reordered.
 

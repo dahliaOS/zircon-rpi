@@ -24,8 +24,8 @@ test("io-scheduler-test") {
     "$zx/system/ulib/fdio",
     "$zx/system/ulib/fzl",
     "$zx/system/ulib/io-scheduler",
-    "$zx/system/ulib/unittest",
     "$zx/system/ulib/zxcpp",
+    "$zx/system/ulib/zxtest",
   ]
 }
 
