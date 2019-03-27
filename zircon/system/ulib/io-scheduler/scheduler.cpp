@@ -22,13 +22,16 @@ public:
 
     void AsyncComplete(SchedOp* sop);
 
-    void zzz() { callbacks_ = nullptr; }
-
 private:
     using StreamList = Stream::ListUnsorted;
 
-    zx_status_t FindStreamForId(uint32_t id, StreamRef* out);
-    zx_status_t RemoveStreamForId(uint32_t id, StreamRef* out = nullptr);
+    zx_status_t GetStreamForId(uint32_t id, StreamRef* out, bool remove);
+    zx_status_t FindStreamForId(uint32_t id, StreamRef* out) {
+        return GetStreamForId(id, out, false);
+    }
+    zx_status_t RemoveStreamForId(uint32_t id, StreamRef* out = nullptr) {
+        return GetStreamForId(id, out, true);
+    }
 
     SchedulerCallbacks* callbacks_ = nullptr;
     uint32_t options_ = 0;
@@ -36,6 +39,7 @@ private:
 };
 
 zx_status_t Scheduler::Init(SchedulerCallbacks* cb, uint32_t options) {
+    callbacks_ = cb;
     options_ = options;
     return ZX_OK;
 }
@@ -78,23 +82,15 @@ Scheduler::~Scheduler() {
     Shutdown();
 }
 
-zx_status_t Scheduler::FindStreamForId(uint32_t id, StreamRef* out) {
-    for (auto iter = streams_.begin(); iter.IsValid(); ++iter) {
-        if (iter->Id() == id) {
-            *out = iter.CopyPointer();
-            return ZX_OK;
-        }
-    }
-    return ZX_ERR_NOT_FOUND;
-}
-
-zx_status_t Scheduler::RemoveStreamForId(uint32_t id, StreamRef* out) {
+zx_status_t Scheduler::GetStreamForId(uint32_t id, StreamRef* out, bool remove) {
     for (auto iter = streams_.begin(); iter.IsValid(); ++iter) {
         if (iter->Id() == id) {
             if (out) {
                 *out = iter.CopyPointer();
             }
-            streams_.erase(iter);
+            if (remove) {
+                streams_.erase(iter);
+            }
             return ZX_OK;
         }
     }

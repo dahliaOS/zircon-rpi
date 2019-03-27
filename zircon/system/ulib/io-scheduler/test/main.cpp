@@ -22,6 +22,7 @@ constexpr uint32_t kMaxFifoDepth = (4096 / sizeof(void*));
 
 class IOSchedTestFixture : public zxtest::Test {
 public:
+    IoScheduler* Scheduler() { return sched_; }
 
 protected:
     // Called before every test of this test case.
@@ -39,9 +40,6 @@ protected:
         }
     }
 
-    IoScheduler* Scheduler() { return sched_; }
-
-protected:
     void CreateFifo() {
         ASSERT_OK(fzl::create_fifo(kMaxFifoDepth, 0, &fifo_to_server_, &fifo_from_server_),
                   "Failed to create FIFOs");

@@ -81,7 +81,6 @@ enum class OpClass : uint32_t {
 
 };
 
-
 constexpr uint32_t kOpFlagComplete =    (1u << 0);
 constexpr uint32_t kOpFlagGroupLeader = (1u << 8);
 
@@ -90,10 +89,10 @@ constexpr size_t kOpReservedQuads = 12;
 
 struct SchedOp {
     uint32_t op_class;      // Type of operation.
-    uint32_t flags;	    // Flags. Should be zero.
+    uint32_t flags;	        // Flags. Should be zero.
+    uint32_t stream_id;     // Stream into which this op is queued.
     uint32_t group_id;      // Group of operations.
     uint32_t group_members; // Number of members in the group.
-    uint32_t _unused;       // Reserved, do not use.
     zx_status_t result;     // Status code of the released operation.
     void* cookie;           // User-defined per-op cookie.
     uint64_t _reserved[kOpReservedQuads]; // Reserved, do not use.
