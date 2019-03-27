@@ -12,6 +12,7 @@ class Scheduler {
 public:
     Scheduler() {}
     ~Scheduler();
+    DISALLOW_COPY_ASSIGN_AND_MOVE(Scheduler);
 
     zx_status_t Init(SchedulerCallbacks* cb, uint32_t options);
     void Shutdown();

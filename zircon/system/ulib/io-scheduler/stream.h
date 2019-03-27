@@ -5,6 +5,7 @@
 #pragma once
 
 #include <fbl/intrusive_double_list.h>
+#include <fbl/macros.h>
 #include <fbl/ref_counted.h>
 #include <fbl/ref_ptr.h>
 
@@ -19,6 +20,7 @@ class Stream : public fbl::RefCounted<Stream> {
 public:
     Stream(uint32_t id, uint32_t pri);
     ~Stream();
+    DISALLOW_COPY_ASSIGN_AND_MOVE(Stream);
 
    uint32_t Id() { return id_; }
 
