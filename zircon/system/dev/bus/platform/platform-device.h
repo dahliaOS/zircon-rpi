@@ -50,7 +50,7 @@ public:
     zx_status_t DdkRxrpc(zx_handle_t channel);
 
     // Starts the underlying devmgr device.
-    zx_status_t Start();
+    zx_status_t Start(const pbus_dev_t* pdev = nullptr);
 
 private:
     // *flags* contains zero or more PDEV_ADD_* flags from the platform bus protocol.

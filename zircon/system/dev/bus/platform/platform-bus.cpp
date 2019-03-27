@@ -108,7 +108,7 @@ zx_status_t PlatformBus::PBusDeviceAdd(const pbus_dev_t* pdev) {
         return status;
     }
 
-    status = dev->Start();
+    status = dev->Start(pdev);
     if (status != ZX_OK) {
         return status;
     }

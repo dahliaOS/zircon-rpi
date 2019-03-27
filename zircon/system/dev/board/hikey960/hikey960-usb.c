@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
@@ -83,7 +84,6 @@ static const pbus_dev_t hikey_usb_dev = {
     .gpio_count = countof(hikey_usb_gpios),
 };
 
-/*
 static const pbus_mmio_t dwc3_mmios[] = {
     {
         .base = MMIO_USB3OTG_BASE,
@@ -115,6 +115,23 @@ static const pbus_metadata_t dwc3_metadata[] = {
     }
 };
 
+static const zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+
+static const zx_bind_inst_t ums_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_USB_MODE_SWITCH),
+};
+
+static const device_component_part_t ums_part[] = {
+    { countof(root_match), root_match },
+    { countof(ums_match), ums_match },
+};
+
+static const device_component_t ums_component[] = {
+    { countof(ums_part), ums_part },
+};
+
 static const pbus_dev_t dwc3_dev = {
     .name = "dwc3",
     .vid = PDEV_VID_GENERIC,
@@ -128,8 +145,9 @@ static const pbus_dev_t dwc3_dev = {
     .bti_count = countof(dwc3_btis),
     .metadata_list = dwc3_metadata,
     .metadata_count = countof(dwc3_metadata),
+    .component_list = ums_component,
+    .component_count = countof(ums_component),
 };
-*/
 
 zx_status_t hikey960_usb_init(hikey960_t* hikey) {
     zx_status_t status = hikey960_usb_phy_init(hikey);
@@ -139,6 +157,11 @@ zx_status_t hikey960_usb_init(hikey960_t* hikey) {
 
     if ((status = pbus_device_add(&hikey->pbus, &hikey_usb_dev)) != ZX_OK) {
         zxlogf(ERROR, "hikey960_add_devices could not add hikey_usb_dev: %d\n", status);
+        return status;
+    }
+
+    if ((status = pbus_device_add(&hikey->pbus, &dwc3_dev)) != ZX_OK) {
+        zxlogf(ERROR, "hikey960_add_devices could not add dwc3_dev: %d\n", status);
         return status;
     }
 

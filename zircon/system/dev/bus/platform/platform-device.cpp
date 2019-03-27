@@ -716,7 +716,7 @@ void PlatformDevice::DdkRelease() {
     delete this;
 }
 
-zx_status_t PlatformDevice::Start() {
+zx_status_t PlatformDevice::Start(const pbus_dev_t* pdev) {
     char name[ZX_DEVICE_NAME_MAX];
     if (vid_ == PDEV_VID_GENERIC && pid_ == PDEV_PID_GENERIC && did_ == PDEV_DID_KPCI) {
         strlcpy(name, "pci", sizeof(name));
@@ -742,8 +742,40 @@ zx_status_t PlatformDevice::Start() {
         {BIND_PLATFORM_DEV_PID, 0, pid_},
         {BIND_PLATFORM_DEV_DID, 0, did_},
     };
-    zx_status_t status = DdkAdd(name, device_add_flags, props, fbl::count_of(props),
-                                ZX_PROTOCOL_PDEV, argstr);
+
+    if (pdev && pdev->component_count > 0) {
+        // Add one for platform device.
+        auto component_count = pdev->component_count + 1;
+        device_component_t components[component_count];
+
+        const zx_bind_inst_t root_match[] = {
+            BI_MATCH(),
+        };
+        const zx_bind_inst_t pdev_match[]  = {
+            BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
+            BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, vid_),
+            BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, pid_),
+            BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, did_),
+        };
+        device_component_part_t pdev_composite[] = {
+            { fbl::count_of(root_match), root_match },
+            { fbl::count_of(pdev_match), pdev_match },
+        };
+        components[0].parts = pdev_composite;
+        components[0].parts_count = countof(pdev_composite);
+
+        // Copy remaining components.
+        memcpy(&components[1], pdev->component_list, pdev->component_count * sizeof(components[0]));       
+
+        auto status = DdkAddComposite(name, props, fbl::count_of(props), components,
+                                      component_count, UINT32_MAX);
+        if (status != ZX_OK) {
+            return status;
+        }
+    }
+
+    auto status = DdkAdd(name, device_add_flags, props, fbl::count_of(props), ZX_PROTOCOL_PDEV,
+                         argstr);
     if (status != ZX_OK) {
         return status;
     }

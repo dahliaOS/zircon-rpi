@@ -4,6 +4,7 @@
 
 library ddk.protocol.platform.bus;
 
+using ddk.driver;
 using ddk.protocol.platform.device;
 using zx;
 
@@ -90,6 +91,8 @@ struct PbusDev {
     /// This is only used in cases where children of a platform device also need to access
     /// platform bus resources.
     vector<PbusDev> child;
+    /// List of components to provide to device_add_composite()
+    vector<ddk.driver.DeviceComponent> component;
 };
 
 /// Subset of pdev_board_info_t to be set by the board driver.
