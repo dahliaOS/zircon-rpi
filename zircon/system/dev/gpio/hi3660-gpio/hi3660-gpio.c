@@ -65,13 +65,9 @@ static zx_status_t hi3660_gpio_read(void* ctx, uint32_t index, uint8_t* out_valu
 }
 
 static zx_status_t hi3660_gpio_write(void* ctx, uint32_t index, uint8_t value) {
-
-zxlogf(INFO, "hi3660_gpio_write %u - %u\n", index, value);
-
     hi3660_gpio_t* gpio = ctx;
     pl061_gpios_t* gpios = find_gpio(gpio, index);
     if (!gpios) {
-zxlogf(INFO, "hi3660_gpio_write ZX_ERR_INVALID_ARGS");
         return ZX_ERR_INVALID_ARGS;
     }
     return pl061_proto_ops.write(gpios, index, value);

@@ -62,6 +62,28 @@ zx_status_t hikey960_usb_phy_init(hikey960_t* hikey) {
     return ZX_OK;
 }
 
+static const pbus_gpio_t hikey_usb_gpios[] = {
+    {
+        .gpio = GPIO_HUB_VDD33_EN,
+    },
+    {
+        .gpio = GPIO_VBUS_TYPEC,
+    },
+    {
+        .gpio = GPIO_USBSW_SW_SEL,
+    },
+};
+
+static const pbus_dev_t hikey_usb_dev = {
+    .name = "hikey-usb",
+    .vid = PDEV_VID_96BOARDS,
+    .pid = PDEV_PID_HIKEY960,
+    .did = PDEV_DID_HIKEY960_USB,
+    .gpio_list = hikey_usb_gpios,
+    .gpio_count = countof(hikey_usb_gpios),
+};
+
+/*
 static const pbus_mmio_t dwc3_mmios[] = {
     {
         .base = MMIO_USB3OTG_BASE,
@@ -85,7 +107,7 @@ static const pbus_bti_t dwc3_btis[] = {
 
 static usb_mode_t dwc3_mode = USB_MODE_HOST;
 
-static const pbus_metadata_t dwc2_metadata[] = {
+static const pbus_metadata_t dwc3_metadata[] = {
     {
         .type        = DEVICE_METADATA_USB_MODE,
         .data_buffer = &dwc3_mode,
@@ -93,45 +115,21 @@ static const pbus_metadata_t dwc2_metadata[] = {
     }
 };
 
-static const pbus_dev_t hikey_usb_children[] = {
-    {
-        .name = "dwc3",
-        .vid = PDEV_VID_GENERIC,
-        .pid = PDEV_PID_GENERIC,
-        .did = PDEV_DID_USB_DWC3,
-        .mmio_list = dwc3_mmios,
-        .mmio_count = countof(dwc3_mmios),
-        .irq_list = dwc3_irqs,
-        .irq_count = countof(dwc3_irqs),
-        .bti_list = dwc3_btis,
-        .bti_count = countof(dwc3_btis),
-        .metadata_list = dwc2_metadata,
-        .metadata_count = countof(dwc2_metadata),
-    },
+static const pbus_dev_t dwc3_dev = {
+    .name = "dwc3",
+    .vid = PDEV_VID_GENERIC,
+    .pid = PDEV_PID_GENERIC,
+    .did = PDEV_DID_USB_DWC3,
+    .mmio_list = dwc3_mmios,
+    .mmio_count = countof(dwc3_mmios),
+    .irq_list = dwc3_irqs,
+    .irq_count = countof(dwc3_irqs),
+    .bti_list = dwc3_btis,
+    .bti_count = countof(dwc3_btis),
+    .metadata_list = dwc3_metadata,
+    .metadata_count = countof(dwc3_metadata),
 };
-
-static const pbus_gpio_t hikey_usb_gpios[] = {
-    {
-        .gpio = GPIO_HUB_VDD33_EN,
-    },
-    {
-        .gpio = GPIO_VBUS_TYPEC,
-    },
-    {
-        .gpio = GPIO_USBSW_SW_SEL,
-    },
-};
-
-const pbus_dev_t hikey_usb_dev = {
-    .name = "hikey-usb",
-    .vid = PDEV_VID_96BOARDS,
-    .pid = PDEV_PID_HIKEY960,
-    .did = PDEV_DID_HIKEY960_USB,
-    .gpio_list = hikey_usb_gpios,
-    .gpio_count = countof(hikey_usb_gpios),
-    .child_list = hikey_usb_children,
-    .child_count = countof(hikey_usb_children),
-};
+*/
 
 zx_status_t hikey960_usb_init(hikey960_t* hikey) {
     zx_status_t status = hikey960_usb_phy_init(hikey);

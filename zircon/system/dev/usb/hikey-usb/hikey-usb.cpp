@@ -22,7 +22,7 @@
 
 namespace hikey_usb {
 
-zx_status_t HikeyUsb::Create(zx_device_t* parent) {
+zx_status_t HikeyUsb::Create(void* ctx, zx_device_t* parent) {
     fbl::AllocChecker ac;
     auto bus = fbl::make_unique_checked<HikeyUsb>(&ac, parent);
     if (!ac.check()) {
@@ -41,7 +41,6 @@ zx_status_t HikeyUsb::Create(zx_device_t* parent) {
 
 zx_status_t HikeyUsb::Init() {
     pdev_protocol_t pdev;
-
     auto status = device_get_protocol(parent(), ZX_PROTOCOL_PDEV, &pdev);
     if (status != ZX_OK) {
         return status;
@@ -56,6 +55,7 @@ zx_status_t HikeyUsb::Init() {
         gpio_config_out(&gpios_[i], 0);
     }
 
+/*
     zx_device_prop_t props[] = {
         {BIND_PLATFORM_DEV_VID, 0, PDEV_VID_GENERIC},
         {BIND_PLATFORM_DEV_PID, 0, PDEV_PID_GENERIC},
@@ -73,6 +73,8 @@ zx_status_t HikeyUsb::Init() {
     args.proto_ops = ddk_proto_ops_;
 
     return pdev_device_add(&pdev, 0, &args, &zxdev_);
+*/
+    return DdkAdd("hikey-usb");
 }
 
 zx_status_t HikeyUsb::UsbModeSwitchSetMode(usb_mode_t mode) {
@@ -98,16 +100,10 @@ void HikeyUsb::DdkRelease() {
     delete this;
 }
 
-__BEGIN_CDECLS
-static zx_status_t hikey_usb_bind(void* ctx, zx_device_t* parent) {
-    return hikey_usb::HikeyUsb::Create(parent);
-}
-__END_CDECLS
-
 static zx_driver_ops_t driver_ops = [](){
     zx_driver_ops_t ops;
     ops.version = DRIVER_OPS_VERSION;
-    ops.bind = hikey_usb_bind;
+    ops.bind = HikeyUsb::Create;
     return ops;
 }();
 

@@ -22,7 +22,7 @@ public:
     explicit HikeyUsb(zx_device_t* parent)
         : HikeyUsbType(parent), usb_mode_(USB_MODE_NONE) {}
 
-    static zx_status_t Create(zx_device_t* parent);
+    static zx_status_t Create(void* ctx, zx_device_t* parent);
 
     // Device protocol implementation.
     void DdkRelease();
