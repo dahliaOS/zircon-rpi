@@ -688,6 +688,10 @@ zx_status_t Coordinator::AddDevice(const fbl::RefPtr<Device>& parent, zx::channe
     // component.
     if (component_driver_ != nullptr && dev->libname == component_driver_->libname) {
         CompositeDeviceComponent* component = parent->component();
+        if (component == nullptr) {
+            log(ERROR, "Parent component not found in AddDevice\n");
+            return ZX_ERR_BAD_STATE;
+        }
         component->set_component_device(dev);
         status = component->composite()->TryAssemble();
         if (status != ZX_OK && status != ZX_ERR_SHOULD_WAIT) {
