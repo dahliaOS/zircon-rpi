@@ -155,7 +155,7 @@ zx_status_t brcmf_sdiod_intr_register(struct brcmf_sdio_dev* sdiodev) {
     pdata->oob_irq_supported = false;
     wifi_config_t config;
     size_t actual;
-    ret = device_get_metadata(sdiodev->dev.zxdev, DEVICE_METADATA_PRIVATE,
+    ret = device_get_metadata(sdiodev->dev.zxdev, DEVICE_METADATA_WIFI_CONFIG,
                               &config, sizeof(wifi_config_t), &actual);
     if ((ret != ZX_OK && ret != ZX_ERR_NOT_FOUND) ||
         (ret == ZX_OK && actual != sizeof(wifi_config_t))) {

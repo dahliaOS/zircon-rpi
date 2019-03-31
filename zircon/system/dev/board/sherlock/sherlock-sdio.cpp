@@ -28,18 +28,6 @@ constexpr pbus_gpio_t wifi_gpios[] = {
     },
 };
 
-constexpr wifi_config_t wifi_config = {
-    .oob_irq_mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
-};
-
-constexpr pbus_metadata_t wifi_metadata[] = {
-    {
-        .type = DEVICE_METADATA_PRIVATE,
-        .data_buffer = &wifi_config,
-        .data_size = sizeof(wifi_config),
-    },
-};
-
 constexpr pbus_boot_metadata_t wifi_boot_metadata[] = {
     {
         .zbi_type = DEVICE_METADATA_MAC_ADDRESS,
@@ -53,8 +41,6 @@ const pbus_dev_t sdio_children[] = {
         dev.name = "sherlock-wifi";
         dev.gpio_list = wifi_gpios;
         dev.gpio_count = countof(wifi_gpios);
-        dev.metadata_list = wifi_metadata;
-        dev.metadata_count = countof(wifi_metadata);
         dev.boot_metadata_list = wifi_boot_metadata;
         dev.boot_metadata_count = countof(wifi_boot_metadata);
         return dev;
@@ -104,11 +90,20 @@ constexpr aml_sd_emmc_config_t sd_emmc_config = {
     .max_freq = 50000000, // 50MHz
 };
 
+constexpr wifi_config_t wifi_config = {
+    .oob_irq_mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+};
+
 constexpr pbus_metadata_t sd_emmc_metadata[] = {
     {
-        .type = DEVICE_METADATA_PRIVATE,
+        .type = DEVICE_METADATA_EMMC_CONFIG,
         .data_buffer = &sd_emmc_config,
         .data_size = sizeof(sd_emmc_config),
+    },
+    {
+        .type = DEVICE_METADATA_WIFI_CONFIG,
+        .data_buffer = &wifi_config,
+        .data_size = sizeof(wifi_config),
     },
 };
 

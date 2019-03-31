@@ -20,18 +20,6 @@ static const pbus_gpio_t wifi_gpios[] = {
     },
 };
 
-static const wifi_config_t wifi_config = {
-    .oob_irq_mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
-};
-
-static const pbus_metadata_t wifi_metadata[] = {
-    {
-        .type        = DEVICE_METADATA_PRIVATE,
-        .data_buffer = &wifi_config,
-        .data_size   = sizeof(wifi_config),
-    }
-};
-
 static const pbus_boot_metadata_t wifi_boot_metadata[] = {
     {
         .zbi_type = DEVICE_METADATA_MAC_ADDRESS,
@@ -45,8 +33,6 @@ static const pbus_dev_t sdio_children[] = {
         .name = "astro-wifi",
         .gpio_list = wifi_gpios,
         .gpio_count = countof(wifi_gpios),
-        .metadata_list = wifi_metadata,
-        .metadata_count = countof(wifi_metadata),
         .boot_metadata_list = wifi_boot_metadata,
         .boot_metadata_count = countof(wifi_boot_metadata),
     },
@@ -102,12 +88,21 @@ static aml_sd_emmc_config_t config = {
     .max_freq = 50000000,
 };
 
+static const wifi_config_t wifi_config = {
+    .oob_irq_mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+};
+
 static const pbus_metadata_t aml_sd_emmc_metadata[] = {
     {
-        .type        = DEVICE_METADATA_PRIVATE,
+        .type        = DEVICE_METADATA_EMMC_CONFIG,
         .data_buffer = &config,
         .data_size   = sizeof(config),
-    }
+    },
+    {
+        .type        = DEVICE_METADATA_WIFI_CONFIG,
+        .data_buffer = &wifi_config,
+        .data_size   = sizeof(wifi_config),
+    },
 };
 
 static const pbus_dev_t aml_sd_emmc_dev = {
