@@ -22,39 +22,12 @@ namespace sherlock {
 
 namespace {
 
-constexpr pbus_gpio_t wifi_gpios[] = {
-    {
-        .gpio = T931_WIFI_HOST_WAKE,
-    },
-};
 
 constexpr pbus_boot_metadata_t wifi_boot_metadata[] = {
     {
         .zbi_type = DEVICE_METADATA_MAC_ADDRESS,
         .zbi_extra = MACADDR_WIFI,
     },
-};
-
-const pbus_dev_t sdio_children[] = {
-    []() {
-        pbus_dev_t dev;
-        dev.name = "sherlock-wifi";
-        dev.gpio_list = wifi_gpios;
-        dev.gpio_count = countof(wifi_gpios);
-        dev.boot_metadata_list = wifi_boot_metadata;
-        dev.boot_metadata_count = countof(wifi_boot_metadata);
-        return dev;
-    }(),
-};
-
-const pbus_dev_t sd_emmc_children[] = {
-    []() {
-        pbus_dev_t dev;
-        dev.name = "sherlock-sdio";
-        dev.child_list = sdio_children;
-        dev.child_count = countof(sdio_children);
-        return dev;
-    }(),
 };
 
 constexpr pbus_mmio_t sd_emmc_mmios[] = {
@@ -123,8 +96,8 @@ const pbus_dev_t sdio_dev = []() {
     dev.gpio_count = countof(sd_emmc_gpios);
     dev.metadata_list = sd_emmc_metadata;
     dev.metadata_count = countof(sd_emmc_metadata);
-    dev.child_list = sd_emmc_children;
-    dev.child_count = countof(sd_emmc_children);
+    dev.boot_metadata_list = wifi_boot_metadata;
+    dev.boot_metadata_count = countof(wifi_boot_metadata);
     return dev;
 }();
 

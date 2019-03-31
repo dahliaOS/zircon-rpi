@@ -14,36 +14,10 @@
 
 #include "astro.h"
 
-static const pbus_gpio_t wifi_gpios[] = {
-    {
-        .gpio = S905D2_WIFI_SDIO_WAKE_HOST,
-    },
-};
-
 static const pbus_boot_metadata_t wifi_boot_metadata[] = {
     {
         .zbi_type = DEVICE_METADATA_MAC_ADDRESS,
         .zbi_extra = MACADDR_WIFI,
-    },
-};
-
-static const pbus_dev_t sdio_children[] = {
-    {
-        // Wifi driver.
-        .name = "astro-wifi",
-        .gpio_list = wifi_gpios,
-        .gpio_count = countof(wifi_gpios),
-        .boot_metadata_list = wifi_boot_metadata,
-        .boot_metadata_count = countof(wifi_boot_metadata),
-    },
-};
-
-static const pbus_dev_t aml_sd_emmc_children[] = {
-    {
-        // Generic SDIO driver.
-        .name = "sdio",
-        .child_list = sdio_children,
-        .child_count = countof(sdio_children),
     },
 };
 
@@ -120,8 +94,8 @@ static const pbus_dev_t aml_sd_emmc_dev = {
     .gpio_count = countof(aml_sd_emmc_gpios),
     .metadata_list = aml_sd_emmc_metadata,
     .metadata_count = countof(aml_sd_emmc_metadata),
-    .child_list = aml_sd_emmc_children,
-    .child_count = countof(aml_sd_emmc_children),
+    .boot_metadata_list = wifi_boot_metadata,
+    .boot_metadata_count = countof(wifi_boot_metadata),
 };
 
 static zx_status_t aml_sd_emmc_configure_portB(aml_bus_t* bus) {
