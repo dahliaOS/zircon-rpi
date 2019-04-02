@@ -256,12 +256,6 @@ void AmlSCPI::DdkRelease() {
 }
 
 zx_status_t AmlSCPI::Bind() {
-    zx_device_prop_t props[] = {
-        {BIND_PLATFORM_DEV_VID, 0, PDEV_VID_AMLOGIC},
-        {BIND_PLATFORM_DEV_PID, 0, PDEV_PID_AMLOGIC_S912},
-        {BIND_PLATFORM_DEV_DID, 0, PDEV_DID_AMLOGIC_THERMAL},
-    };
-
     device_add_args_t args = {};
     args.version = DEVICE_ADD_ARGS_VERSION;
     args.name = "aml-scpi";
@@ -269,8 +263,6 @@ zx_status_t AmlSCPI::Bind() {
     args.ops = &ddk_device_proto_;
     args.proto_id = ddk_proto_id_;
     args.proto_ops = ddk_proto_ops_;
-    args.props = props;
-    args.prop_count = countof(props);
 
     return pdev_.DeviceAdd(0, &args, &zxdev_);
 }
@@ -319,8 +311,7 @@ static zx_driver_ops_t driver_ops = []() {
 } // namespace scpi
 
 // clang-format off
-ZIRCON_DRIVER_BEGIN(aml_scpi, scpi::driver_ops, "zircon", "0.1", 4)
-    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_MAILBOX),
+ZIRCON_DRIVER_BEGIN(aml_scpi, scpi::driver_ops, "zircon", "0.1", 3)
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_AMLOGIC),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_AMLOGIC_S912),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_AMLOGIC_SCPI),

@@ -1,0 +1,21 @@
+// Copyright 2019 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library ddk.protocol.platform.deviceimpl;
+
+using ddk.driver;
+using ddk.protocol.platform.device;
+using zx;
+
+[Layout = "ddk-protocol"]
+protocol PDevImpl {
+    GetMmio(uint32 index) -> (zx.status s, zx.paddr phys, usize length, handle<resource> resource);
+    GetInterrupt(uint32 index) -> (zx.status s, uint32 irq, uint32 mode, handle<resource> resource);
+    GetBti(uint32 index) -> (zx.status s, handle<bti> bti);
+    GetSmc(uint32 index) -> (zx.status s, handle<resource> smc);
+    GetDeviceInfo() -> (zx.status s, ddk.protocol.platform.device.PdevDeviceInfo info);
+    GetBoardInfo() -> (zx.status s, ddk.protocol.platform.device.PdevBoardInfo info);
+    DeviceAdd(uint32 index, ddk.driver.DeviceAddArgs args) -> (zx.status s, ddk.driver.ZxDevice? device);
+    GetProtocol(uint32 proto_id, uint32 index) -> (zx.status s, vector<voidptr> out_protocol);
+};

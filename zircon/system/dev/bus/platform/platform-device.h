@@ -41,9 +41,9 @@ public:
     static zx_status_t Create(const pbus_dev_t* pdev, zx_device_t* parent, PlatformBus* bus,
                               fbl::unique_ptr<platform_bus::PlatformDevice>* out);
 
-    inline uint32_t vid() const { return vid_; }
-    inline uint32_t pid() const { return pid_; }
-    inline uint32_t did() const { return did_; }
+    inline uint32_t vid() const { return resource_tree_.vid(); }
+    inline uint32_t pid() const { return resource_tree_.pid(); }
+    inline uint32_t did() const { return resource_tree_.did(); }
 
     // Device protocol implementation.
     void DdkRelease();
@@ -68,7 +68,8 @@ private:
     zx_status_t RpcGetSmc(const DeviceResources* dr, uint32_t index,
                           zx_handle_t* out_handle, uint32_t* out_handle_count);
     zx_status_t RpcGetDeviceInfo(const DeviceResources* dr, pdev_device_info_t* out_info);
-    zx_status_t RpcDeviceAdd(const DeviceResources* dr, uint32_t index, uint32_t* out_device_id);
+    zx_status_t RpcDeviceAdd(const DeviceResources* dr, uint32_t index, uint32_t* out_device_id,
+                             uint32_t* out_vid, uint32_t* out_pid, uint32_t* out_did);
     zx_status_t RpcGetMetadata(const DeviceResources* dr, uint32_t index, uint32_t* out_type,
                                uint8_t* buf, uint32_t buf_size, uint32_t* actual);
     zx_status_t RpcGpioConfigIn(const DeviceResources* dr, uint32_t index, uint32_t flags);
@@ -97,9 +98,6 @@ private:
                                         power_domain_status_t* status);
     PlatformBus* bus_;
     char name_[ZX_DEVICE_NAME_MAX + 1];
-    const uint32_t vid_;
-    const uint32_t pid_;
-    const uint32_t did_;
 
     // Tree of platform bus resources for this device and its children.
     DeviceResources resource_tree_;

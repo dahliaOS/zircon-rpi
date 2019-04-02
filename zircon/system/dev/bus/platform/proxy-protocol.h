@@ -17,7 +17,7 @@ static constexpr size_t PROXY_MAX_TRANSFER_SIZE = 4096;
 // Device ID for a top level platform device (that is, an immediate child of the platform bus).
 static constexpr uint32_t ROOT_DEVICE_ID = 0;
 
-// ZX_PROTOCOL_PDEV proxy support.
+// ZX_PROTOCOL_PDEV_IMPL proxy support.
 enum {
     PDEV_GET_MMIO,
     PDEV_GET_INTERRUPT,
@@ -60,6 +60,9 @@ struct rpc_pdev_rsp_t {
     uint32_t device_id;
     uint32_t metadata_type;
     uint32_t metadata_length;
+    uint32_t vid;
+    uint32_t pid;
+    uint32_t did;
 };
 
 // Maximum metadata size that can be returned via PDEV_DEVICE_GET_METADATA.

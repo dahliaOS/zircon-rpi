@@ -115,6 +115,9 @@ static const pbus_mmio_t dsi_mmios[] = {
 static pbus_dev_t display_dev[] = {
     {
         .name = "display",
+        .vid = PDEV_VID_AMLOGIC,
+        .pid = PDEV_PID_AMLOGIC_S905D2,
+        .did = PDEV_DID_AMLOGIC_DISPLAY,
         .mmio_list = display_mmios,
         .mmio_count = countof(display_mmios),
         .irq_list = display_irqs,

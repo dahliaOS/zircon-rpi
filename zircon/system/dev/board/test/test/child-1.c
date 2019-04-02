@@ -63,20 +63,11 @@ static zx_status_t test_bind(void* ctx, zx_device_t* parent) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    zx_device_prop_t child_2_props[] = {
-        { BIND_PROTOCOL, 0, ZX_PROTOCOL_PDEV },
-        { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_TEST},
-        { BIND_PLATFORM_DEV_PID, 0, PDEV_PID_PBUS_TEST},
-        { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_TEST_CHILD_2 },
-    };
-
     device_add_args_t child_2_args = {
         .version = DEVICE_ADD_ARGS_VERSION,
         .name = "child-2-top",
         .ctx = child_2,
         .ops = &test_device_protocol,
-        .props = child_2_props,
-        .prop_count = countof(child_2_props),
     };
 
     status = pdev_device_add(&pdev, 0, &child_2_args, &child_2->zxdev);
@@ -91,20 +82,11 @@ static zx_status_t test_bind(void* ctx, zx_device_t* parent) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    zx_device_prop_t child_3_props[] = {
-        { BIND_PROTOCOL, 0, ZX_PROTOCOL_PDEV },
-        { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_TEST },
-        { BIND_PLATFORM_DEV_PID, 0, PDEV_PID_PBUS_TEST },
-        { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_TEST_CHILD_3 },
-    };
-
     device_add_args_t child_3_args = {
         .version = DEVICE_ADD_ARGS_VERSION,
         .name = "child-3-top",
         .ctx = child_3,
         .ops = &test_device_protocol,
-        .props = child_3_props,
-        .prop_count = countof(child_3_props),
     };
 
     status = pdev_device_add(&pdev, 1, &child_3_args, &child_3->zxdev);

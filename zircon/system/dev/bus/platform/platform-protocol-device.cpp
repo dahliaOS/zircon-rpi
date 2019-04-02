@@ -228,7 +228,7 @@ zx_status_t ProtocolDevice::Start() {
     if (vid_ == PDEV_VID_GENERIC && pid_ == PDEV_PID_GENERIC && did_ == PDEV_DID_KPCI) {
         strlcpy(name, "pci", sizeof(name));
     } else {
-        snprintf(name, sizeof(name), "%02x:%02x:%01x", vid_, pid_, did_);
+        snprintf(name, sizeof(name), "%u:%u:%u", vid_, pid_, did_);
     }
 
     // Protocol devices run in our devhost.

@@ -31,8 +31,11 @@ public:
     // Returns device ID for this device.
     inline uint32_t index() const { return index_; }
 
-    // Returns the index of the ith child of this device.
+    // These return information about the ith child of this device.
     inline uint32_t child_index(uint32_t i) const { return children_[i].index_; }
+    inline uint32_t vid(uint32_t i) const { return children_[i].vid_; }
+    inline uint32_t pid(uint32_t i) const { return children_[i].pid_; }
+    inline uint32_t did(uint32_t i) const { return children_[i].did_; }
 
     // Platform bus resources copied from the pbus_dev_t struct from the board driver.
     inline const pbus_mmio_t& mmio(size_t i) const { return mmios_[i]; }
@@ -59,9 +62,16 @@ public:
     inline size_t boot_metadata_count() const { return boot_metadata_.size(); }
     inline size_t child_count() const { return children_.size(); }
 
+    inline uint32_t vid() const { return vid_; }
+    inline uint32_t pid() const { return pid_; }
+    inline uint32_t did() const { return did_; }
+
 private:
     // Index of this DeviceResources instance in PlatformDevice::device_index_.
     const uint32_t index_;
+    uint32_t vid_;
+    uint32_t pid_;
+    uint32_t did_;
 
     // Platform bus resources copied from the pbus_dev_t struct from the board driver.
     fbl::Array<pbus_mmio_t> mmios_;
