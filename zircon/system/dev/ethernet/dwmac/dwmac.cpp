@@ -8,6 +8,7 @@
 #include <ddk/debug.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
+#include <ddk/protocol/composite.h>
 #include <ddk/protocol/ethernet/mac.h>
 #include <ddk/protocol/platform-device-lib.h>
 #include <ddk/protocol/platform/device.h>
@@ -120,16 +121,8 @@ void DWMacDevice::UpdateLinkStatus() {
 }
 
 zx_status_t DWMacDevice::InitPdev() {
-
-    zx_status_t status = device_get_protocol(parent_,
-                                             ZX_PROTOCOL_PDEV,
-                                             &pdev_);
-    if (status != ZX_OK) {
-        return status;
-    }
-
     // Map mac control registers and dma control registers.
-    status = pdev_.MapMmio(kEthMacMmio, &dwmac_regs_iobuff_);
+    auto status = pdev_.MapMmio(kEthMacMmio, &dwmac_regs_iobuff_);
     if (status != ZX_OK) {
         zxlogf(ERROR, "dwmac: could not map dwmac mmio: %d\n", status);
         return status;
@@ -161,11 +154,40 @@ zx_status_t DWMacDevice::InitPdev() {
     return status;
 }
 
+zx_status_t DWMacDevice::Create(void* ctx, zx_device_t* device) {
+    composite_protocol_t composite;
+    pdev_protocol_t pdev;
+    eth_board_protocol_t eth_board;
 
-zx_status_t DWMacDevice::Create(zx_device_t* device) {
-    auto mac_device = fbl::make_unique<DWMacDevice>(device);
+    auto status = device_get_protocol(device, ZX_PROTOCOL_COMPOSITE, &composite);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s could not get ZX_PROTOCOL_COMPOSITE\n", __func__);
+        return status;
+    }
 
-    zx_status_t status = mac_device->InitPdev();
+    zx_device_t* components[2];
+    size_t actual;
+    composite_get_components(&composite, components, 2, &actual);
+    if (actual != 2) {
+        zxlogf(ERROR, "%s could not get components\n", __func__);
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    status = device_get_protocol(components[0], ZX_PROTOCOL_PDEV, &pdev);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s could not get ZX_PROTOCOL_PDEV\n", __func__);
+        return status;
+    }
+
+    status = device_get_protocol(components[1], ZX_PROTOCOL_ETH_BOARD, &eth_board);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s could not get ZX_PROTOCOL_ETH_BOARD\n", __func__);
+        return status;
+    }
+
+    auto mac_device = fbl::make_unique<DWMacDevice>(device, &pdev, &eth_board);
+
+    status = mac_device->InitPdev();
     if (status != ZX_OK) {
         return status;
     }
@@ -174,7 +196,7 @@ zx_status_t DWMacDevice::Create(zx_device_t* device) {
     mac_device->eth_board_.ResetPhy();
 
     // Get and cache the mac address.
-    mac_device->GetMAC(device);
+    mac_device->GetMAC(components[0]);
 
     // Reset the dma peripheral.
     mac_device->dwdma_regs_->busmode |= DMAMAC_SRST;
@@ -202,8 +224,7 @@ zx_status_t DWMacDevice::Create(zx_device_t* device) {
 
     // Populate board specific information
     eth_dev_metadata_t phy_info;
-    size_t actual;
-    status = device_get_metadata(device, DEVICE_METADATA_PRIVATE, &phy_info,
+    status = device_get_metadata(components[0], DEVICE_METADATA_ETH_PHY_DEVICE, &phy_info,
                                  sizeof(eth_dev_metadata_t), &actual);
     if (status != ZX_OK || actual != sizeof(eth_dev_metadata_t)) {
         zxlogf(ERROR, "dwmac: Could not get PHY metadata %d\n", status);
@@ -212,8 +233,8 @@ zx_status_t DWMacDevice::Create(zx_device_t* device) {
 
     zx_device_prop_t props[] = {
         {BIND_PLATFORM_DEV_VID, 0, phy_info.vid},
-        {BIND_PLATFORM_DEV_DID, 0, phy_info.did},
         {BIND_PLATFORM_DEV_PID, 0, phy_info.pid},
+        {BIND_PLATFORM_DEV_DID, 0, phy_info.did},
     };
 
     device_add_args_t phy_device_args = {};
@@ -355,8 +376,9 @@ zx_status_t DWMacDevice::EthMacRegisterCallbacks(const eth_mac_callbacks_t* cbs)
     return ZX_OK;
 }
 
-DWMacDevice::DWMacDevice(zx_device_t* device)
-    : ddk::Device<DWMacDevice, ddk::Unbindable>(device), pdev_(device), eth_board_(device) {}
+DWMacDevice::DWMacDevice(zx_device_t* device, pdev_protocol_t* pdev,
+                         eth_board_protocol_t* eth_board)
+    : ddk::Device<DWMacDevice, ddk::Unbindable>(device), pdev_(pdev), eth_board_(eth_board) {}
 
 void DWMacDevice::ReleaseBuffers() {
     //Unpin the memory used for the dma buffers
@@ -380,9 +402,11 @@ void DWMacDevice::DdkUnbind() {
 }
 
 zx_status_t DWMacDevice::ShutDown() {
-    running_.store(false);
-    dma_irq_.destroy();
-    thrd_join(thread_, NULL);
+    if (running_.load()) {
+        running_.store(false);
+        dma_irq_.destroy();
+        thrd_join(thread_, NULL);
+    }
     fbl::AutoLock lock(&lock_);
     online_ = false;
     ethmac_client_.clear();
@@ -587,8 +611,18 @@ zx_status_t DWMacDevice::EthmacSetParam(uint32_t param, int32_t value, const voi
     return ZX_OK;
 }
 
+static zx_driver_ops_t driver_ops = [](){
+    zx_driver_ops_t ops = {};
+    ops.version = DRIVER_OPS_VERSION;
+    ops.bind = DWMacDevice::Create;
+    return ops;
+}();
+
 } // namespace eth
 
-extern "C" zx_status_t dwmac_bind(void* ctx, zx_device_t* device, void** cookie) {
-    return eth::DWMacDevice::Create(device);
-}
+// clang-format off
+ZIRCON_DRIVER_BEGIN(dwmac, eth::driver_ops, "designware_mac", "0.1", 3)
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_COMPOSITE),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_DESIGNWARE),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_ETH_MAC),
+ZIRCON_DRIVER_END(dwmac)

@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
 #include <ddk/protocol/ethernet.h>
+#include <fbl/algorithm.h>
 #include <soc/aml-s912/s912-gpio.h>
 #include <soc/aml-s912/s912-hw.h>
 
@@ -72,7 +74,7 @@ static const eth_dev_metadata_t eth_phy_device = {
 
 static const pbus_metadata_t eth_mac_device_metadata[] = {
     {
-        .type = DEVICE_METADATA_PRIVATE,
+        .type = DEVICE_METADATA_ETH_PHY_DEVICE,
         .data_buffer = &eth_phy_device,
         .data_size = sizeof(eth_dev_metadata_t),
     },
@@ -88,7 +90,7 @@ static const eth_dev_metadata_t eth_mac_device = {
 
 static const pbus_metadata_t eth_board_metadata[] = {
     {
-        .type = DEVICE_METADATA_PRIVATE,
+        .type = DEVICE_METADATA_ETH_MAC_DEVICE,
         .data_buffer = &eth_mac_device,
         .data_size = sizeof(eth_dev_metadata_t),
     },
@@ -101,45 +103,69 @@ static const pbus_i2c_channel_t vim2_mcu_i2c[] = {
     },
 };
 
-static const pbus_dev_t eth_board_children[] = {
-    // Designware MAC.
-    []() {
-        pbus_dev_t dev;
-        dev.name = "dwmac";
-        dev.vid = PDEV_VID_DESIGNWARE;
-        dev.did = PDEV_DID_ETH_MAC;
-        dev.mmio_list = eth_mac_mmios;
-        dev.mmio_count = countof(eth_mac_mmios);
-        dev.irq_list = eth_mac_irqs;
-        dev.irq_count = countof(eth_mac_irqs);
-        dev.bti_list = eth_mac_btis;
-        dev.bti_count = countof(eth_mac_btis);
-        dev.metadata_list = eth_mac_device_metadata;
-        dev.metadata_count = countof(eth_mac_device_metadata);
-        dev.boot_metadata_list = eth_mac_metadata;
-        dev.boot_metadata_count = countof(eth_mac_metadata);
-        return dev;
-    }(),
+static pbus_dev_t eth_board_dev = [](){
+    pbus_dev_t dev;
+    dev.name = "ethernet_mac";
+    dev.vid = PDEV_VID_AMLOGIC;
+    dev.pid = PDEV_PID_AMLOGIC_S912;
+    dev.did = PDEV_DID_AMLOGIC_ETH;
+    dev.mmio_list = eth_board_mmios;
+    dev.mmio_count = countof(eth_board_mmios);
+    dev.gpio_list = eth_board_gpios;
+    dev.gpio_count = countof(eth_board_gpios);
+    dev.i2c_channel_list = vim2_mcu_i2c;
+    dev.i2c_channel_count = countof(vim2_mcu_i2c);
+    dev.metadata_list = eth_board_metadata;
+    dev.metadata_count = countof(eth_board_metadata);
+    return dev;
+}();
+
+static pbus_dev_t dwmac_dev = [](){
+    pbus_dev_t dev;
+    dev.name = "dwmac";
+    dev.vid = PDEV_VID_DESIGNWARE;
+    dev.did = PDEV_DID_ETH_MAC;
+    dev.mmio_list = eth_mac_mmios;
+    dev.mmio_count = countof(eth_mac_mmios);
+    dev.irq_list = eth_mac_irqs;
+    dev.irq_count = countof(eth_mac_irqs);
+    dev.bti_list = eth_mac_btis;
+    dev.bti_count = countof(eth_mac_btis);
+    dev.metadata_list = eth_mac_device_metadata;
+    dev.metadata_count = countof(eth_mac_device_metadata);
+    dev.boot_metadata_list = eth_mac_metadata;
+    dev.boot_metadata_count = countof(eth_mac_metadata);
+    return dev;
+}();
+
+// Composite binding rules for wifi driver.
+static const zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+static const zx_bind_inst_t pdev_match[]  = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_DESIGNWARE),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_ETH_MAC),
+};
+static const zx_bind_inst_t eth_board_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_ETH_BOARD),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_DESIGNWARE),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_ETH_MAC),
+};
+static const device_component_part_t pdev_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(pdev_match), pdev_match },
+};
+static const device_component_part_t eth_board_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(eth_board_match), eth_board_match },
+};
+static const device_component_t dwmac_composite[] = {
+    { fbl::count_of(pdev_component), pdev_component },
+    { fbl::count_of(eth_board_component), eth_board_component },
 };
 
 zx_status_t Vim::EthInit() {
-
-    pbus_dev_t eth_board_dev = {};
-    eth_board_dev.name = "ethernet_mac";
-    eth_board_dev.vid = PDEV_VID_AMLOGIC;
-    eth_board_dev.pid = PDEV_PID_AMLOGIC_S912;
-    eth_board_dev.did = PDEV_DID_AMLOGIC_ETH;
-    eth_board_dev.mmio_list = eth_board_mmios;
-    eth_board_dev.mmio_count = countof(eth_board_mmios);
-    eth_board_dev.gpio_list = eth_board_gpios;
-    eth_board_dev.gpio_count = countof(eth_board_gpios);
-    eth_board_dev.i2c_channel_list = vim2_mcu_i2c;
-    eth_board_dev.i2c_channel_count = countof(vim2_mcu_i2c);
-    eth_board_dev.metadata_list = eth_board_metadata;
-    eth_board_dev.metadata_count = countof(eth_board_metadata);
-    eth_board_dev.child_list = eth_board_children;
-    eth_board_dev.child_count = countof(eth_board_children);
-
     // setup pinmux for RGMII connections
     gpio_impl_.SetAltFunction(S912_ETH_MDIO, S912_ETH_MDIO_FN);
     gpio_impl_.SetAltFunction(S912_ETH_MDC, S912_ETH_MDC_FN);
@@ -159,11 +185,31 @@ zx_status_t Vim::EthInit() {
     gpio_impl_.SetAltFunction(S912_ETH_TXD2, S912_ETH_TXD2_FN);
     gpio_impl_.SetAltFunction(S912_ETH_TXD3, S912_ETH_TXD3_FN);
 
-    zx_status_t status = pbus_.DeviceAdd(&eth_board_dev);
-
+    auto status = pbus_.DeviceAdd(&eth_board_dev);
     if (status != ZX_OK) {
         zxlogf(ERROR, "EthInit: pbus_device_add failed: %d\n", status);
+        return status;
     }
-    return status;
+    status = pbus_.DeviceAdd(&dwmac_dev);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "EthInit: pbus_device_add failed: %d\n", status);
+        return status;
+    }
+
+    // Add a composite device for dwmac driver.
+    // Add a composite device for dwmac driver.
+    constexpr zx_device_prop_t props[] = {
+        { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_DESIGNWARE },
+        { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_ETH_MAC },
+    };
+
+    status = DdkAddComposite("dwmac", props, fbl::count_of(props), dwmac_composite,
+                             fbl::count_of(dwmac_composite), 0);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: device_add_composite failed: %d\n", __func__, status);
+        return status;
+    }
+
+    return ZX_OK;
 }
 } //namespace vim
