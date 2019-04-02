@@ -15,7 +15,7 @@ use {
 use crate::{
     types::{
         EndpointType, Error, ErrorCode, MediaType, Result, ServiceCapability, StreamEndpointId,
-        StreamInformation, TryFrom,
+        StreamInformation, TryFrom
     },
     Peer, SimpleResponder,
 };
@@ -103,6 +103,23 @@ impl StreamEndpoint {
             self.capabilities.clone(),
         )
         .expect("as_new")
+    }
+
+    /// Make a new StreamEndpoint from a StreamInformation and associated Capabilities.
+    /// StreamEndpooints start in the Idle state.
+    pub fn from_info(info: &StreamInformation, capabilities: Vec<ServiceCapability>,
+    ) -> StreamEndpoint {
+        StreamEndpoint {
+            id: info.id().clone(),
+            capabilities: capabilities,
+            media_type: info.media_type().clone(),
+            endpoint_type: info.endpoint_type().clone(),
+            state: StreamState::Idle,
+            transport: None,
+            stream_held: Arc::new(Mutex::new(false)),
+            remote_id: None,
+            configuration: vec![],
+        }
     }
 
     /// Attempt to Configure this stream using the capabilities given.
@@ -281,6 +298,50 @@ impl StreamEndpoint {
             self.media_type.clone(),
             self.endpoint_type.clone(),
         )
+    }
+
+    /// Test whether this StreamEndpoint is compatible with the endpoint given
+    /// (can they be configured to be connected to each other)
+    pub fn compatible_with(&self, other: &StreamEndpoint) -> bool {
+        // Sinks can only be connected to Sources (and vice versa)
+        if self.endpoint_type == other.endpoint_type {
+            return false;
+        }
+        // Media type needs to match
+        if self.media_type != other.media_type {
+            return false;
+        }
+        for capability in self.capabilities.iter() {
+            match capability {
+                // If we have media transport, they also need to be able to transport
+                ServiceCapability::MediaTransport => {
+                    if !other.capabilities.iter().any(|x| x == &ServiceCapability::MediaTransport) {
+                        return false;
+                    }
+                },
+                // See that Media Codecs match
+                ServiceCapability::MediaCodec { media_type, codec_type, codec_extra: _ } => {
+                    let mut media_codec_found = false;
+                    for capability in other.capabilities.iter() {
+                        match capability {
+                            ServiceCapability::MediaCodec { media_type: match_type, codec_type: match_codec, codec_extra: _ }  => {
+                                if media_type != match_type || codec_type != match_codec {
+                                    return false;
+                                }
+                                media_codec_found = true;
+                            },
+                            _ => {},
+                        }
+                    }
+                    if !media_codec_found {
+                        // Couldn't find a MediaCodec to match ?!?
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+        return true;
     }
 
     /// Take the media stream, which transmits (or receives) any media for this StreamEndpoint.

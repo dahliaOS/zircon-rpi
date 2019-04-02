@@ -601,6 +601,13 @@ impl ServiceCapability {
             _ => false,
         }
     }
+
+    pub fn is_codec_type(&self, codec: &MediaCodecType) -> bool {
+        match self {
+            ServiceCapability::MediaCodec { codec_type, .. } => codec_type == codec,
+            _ => false,
+        }
+    }
 }
 
 impl Decodable for ServiceCapability {
@@ -750,6 +757,15 @@ impl StreamInformation {
     pub fn id(&self) -> &StreamEndpointId {
         &self.id
     }
+
+    pub fn media_type(&self) -> &MediaType {
+        &self.media_type
+    }
+
+    pub fn endpoint_type(&self) -> &EndpointType {
+        &self.endpoint_type
+    }
+
 
     pub fn in_use(&self) -> &bool {
         &self.in_use

@@ -9,6 +9,7 @@ group("profiles") {
     "bt-a2dp-sink:tests",
     "bt-avrcp",
     "bt-avrcp:tests",
+    "bt-a2dp-source",
     "bt-hog",
   ]
 }
