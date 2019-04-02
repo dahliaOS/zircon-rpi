@@ -12,7 +12,7 @@
 #include <ddktl/protocol/gpio.h>
 #include <ddktl/protocol/i2c.h>
 #include <ddktl/protocol/power.h>
-#include <ddktl/protocol/platform/device.h>
+#include <ddktl/protocol/platform/deviceimpl.h>
 #include <ddktl/protocol/sysmem.h>
 #include <fbl/ref_ptr.h>
 #include <fbl/unique_ptr.h>
@@ -155,7 +155,7 @@ class ProxyDevice;
 using ProxyDeviceType = ddk::FullDevice<ProxyDevice>;
 
 class ProxyDevice : public ProxyDeviceType,
-                    public ddk::PDevProtocol<ProxyDevice, ddk::base_protocol> {
+                    public ddk::PDevImplProtocol<ProxyDevice, ddk::base_protocol> {
 public:
     explicit ProxyDevice(zx_device_t* parent, uint32_t device_id, fbl::RefPtr<PlatformProxy> proxy)
         : ProxyDeviceType(parent), device_id_(device_id), proxy_(proxy), clk_(device_id, proxy),
@@ -165,9 +165,9 @@ public:
     static zx_status_t CreateRoot(zx_device_t* parent, fbl::RefPtr<PlatformProxy> proxy);
 
     // Creates a ProxyDevice to be a child platform device or a proxy client device.
-    static zx_status_t CreateChild(zx_device_t* parent, uint32_t device_id,
-                                   fbl::RefPtr<PlatformProxy> proxy, const device_add_args_t* args,
-                                   zx_device_t** device);
+    static zx_status_t CreateChild(zx_device_t* parent, uint32_t device_id, uint32_t vid,
+                                   uint32_t pid, uint32_t did, fbl::RefPtr<PlatformProxy> proxy,
+                                   const device_add_args_t* args, zx_device_t** device);
 
     // Full device protocol implementation.
     // For child devices, these call through to the device protocol passed via pdev_device_add().
@@ -186,40 +186,31 @@ public:
     zx_status_t DdkResume(uint32_t flags);
     zx_status_t DdkRxrpc(zx_handle_t channel);
 
-    // Platform device protocol implementation.
-    zx_status_t PDevGetMmio(uint32_t index, pdev_mmio_t* out_mmio);
-    zx_status_t PDevGetInterrupt(uint32_t index, uint32_t flags, zx::interrupt* out_irq);
-    zx_status_t PDevGetBti(uint32_t index, zx::bti* out_bti);
-    zx_status_t PDevGetSmc(uint32_t index, zx::resource* out_resource);
-    zx_status_t PDevGetDeviceInfo(pdev_device_info_t* out_info);
-    zx_status_t PDevGetBoardInfo(pdev_board_info_t* out_info);
-    zx_status_t PDevDeviceAdd(uint32_t index, const device_add_args_t* args, zx_device_t** device);
-    zx_status_t PDevGetProtocol(uint32_t proto_id, uint32_t index, void* out_protocol,
-                                size_t protocol_size, size_t* protocol_actual);
+    // Platform Device Impl protocol implementation.
+    zx_status_t PDevImplGetMmio(uint32_t index, zx_paddr_t* out_phys, size_t* out_length,
+                                zx::resource* out_resource);
+    zx_status_t PDevImplGetInterrupt(uint32_t index, uint32_t* out_irq, uint32_t* out_mode,
+                                     zx::resource* out_resource);
+    zx_status_t PDevImplGetBti(uint32_t index, zx::bti* out_bti);
+    zx_status_t PDevImplGetSmc(uint32_t index, zx::resource* out_smc);
+    zx_status_t PDevImplGetDeviceInfo(pdev_device_info_t* out_info);
+    zx_status_t PDevImplGetBoardInfo(pdev_board_info_t* out_info);
+    zx_status_t PDevImplDeviceAdd(uint32_t index, const device_add_args_t* args,
+                                  zx_device_t** out_device);
+    zx_status_t PDevImplGetProtocol(uint32_t proto_id, uint32_t index,
+                                    void* out_out_protocol_buffer, size_t out_protocol_size,
+                                    size_t* out_out_protocol_actual);
 
 private:
-    struct Mmio {
-        zx_paddr_t base;
-        size_t length;
-        zx::resource resource;
-    };
-    struct Irq {
-        uint32_t irq;
-        // ZX_INTERRUPT_MODE_* flags
-        uint32_t mode;
-        zx::resource resource;
-    };
-
     zx_status_t InitCommon();
     zx_status_t InitRoot();
-    zx_status_t InitChild(const device_add_args_t* args, zx_device_t** device);
+    zx_status_t InitChild(uint32_t vid, uint32_t pid, uint32_t did,
+                          const device_add_args_t* args, zx_device_t** device);
 
     DISALLOW_COPY_ASSIGN_AND_MOVE(ProxyDevice);
 
     const uint32_t device_id_;
     fbl::RefPtr<PlatformProxy> proxy_;
-    fbl::Vector<Mmio> mmios_;
-    fbl::Vector<Irq> irqs_;
     fbl::Vector<ProxyGpio> gpios_;
     fbl::Vector<ProxyPower> power_domains_;
     fbl::Vector<ProxyI2c> i2cs_;

@@ -89,13 +89,6 @@ zx_status_t AmlMailbox::MailboxSendCommand(const mailbox_channel_t* channel,
 }
 
 zx_status_t AmlMailbox::Bind() {
-
-    zx_device_prop_t props[] = {
-        {BIND_PLATFORM_DEV_VID, 0, PDEV_VID_AMLOGIC},
-        {BIND_PLATFORM_DEV_PID, 0, PDEV_PID_AMLOGIC_S912},
-        {BIND_PLATFORM_DEV_DID, 0, PDEV_DID_AMLOGIC_SCPI},
-    };
-
     device_add_args_t args = {};
     args.version = DEVICE_ADD_ARGS_VERSION;
     args.name = "aml-mailbox";
@@ -103,8 +96,6 @@ zx_status_t AmlMailbox::Bind() {
     args.ops = &ddk_device_proto_;
     args.proto_id = ddk_proto_id_;
     args.proto_ops = ddk_proto_ops_;
-    args.props = props;
-    args.prop_count = countof(props);
 
     return pdev_.DeviceAdd(0, &args, &zxdev_);
 }

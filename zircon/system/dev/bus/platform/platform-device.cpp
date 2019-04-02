@@ -39,8 +39,7 @@ zx_status_t PlatformDevice::Create(const pbus_dev_t* pdev, zx_device_t* parent, 
 }
 
 PlatformDevice::PlatformDevice(zx_device_t* parent, PlatformBus* bus, const pbus_dev_t* pdev)
-    : PlatformDeviceType(parent), bus_(bus), vid_(pdev->vid), pid_(pdev->pid),
-      did_(pdev->did), resource_tree_(ROOT_DEVICE_ID) {
+    : PlatformDeviceType(parent), bus_(bus), resource_tree_(ROOT_DEVICE_ID) {
     strlcpy(name_, pdev->name, sizeof(name_));
 }
 
@@ -175,9 +174,9 @@ zx_status_t PlatformDevice::RpcGetSmc(const DeviceResources* dr, uint32_t index,
 zx_status_t PlatformDevice::RpcGetDeviceInfo(const DeviceResources* dr,
                                              pdev_device_info_t* out_info) {
     pdev_device_info_t info = {
-        .vid = vid_,
-        .pid = pid_,
-        .did = did_,
+        .vid = dr->vid(),
+        .pid = dr->pid(),
+        .did = dr->did(),
         .mmio_count = static_cast<uint32_t>(dr->mmio_count()),
         .irq_count = static_cast<uint32_t>(dr->irq_count()),
         .gpio_count = static_cast<uint32_t>(dr->gpio_count()),
@@ -198,12 +197,16 @@ zx_status_t PlatformDevice::RpcGetDeviceInfo(const DeviceResources* dr,
 }
 
 zx_status_t PlatformDevice::RpcDeviceAdd(const DeviceResources* dr, uint32_t index,
-                                         uint32_t* out_device_id) {
+                                         uint32_t* out_device_id, uint32_t* out_vid,
+                                         uint32_t* out_pid, uint32_t* out_did) {
     if (index >= dr->child_count()) {
         return ZX_ERR_OUT_OF_RANGE;
     }
     // TODO(voydanoff) verify that this device has not already been added?
     *out_device_id = dr->child_index(index);
+    *out_vid = dr->vid(index);
+    *out_pid = dr->pid(index);
+    *out_did = dr->did(index);
     return ZX_OK;
 }
 
@@ -486,7 +489,7 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
     uint32_t resp_len;
 
     switch (req_header->proto_id) {
-    case ZX_PROTOCOL_PDEV: {
+    case ZX_PROTOCOL_PDEV_IMPL: {
         auto req = reinterpret_cast<rpc_pdev_req_t*>(&req_buf);
         if (actual < sizeof(*req)) {
             zxlogf(ERROR, "%s received %u, expecting %zu (PDEV)\n", __func__, actual, sizeof(*req));
@@ -517,7 +520,8 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
             status = bus_->PBusGetBoardInfo(&resp->board_info);
             break;
         case PDEV_DEVICE_ADD:
-            status = RpcDeviceAdd(dr, req->index, &resp->device_id);
+            status = RpcDeviceAdd(dr, req->index, &resp->device_id, &resp->vid, &resp->pid,
+                                  &resp->did);
             break;
         case PDEV_GET_METADATA: {
             auto resp = reinterpret_cast<rpc_pdev_metadata_rsp_t*>(resp_buf);
@@ -722,10 +726,10 @@ void PlatformDevice::DdkRelease() {
 
 zx_status_t PlatformDevice::Start() {
     char name[ZX_DEVICE_NAME_MAX];
-    if (vid_ == PDEV_VID_GENERIC && pid_ == PDEV_PID_GENERIC && did_ == PDEV_DID_KPCI) {
+    if (vid() == PDEV_VID_GENERIC && pid() == PDEV_PID_GENERIC && did() == PDEV_DID_KPCI) {
         strlcpy(name, "pci", sizeof(name));
     } else {
-        snprintf(name, sizeof(name), "%02x:%02x:%01x", vid_, pid_, did_);
+        snprintf(name, sizeof(name), "%u:%u:%u", vid(), pid(), did());
     }
     char argstr[64];
     snprintf(argstr, sizeof(argstr), "pdev:%s,", name);
@@ -741,13 +745,7 @@ zx_status_t PlatformDevice::Start() {
         device_add_flags |= DEVICE_ADD_INVISIBLE;
     }
 
-    zx_device_prop_t props[] = {
-        {BIND_PLATFORM_DEV_VID, 0, vid_},
-        {BIND_PLATFORM_DEV_PID, 0, pid_},
-        {BIND_PLATFORM_DEV_DID, 0, did_},
-    };
-    zx_status_t status = DdkAdd(name, device_add_flags, props, fbl::count_of(props),
-                                ZX_PROTOCOL_PDEV, argstr);
+    zx_status_t status = DdkAdd(name, device_add_flags, nullptr, 0, ZX_PROTOCOL_PDEV_IMPL, argstr);
     if (status != ZX_OK) {
         return status;
     }

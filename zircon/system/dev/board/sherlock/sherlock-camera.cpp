@@ -162,6 +162,9 @@ static const pbus_dev_t mipi_children = []() {
     // Sony IMX 227 Camera Sensor
     pbus_dev_t dev;
     dev.name = "imx227";
+    dev.vid = PDEV_VID_SONY;
+    dev.pid = PDEV_PID_SONY_IMX227;
+    dev.did = PDEV_DID_CAMERA_SENSOR;
     dev.i2c_channel_list = sensor_i2c;
     dev.i2c_channel_count = countof(sensor_i2c);
     dev.gpio_list = sensor_gpios;
@@ -175,6 +178,9 @@ static const pbus_dev_t isp_children = []() {
     // MIPI CSI PHY ADAPTER
     pbus_dev_t dev;
     dev.name = "mipi-csi2";
+    dev.vid = PDEV_VID_AMLOGIC;
+    dev.pid = PDEV_PID_AMLOGIC_T931;
+    dev.did = PDEV_DID_AMLOGIC_MIPI_CSI;
     dev.mmio_list = mipi_mmios;
     dev.mmio_count = countof(mipi_mmios);
     dev.metadata_list = mipi_metadata;

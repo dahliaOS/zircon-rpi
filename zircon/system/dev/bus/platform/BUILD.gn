@@ -6,6 +6,7 @@ group("platform") {
   deps = [
     ":platform-bus",
     ":platform-bus.proxy",
+    ":platform-device",
   ]
 }
 
@@ -58,12 +59,29 @@ driver("platform-bus.proxy") {
     "$zx/system/banjo/ddk-protocol-i2cimpl",
     "$zx/system/banjo/ddk-protocol-platform-bus",
     "$zx/system/banjo/ddk-protocol-platform-device",
+    "$zx/system/banjo/ddk-protocol-platform-deviceimpl",
     "$zx/system/banjo/ddk-protocol-powerimpl",
     "$zx/system/banjo/ddk-protocol-sysmem",
     "$zx/system/ulib/ddk",
     "$zx/system/ulib/ddktl",
     "$zx/system/ulib/fbl",
     "$zx/system/ulib/sync",
+    "$zx/system/ulib/zircon",
+    "$zx/system/ulib/zx",
+    "$zx/system/ulib/zxcpp",
+  ]
+}
+
+driver("platform-device") {
+  sources = [
+    "generic-platform-device.cpp",
+  ]
+  deps = [
+    "$zx/system/banjo/ddk-protocol-platform-device",
+    "$zx/system/banjo/ddk-protocol-platform-deviceimpl",
+    "$zx/system/ulib/ddk",
+    "$zx/system/ulib/ddktl",
+    "$zx/system/ulib/fbl",
     "$zx/system/ulib/zircon",
     "$zx/system/ulib/zx",
     "$zx/system/ulib/zxcpp",

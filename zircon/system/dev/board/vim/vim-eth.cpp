@@ -106,6 +106,8 @@ static const pbus_dev_t eth_board_children[] = {
     []() {
         pbus_dev_t dev;
         dev.name = "dwmac";
+        dev.vid = PDEV_VID_DESIGNWARE;
+        dev.did = PDEV_DID_ETH_MAC;
         dev.mmio_list = eth_mac_mmios;
         dev.mmio_count = countof(eth_mac_mmios);
         dev.irq_list = eth_mac_irqs;

@@ -27,6 +27,10 @@ bool CopyResources(size_t in_count, const T* in_list, fbl::Array<T>* out) {
 namespace platform_bus {
 
 zx_status_t DeviceResources::Init(const pbus_dev_t* pdev, uint32_t* next_index) {
+    vid_ = pdev->vid;
+    pid_ = pdev->pid;
+    did_ = pdev->did;
+
     if (!CopyResources(pdev->mmio_count, pdev->mmio_list, &mmios_) ||
         !CopyResources(pdev->irq_count, pdev->irq_list, &irqs_) ||
         !CopyResources(pdev->gpio_count, pdev->gpio_list, &gpios_) ||

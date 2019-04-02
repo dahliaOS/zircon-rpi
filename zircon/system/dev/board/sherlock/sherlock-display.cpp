@@ -113,6 +113,9 @@ constexpr pbus_mmio_t dsi_mmios[] = {
 static pbus_dev_t display_dev = []() {
     pbus_dev_t dev;
     dev.name = "display";
+    dev.vid = PDEV_VID_AMLOGIC;
+    dev.pid = PDEV_PID_AMLOGIC_S905D2;
+    dev.did = PDEV_DID_AMLOGIC_DISPLAY;
     dev.mmio_list = display_mmios;
     dev.mmio_count = countof(display_mmios);
     dev.irq_list = display_irqs;

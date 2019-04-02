@@ -176,6 +176,9 @@ static const pbus_dev_t scpi_children[] = {
     // VIM2 thermal driver
     []() {
         pbus_dev_t dev;
+        dev.vid = PDEV_VID_AMLOGIC;
+        dev.pid = PDEV_PID_AMLOGIC_S912;
+        dev.did = PDEV_DID_AMLOGIC_THERMAL;
         dev.gpio_list = fanctl_gpios;
         dev.gpio_count = countof(fanctl_gpios);
         dev.metadata_list = vim_thermal_metadata;
@@ -188,6 +191,9 @@ static const pbus_dev_t mailbox_children[] = {
     // Amlogic SCPI driver
     []() {
         pbus_dev_t dev;
+        dev.vid = PDEV_VID_AMLOGIC;
+        dev.pid = PDEV_PID_AMLOGIC_S912;
+        dev.did = PDEV_DID_AMLOGIC_SCPI;
         dev.child_list = scpi_children;
         dev.child_count = countof(scpi_children);
         return dev;

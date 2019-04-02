@@ -328,58 +328,54 @@ zx_status_t ProxyAmlogicCanvas::AmlogicCanvasFree(uint8_t canvas_idx) {
     return proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp));
 }
 
-zx_status_t ProxyDevice::PDevGetMmio(uint32_t index, pdev_mmio_t* out_mmio) {
-    if (index >= mmios_.size()) {
-        return ZX_ERR_OUT_OF_RANGE;
-    }
-
-    const Mmio& mmio = mmios_[index];
-    const zx_paddr_t vmo_base = ROUNDDOWN(mmio.base, ZX_PAGE_SIZE);
-    const size_t vmo_size = ROUNDUP(mmio.base + mmio.length - vmo_base, ZX_PAGE_SIZE);
-    zx::vmo vmo;
-
-    zx_status_t status = zx::vmo::create_physical(mmio.resource, vmo_base, vmo_size, &vmo);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s %s: creating vmo failed %d\n", name_, __FUNCTION__, status);
-        return status;
-    }
-
-    char name[32];
-    snprintf(name, sizeof(name), "%s mmio %u", name_, index);
-    status = vmo.set_property(ZX_PROP_NAME, name, sizeof(name));
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s %s: setting vmo name failed %d\n", name_, __FUNCTION__, status);
-        return status;
-    }
-
-    out_mmio->offset = mmio.base - vmo_base;
-    out_mmio->vmo = vmo.release();
-    out_mmio->size = mmio.length;
-    return ZX_OK;
-}
-
-zx_status_t ProxyDevice::PDevGetInterrupt(uint32_t index, uint32_t flags, zx::interrupt* out_irq) {
-    if (index >= irqs_.size()) {
-        return ZX_ERR_OUT_OF_RANGE;
-    }
-
-    Irq* irq = &irqs_[index];
-    if (flags == 0) {
-        flags = irq->mode;
-    }
-    zx_status_t status = zx::interrupt::create(irq->resource, irq->irq, flags, out_irq);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s %s: creating interrupt failed: %d\n", name_, __FUNCTION__, status);
-        return status;
-    }
-
-    return ZX_OK;
-}
-
-zx_status_t ProxyDevice::PDevGetBti(uint32_t index, zx::bti* out_bti) {
+zx_status_t ProxyDevice::PDevImplGetMmio(uint32_t index, zx_paddr_t* out_phys, size_t* out_length,
+                                         zx::resource* out_resource) {
     rpc_pdev_req_t req = {};
     rpc_pdev_rsp_t resp = {};
-    req.header.proto_id = ZX_PROTOCOL_PDEV;
+    zx_handle_t rsrc_handle;
+
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
+    req.header.op = PDEV_GET_MMIO;
+    req.index = index;
+    auto status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp),
+                         nullptr, 0, &rsrc_handle, 1, nullptr);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    *out_phys = resp.paddr;
+    *out_length = resp.length;
+    out_resource->reset(rsrc_handle);
+
+    return ZX_OK;
+}
+
+zx_status_t ProxyDevice::PDevImplGetInterrupt(uint32_t index, uint32_t* out_irq, uint32_t* out_mode,
+                                              zx::resource* out_resource) {
+    rpc_pdev_req_t req = {};
+    rpc_pdev_rsp_t resp = {};
+    zx_handle_t rsrc_handle;
+
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
+    req.header.op = PDEV_GET_INTERRUPT;
+    req.index = index;
+    auto status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp),
+                         NULL, 0, &rsrc_handle, 1, NULL);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    *out_irq = resp.irq;
+    *out_mode = resp.mode;
+    out_resource->reset(rsrc_handle);
+
+    return ZX_OK;
+}
+
+zx_status_t ProxyDevice::PDevImplGetBti(uint32_t index, zx::bti* out_bti) {
+    rpc_pdev_req_t req = {};
+    rpc_pdev_rsp_t resp = {};
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
     req.header.op = PDEV_GET_BTI;
     req.index = index;
 
@@ -387,10 +383,10 @@ zx_status_t ProxyDevice::PDevGetBti(uint32_t index, zx::bti* out_bti) {
                        out_bti->reset_and_get_address(), 1, nullptr);
 }
 
-zx_status_t ProxyDevice::PDevGetSmc(uint32_t index, zx::resource* out_resource) {
+zx_status_t ProxyDevice::PDevImplGetSmc(uint32_t index, zx::resource* out_resource) {
     rpc_pdev_req_t req = {};
     rpc_pdev_rsp_t resp = {};
-    req.header.proto_id = ZX_PROTOCOL_PDEV;
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
     req.header.op = PDEV_GET_SMC;
     req.index = index;
 
@@ -398,10 +394,10 @@ zx_status_t ProxyDevice::PDevGetSmc(uint32_t index, zx::resource* out_resource) 
                        out_resource->reset_and_get_address(), 1, nullptr);
 }
 
-zx_status_t ProxyDevice::PDevGetDeviceInfo(pdev_device_info_t* out_info) {
+zx_status_t ProxyDevice::PDevImplGetDeviceInfo(pdev_device_info_t* out_info) {
     rpc_pdev_req_t req = {};
     rpc_pdev_rsp_t resp = {};
-    req.header.proto_id = ZX_PROTOCOL_PDEV;
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
     req.header.op = PDEV_GET_DEVICE_INFO;
 
     auto status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp));
@@ -412,10 +408,10 @@ zx_status_t ProxyDevice::PDevGetDeviceInfo(pdev_device_info_t* out_info) {
     return ZX_OK;
 }
 
-zx_status_t ProxyDevice::PDevGetBoardInfo(pdev_board_info_t* out_info) {
+zx_status_t ProxyDevice::PDevImplGetBoardInfo(pdev_board_info_t* out_info) {
     rpc_pdev_req_t req = {};
     rpc_pdev_rsp_t resp = {};
-    req.header.proto_id = ZX_PROTOCOL_PDEV;
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
     req.header.op = PDEV_GET_BOARD_INFO;
 
     auto status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp));
@@ -426,11 +422,11 @@ zx_status_t ProxyDevice::PDevGetBoardInfo(pdev_board_info_t* out_info) {
     return ZX_OK;
 }
 
-zx_status_t ProxyDevice::PDevDeviceAdd(uint32_t index, const device_add_args_t* args,
-                                       zx_device_t** device) {
+zx_status_t ProxyDevice::PDevImplDeviceAdd(uint32_t index, const device_add_args_t* args,
+                                           zx_device_t** device) {
     rpc_pdev_req_t req = {};
     rpc_pdev_rsp_t resp = {};
-    req.header.proto_id = ZX_PROTOCOL_PDEV;
+    req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
     req.header.op = PDEV_DEVICE_ADD;
     req.index = index;
 
@@ -439,11 +435,11 @@ zx_status_t ProxyDevice::PDevDeviceAdd(uint32_t index, const device_add_args_t* 
         return status;
     }
 
-    return CreateChild(zxdev(), resp.device_id, proxy_, args, device);
+    return CreateChild(zxdev(), resp.device_id, resp.vid, resp.pid, resp.did, proxy_, args, device);
 }
 
-zx_status_t ProxyDevice::PDevGetProtocol(uint32_t proto_id, uint32_t index, void* out_protocol,
-                                         size_t protocol_size, size_t* protocol_actual) {
+zx_status_t ProxyDevice::PDevImplGetProtocol(uint32_t proto_id, uint32_t index, void* out_protocol,
+                                             size_t protocol_size, size_t* protocol_actual) {
     if (protocol_size < sizeof(ddk::AnyProtocol)) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -499,16 +495,15 @@ zx_status_t ProxyDevice::CreateRoot(zx_device_t* parent, fbl::RefPtr<PlatformPro
     return ZX_OK;
 }
 
-zx_status_t ProxyDevice::CreateChild(zx_device_t* parent, uint32_t device_id,
-                                     fbl::RefPtr<PlatformProxy> proxy,
-                                     const device_add_args_t* args,
-                                     zx_device_t** device) {
+zx_status_t ProxyDevice::CreateChild(zx_device_t* parent, uint32_t device_id, uint32_t vid,
+                                     uint32_t pid, uint32_t did, fbl::RefPtr<PlatformProxy> proxy,
+                                     const device_add_args_t* args, zx_device_t** device) {
     fbl::AllocChecker ac;
     fbl::unique_ptr<ProxyDevice> dev(new (&ac) platform_bus::ProxyDevice(parent, device_id, proxy));
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
-    auto status = dev->InitChild(args, device);
+    auto status = dev->InitChild(vid, pid, did, args, device);
     if (status != ZX_OK) {
         return status;
     }
@@ -520,7 +515,7 @@ zx_status_t ProxyDevice::CreateChild(zx_device_t* parent, uint32_t device_id,
 
 zx_status_t ProxyDevice::InitCommon() {
     pdev_device_info_t info;
-    auto status = PDevGetDeviceInfo(&info);
+    auto status = PDevImplGetDeviceInfo(&info);
     if (status != ZX_OK) {
         return status;
     }
@@ -528,60 +523,6 @@ zx_status_t ProxyDevice::InitCommon() {
     metadata_count_ = info.metadata_count;
 
     fbl::AllocChecker ac;
-
-    for (uint32_t i = 0; i < info.mmio_count; i++) {
-        rpc_pdev_req_t req = {};
-        rpc_pdev_rsp_t resp = {};
-        zx_handle_t rsrc_handle;
-
-        req.header.proto_id = ZX_PROTOCOL_PDEV;
-        req.header.op = PDEV_GET_MMIO;
-        req.index = i;
-        status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp),
-                             NULL, 0, &rsrc_handle, 1, NULL);
-        if (status != ZX_OK) {
-            return status;
-        }
-
-        Mmio mmio;
-        mmio.base = resp.paddr;
-        mmio.length = resp.length;
-        mmio.resource.reset(rsrc_handle);
-        mmios_.push_back(std::move(mmio), &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-
-        zxlogf(SPEW, "%s: received MMIO %u (base %#lx length %#lx handle %#x)\n", name_, i,
-               mmio.base, mmio.length, mmio.resource.get());
-    }
-
-    for (uint32_t i = 0; i < info.irq_count; i++) {
-        rpc_pdev_req_t req = {};
-        rpc_pdev_rsp_t resp = {};
-        zx_handle_t rsrc_handle;
-
-        req.header.proto_id = ZX_PROTOCOL_PDEV;
-        req.header.op = PDEV_GET_INTERRUPT;
-        req.index = i;
-        status = proxy_->Rpc(device_id_, &req.header, sizeof(req), &resp.header, sizeof(resp),
-                             NULL, 0, &rsrc_handle, 1, NULL);
-        if (status != ZX_OK) {
-            return status;
-        }
-
-        Irq irq;
-        irq.irq = resp.irq;
-        irq.mode = resp.mode;
-        irq.resource.reset(rsrc_handle);
-        irqs_.push_back(std::move(irq), &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-
-        zxlogf(SPEW, "%s: received IRQ %u (irq %#x handle %#x)\n", name_, i, irq.irq,
-               irq.resource.get());
-    }
 
     for (uint32_t i = 0; i < info.gpio_count; i++) {
         ProxyGpio gpio(device_id_, i, proxy_);
@@ -618,7 +559,8 @@ zx_status_t ProxyDevice::InitRoot() {
     return DdkAdd(name_);
 }
 
-zx_status_t ProxyDevice::InitChild(const device_add_args_t* args, zx_device_t** device) {
+zx_status_t ProxyDevice::InitChild(uint32_t vid, uint32_t pid, uint32_t did,
+                                   const device_add_args_t* args, zx_device_t** device) {
     auto status = InitCommon();
     if (status != ZX_OK) {
         return status;
@@ -633,6 +575,9 @@ zx_status_t ProxyDevice::InitChild(const device_add_args_t* args, zx_device_t** 
     // Replace ctx and device protocol ops with ours so we can intercept device_get_protocol().
     new_args.ctx = this;
     new_args.ops = &ddk_device_proto_;
+    new_args.proto_id = ZX_PROTOCOL_PDEV_IMPL;
+    new_args.props = nullptr;
+    new_args.prop_count = 0;
 
     if (!device) {
         device = &zxdev_;
@@ -655,7 +600,7 @@ zx_status_t ProxyDevice::InitChild(const device_add_args_t* args, zx_device_t** 
     for (uint32_t i = 0; i < metadata_count_; i++) {
         rpc_pdev_req_t req = {};
         rpc_pdev_metadata_rsp_t resp = {};
-        req.header.proto_id = ZX_PROTOCOL_PDEV;
+        req.header.proto_id = ZX_PROTOCOL_PDEV_IMPL;
         req.header.op = PDEV_GET_METADATA;
         req.index = i;
 
@@ -695,8 +640,8 @@ zx_status_t ProxyDevice::DdkGetProtocol(uint32_t proto_id, void* out) {
 
     // Finally, protocols provided by platform bus.
     switch (proto_id) {
-    case ZX_PROTOCOL_PDEV: {
-        proto->ops = &pdev_protocol_ops_;
+    case ZX_PROTOCOL_PDEV_IMPL: {
+        proto->ops = &pdev_impl_protocol_ops_;
         proto->ctx = this;
         return ZX_OK;
     }

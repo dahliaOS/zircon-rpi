@@ -107,12 +107,6 @@ zx_status_t AmlEthernet::Bind() {
         zxlogf(ERROR, "aml-ethernet: Could not get MAC metadata %d\n", status);
         return status;
     }
-
-    zx_device_prop_t props[] = {
-        {BIND_PLATFORM_DEV_VID, 0, mac_info.vid},
-        {BIND_PLATFORM_DEV_DID, 0, mac_info.did},
-    };
-
     device_add_args_t args = {};
     args.version = DEVICE_ADD_ARGS_VERSION;
     args.name = "aml-ethernet";
@@ -120,8 +114,6 @@ zx_status_t AmlEthernet::Bind() {
     args.ops = &ddk_device_proto_;
     args.proto_id = ddk_proto_id_;
     args.proto_ops = ddk_proto_ops_;
-    args.props = props;
-    args.prop_count = countof(props);
 
     return pdev_.DeviceAdd(0, &args, &zxdev_);
 }
