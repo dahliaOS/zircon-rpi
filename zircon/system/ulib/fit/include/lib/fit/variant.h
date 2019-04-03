@@ -5,11 +5,12 @@
 #ifndef LIB_FIT_VARIANT_H_
 #define LIB_FIT_VARIANT_H_
 
-#include <assert.h>
-
+#include <cassert>
 #include <new>
 #include <type_traits>
 #include <utility>
+
+#include "in_place_internal.h"
 
 namespace fit {
 namespace internal {
@@ -34,34 +35,6 @@ struct monostate final {
     constexpr bool operator==(const monostate& other) const { return true; }
     constexpr bool operator!=(const monostate& other) const { return false; }
 };
-
-// Tag for requesting in-place initialization of a variant alternative by index.
-template <size_t index>
-struct in_place_index_t final {};
-
-#ifdef __cpp_inline_variables
-
-// Inline variables are only available on C++ 17 and beyond.
-template <size_t index>
-inline constexpr in_place_index_t<index> in_place_index{};
-
-#else
-
-// On C++ 14 we need to provide storage for the variable so we define
-// |in_place_index| as a reference instead.
-template <size_t index>
-struct in_place_index_holder {
-    static constexpr in_place_index_t<index> instance{};
-};
-
-template <size_t index>
-constexpr in_place_index_t<index> in_place_index_holder<index>::instance;
-
-template <size_t index>
-static constexpr const in_place_index_t<index>& in_place_index =
-    in_place_index_holder<index>::instance;
-
-#endif // __cpp_inline_variables
 
 // Stores the contents of the variant as a recursively nested union
 // of alternatives.  Conceptually it might be simpler to use

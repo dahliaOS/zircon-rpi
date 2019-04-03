@@ -60,17 +60,13 @@ struct literal_traits {
 
     static variant a, b, c;
     static constexpr variant const_a;
-    static constexpr variant const_b{fit::internal::in_place_index<1>,
-                                     b_value};
-    static constexpr variant const_c{fit::internal::in_place_index<2>,
-                                     c_value};
+    static constexpr variant const_b{fit::in_place_index<1>, b_value};
+    static constexpr variant const_c{fit::in_place_index<2>, c_value};
 };
 
 literal_traits::variant literal_traits::a;
-literal_traits::variant literal_traits::b{fit::internal::in_place_index<1>,
-                                          literal_traits::b_value};
-literal_traits::variant literal_traits::c{fit::internal::in_place_index<2>,
-                                          literal_traits::c_value};
+literal_traits::variant literal_traits::b{fit::in_place_index<1>, literal_traits::b_value};
+literal_traits::variant literal_traits::c{fit::in_place_index<2>, literal_traits::c_value};
 
 struct complex_traits {
     using variant = fit::internal::variant<
@@ -93,15 +89,13 @@ const std::string complex_traits::c_value = "test";
 const std::string complex_traits::c2_value = "another";
 
 complex_traits::variant complex_traits::a;
-complex_traits::variant complex_traits::b{fit::internal::in_place_index<1>,
-                                          complex_traits::b_value};
-complex_traits::variant complex_traits::c{fit::internal::in_place_index<2>,
-                                          complex_traits::c_value};
+complex_traits::variant complex_traits::b{fit::in_place_index<1>, complex_traits::b_value};
+complex_traits::variant complex_traits::c{fit::in_place_index<2>, complex_traits::c_value};
 
 const complex_traits::variant complex_traits::const_a;
-const complex_traits::variant complex_traits::const_b{fit::internal::in_place_index<1>,
+const complex_traits::variant complex_traits::const_b{fit::in_place_index<1>,
                                                       complex_traits::b_value};
-const complex_traits::variant complex_traits::const_c{fit::internal::in_place_index<2>,
+const complex_traits::variant complex_traits::const_c{fit::in_place_index<2>,
                                                       complex_traits::c_value};
 
 template <typename T>

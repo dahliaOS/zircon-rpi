@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "storage_internal.h"
 #include "optional.h"
 
 namespace fit {
@@ -71,55 +72,15 @@ struct is_nullable<void> : public std::false_type {};
 template <typename T, bool = (is_nullable<T>::value &&
                               std::is_constructible<T, T&&>::value &&
                               std::is_assignable<T&, T&&>::value)>
-class nullable final {
+class nullable final : public optional<T> {
 public:
-    using value_type = T;
+    using optional<T>::optional;
 
-    constexpr nullable() = default;
     explicit constexpr nullable(decltype(nullptr)) {}
-    explicit constexpr nullable(T value)
-        : opt_(std::move(value)) {}
-    nullable(const nullable& other) = default;
-    nullable(nullable&& other) = default;
-    ~nullable() = default;
-
-    constexpr T& value() & { return opt_.value(); }
-    constexpr const T& value() const& { return opt_.value(); }
-    constexpr T&& value() && { return std::move(opt_.value()); }
-    constexpr const T&& value() const&& { return std::move(opt_.value()); }
-
-    template <typename U = T>
-    constexpr T value_or(U&& default_value) const {
-        return opt_.value_or(std::forward<U>(default_value));
-    }
-
-    constexpr T* operator->() { return &*opt_; }
-    constexpr const T* operator->() const { return &*opt_; }
-    constexpr T& operator*() { return *opt_; }
-    constexpr const T& operator*() const { return *opt_; }
-
-    constexpr bool has_value() const { return opt_.has_value(); }
-    explicit constexpr operator bool() const { return has_value(); }
-
-    nullable& operator=(const nullable& other) = default;
-    nullable& operator=(nullable&& other) = default;
-
-    nullable& operator=(decltype(nullptr)) {
-        reset();
+    constexpr nullable& operator=(decltype(nullptr)) {
+        this->reset();
         return *this;
     }
-
-    nullable& operator=(T value) {
-        opt_ = std::move(value);
-        return *this;
-    }
-
-    void reset() { opt_.reset(); }
-
-    void swap(nullable& other) { opt_.swap(other.opt_); }
-
-private:
-    optional<T> opt_;
 };
 
 template <typename T>
@@ -133,8 +94,8 @@ public:
         : value_(nullptr) {}
     explicit constexpr nullable(T value)
         : value_(std::move(value)) {}
-    nullable(const nullable& other) = default;
-    nullable(nullable&& other)
+    constexpr nullable(const nullable& other) = default;
+    constexpr nullable(nullable&& other)
         : value_(std::move(other.value_)) {
         other.value_ = nullptr;
     }
@@ -170,8 +131,8 @@ public:
     constexpr bool has_value() const { return !(value_ == nullptr); }
     explicit constexpr operator bool() const { return has_value(); }
 
-    nullable& operator=(const nullable& other) = default;
-    nullable& operator=(nullable&& other) {
+    constexpr nullable& operator=(const nullable& other) = default;
+    constexpr nullable& operator=(nullable&& other) {
         if (&other == this)
             return *this;
         value_ = std::move(other.value_);
@@ -179,19 +140,19 @@ public:
         return *this;
     }
 
-    nullable& operator=(decltype(nullptr)) {
+    constexpr nullable& operator=(decltype(nullptr)) {
         reset();
         return *this;
     }
 
-    nullable& operator=(T value) {
+    constexpr nullable& operator=(T value) {
         value_ = std::move(value);
         return *this;
     }
 
-    void reset() { value_ = nullptr; }
+    constexpr void reset() { value_ = nullptr; }
 
-    void swap(nullable& other) {
+    constexpr void swap(nullable& other) {
         using std::swap;
         swap(value_, other.value_);
     }
@@ -201,7 +162,7 @@ private:
 };
 
 template <typename T>
-void swap(nullable<T>& a, nullable<T>& b) {
+constexpr void swap(nullable<T>& a, nullable<T>& b) {
     a.swap(b);
 }
 
