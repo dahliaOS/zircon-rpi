@@ -100,6 +100,7 @@ gen_commands! {
         StopDiscovery = ("stop-discovery", [], "Stop Discovery"),
         Discoverable = ("discoverable", [], "Set this device to be discoverable"),
         NotDiscoverable = ("not-discoverable", [], "Revoke device discoverability"),
+        Forget = ("forget", ["id|addr"], "delete and disconnect a remote peer"),
         Help = ("help", [], "This message"),
         Exit = ("exit", [], "Close REPL"),
         Quit = ("quit", [], "Close REPL"),

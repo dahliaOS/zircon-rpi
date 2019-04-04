@@ -261,6 +261,27 @@ async fn disconnect<'a>(
     }
 }
 
+async fn forget<'a>(
+    args: &'a [&'a str],
+    state: &'a Mutex<State>,
+    control_svc: &'a ControlProxy,
+) -> Result<String, Error> {
+    if args.len() != 1 {
+        return Ok(format!("usage: {}", Cmd::Forget.cmd_help()));
+    }
+    // `args[0]` is the identifier of the remote device to connect to
+    let id = match to_identifier(state, args[0]) {
+        Some(id) => id,
+        None => return Ok(format!("Unable to forget: Unknown address {}", args[0])),
+    };
+    let response = await!(control_svc.forget(&id))?;
+    if response.error.is_some() {
+        Ok(Status::from(response).to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
 async fn set_discoverable(discoverable: bool, control_svc: &ControlProxy) -> Result<String, Error> {
     if discoverable {
         println!("Becoming discoverable..");
@@ -333,6 +354,7 @@ async fn handle_cmd(
         let res = match cmd {
             Ok(Cmd::Connect) => await!(connect(args, &state, &bt_svc)),
             Ok(Cmd::Disconnect) => await!(disconnect(args, &state, &bt_svc)),
+            Ok(Cmd::Forget) => await!(forget(args, &state, &bt_svc)),
             Ok(Cmd::StartDiscovery) => await!(set_discovery(true, &bt_svc)),
             Ok(Cmd::StopDiscovery) => await!(set_discovery(false, &bt_svc)),
             Ok(Cmd::Discoverable) => await!(set_discoverable(true, &bt_svc)),
