@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/platform-defs.h>
@@ -98,7 +99,7 @@ constexpr display_driver_t display_driver_info[] = {
 
 constexpr pbus_metadata_t display_metadata[] = {
     {
-        .type = DEVICE_METADATA_PRIVATE,
+        .type = DEVICE_METADATA_DISPLAY_DEVICE,
         .data_buffer = &display_driver_info,
         .data_size = sizeof(display_driver_t),
     },
@@ -142,10 +143,33 @@ static pbus_dev_t dsi_dev = []() {
     dev.metadata_count = countof(display_metadata);
     dev.mmio_list = dsi_mmios;
     dev.mmio_count =countof(dsi_mmios);
-    dev.child_list = &display_dev;
-    dev.child_count = 1;
     return dev;
 }();
+
+// Composite binding rules for display driver.
+constexpr zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+constexpr zx_bind_inst_t dsi_impl_match[]  = {
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_MEDIATEK),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_MEDIATEK_DSI),
+};
+constexpr zx_bind_inst_t sysmem_match[] = {
+    BI_MATCH_IF(EQ, BIND_PROTOCOL, ZX_PROTOCOL_SYSMEM),
+};
+constexpr device_component_part_t dsi_impl_component[] = {
+    { countof(root_match), root_match },
+    { countof(dsi_impl_match), dsi_impl_match },
+};
+constexpr device_component_part_t sysmem_component[] = {
+    { countof(root_match), root_match },
+    { countof(sysmem_match), sysmem_match },
+};
+constexpr device_component_t components[] = {
+    { countof(dsi_impl_component), dsi_impl_component },
+    { countof(sysmem_component), sysmem_component },
+};
+
 } // namespace
 
 // TODO(payamm): Remove PMIC access once PMIC driver is ready
@@ -220,6 +244,13 @@ zx_status_t Mt8167::DisplayInit() {
         zxlogf(ERROR, "%s: DeviceAdd failed %d\n", __FUNCTION__, status);
         return status;
     }
+
+    status = pbus_.CompositeDeviceAdd(&display_dev, components, fbl::count_of(components));
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: CompositeDeviceAdd failed %d\n", __func__, status);
+        return status;
+    }
+
     return ZX_OK;
 }
 
