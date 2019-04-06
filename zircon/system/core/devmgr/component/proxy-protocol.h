@@ -150,4 +150,15 @@ struct EthBoardProxyRequest {
     EthBoardOp op;
 };
 
+// ZX_PROTOCOL_USB_MODE_SWITCH proxy support.
+enum class UsbModeSwitchOp {
+    SET_MODE,
+};
+
+struct UsbModeSwitchProxyRequest {
+    ProxyRequest header;
+    UsbModeSwitchOp op;
+    usb_mode_t mode;
+};
+
 } // namespace component

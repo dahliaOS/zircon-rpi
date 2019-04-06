@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
@@ -85,7 +86,7 @@ static const pbus_bti_t dwc3_btis[] = {
 
 static usb_mode_t dwc3_mode = USB_MODE_HOST;
 
-static const pbus_metadata_t dwc2_metadata[] = {
+static const pbus_metadata_t dwc3_metadata[] = {
     {
         .type        = DEVICE_METADATA_USB_MODE,
         .data_buffer = &dwc3_mode,
@@ -93,21 +94,19 @@ static const pbus_metadata_t dwc2_metadata[] = {
     }
 };
 
-static const pbus_dev_t hikey_usb_children[] = {
-    {
-        .name = "dwc3",
-        .vid = PDEV_VID_GENERIC,
-        .pid = PDEV_PID_GENERIC,
-        .did = PDEV_DID_USB_DWC3,
-        .mmio_list = dwc3_mmios,
-        .mmio_count = countof(dwc3_mmios),
-        .irq_list = dwc3_irqs,
-        .irq_count = countof(dwc3_irqs),
-        .bti_list = dwc3_btis,
-        .bti_count = countof(dwc3_btis),
-        .metadata_list = dwc2_metadata,
-        .metadata_count = countof(dwc2_metadata),
-    },
+static const pbus_dev_t dwc3_dev = {
+    .name = "dwc3",
+    .vid = PDEV_VID_GENERIC,
+    .pid = PDEV_PID_GENERIC,
+    .did = PDEV_DID_USB_DWC3,
+    .mmio_list = dwc3_mmios,
+    .mmio_count = countof(dwc3_mmios),
+    .irq_list = dwc3_irqs,
+    .irq_count = countof(dwc3_irqs),
+    .bti_list = dwc3_btis,
+    .bti_count = countof(dwc3_btis),
+    .metadata_list = dwc3_metadata,
+    .metadata_count = countof(dwc3_metadata),
 };
 
 static const pbus_gpio_t hikey_usb_gpios[] = {
@@ -129,8 +128,24 @@ const pbus_dev_t hikey_usb_dev = {
     .did = PDEV_DID_HIKEY960_USB,
     .gpio_list = hikey_usb_gpios,
     .gpio_count = countof(hikey_usb_gpios),
-    .child_list = hikey_usb_children,
-    .child_count = countof(hikey_usb_children),
+};
+
+// Composite binding rules for USB driver.
+static const zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+static const zx_bind_inst_t ums_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_USB_MODE_SWITCH),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_USB_DWC3),
+};
+static const device_component_part_t ums_component[] = {
+    { countof(root_match), root_match },
+    { countof(ums_match), ums_match },
+};
+static const device_component_t components[] = {
+    { countof(ums_component), ums_component },
 };
 
 zx_status_t hikey960_usb_init(hikey960_t* hikey) {
@@ -141,6 +156,12 @@ zx_status_t hikey960_usb_init(hikey960_t* hikey) {
 
     if ((status = pbus_device_add(&hikey->pbus, &hikey_usb_dev)) != ZX_OK) {
         zxlogf(ERROR, "hikey960_add_devices could not add hikey_usb_dev: %d\n", status);
+        return status;
+    }
+
+    status = pbus_composite_device_add(&hikey->pbus, &dwc3_dev, components, countof(components));
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: pbus_composite_device_add failed: %d\n", __FUNCTION__, status);
         return status;
     }
 

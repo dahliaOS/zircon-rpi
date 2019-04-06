@@ -14,6 +14,7 @@
 #include <ddk/protocol/platform/device.h>
 #include <ddk/protocol/power.h>
 #include <ddk/protocol/sysmem.h>
+#include <ddk/protocol/usb/modeswitch.h>
 #include <ddktl/device.h>
 #include <lib/zx/channel.h>
 
@@ -61,6 +62,10 @@ private:
                           uint32_t* out_resp_size, const zx_handle_t* req_handles,
                           uint32_t req_handle_count, zx_handle_t* resp_handles,
                           uint32_t* resp_handle_count);
+    zx_status_t RpcUms(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+                      uint32_t* out_resp_size, const zx_handle_t* req_handles,
+                      uint32_t req_handle_count, zx_handle_t* resp_handles,
+                      uint32_t* resp_handle_count);
 
     amlogic_canvas_protocol_t canvas_ = {};
     clock_protocol_t clock_ = {};
@@ -69,6 +74,7 @@ private:
     pdev_protocol_t pdev_ = {};
     power_protocol_t power_ = {};
     sysmem_protocol_t sysmem_ = {};
+    usb_mode_switch_protocol_t ums_ = {};
 };
 
 } // namespace component
