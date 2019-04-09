@@ -79,6 +79,11 @@ void arm64_thread_process_pending_signals(arm64_iframe_t* iframe);
 void platform_irq(iframe_short_t* frame);
 void platform_fiq(iframe_short_t* frame);
 
+/* global cache flush routines */
+void arm64_invalidate_cache_all();
+void arm64_clean_invalidate_cache_all();
+void arm64_clean_cache_all();
+
 /* fpu routines */
 void arm64_fpu_exception(arm64_iframe_t* iframe, uint exception_flags);
 void arm64_fpu_context_switch(struct thread* oldthread, struct thread* newthread);
