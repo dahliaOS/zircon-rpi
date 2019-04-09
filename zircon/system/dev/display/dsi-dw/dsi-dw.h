@@ -42,18 +42,18 @@ public:
 
     // Part of ZX_DSIIMPL_PROTOCOL
     zx_status_t DsiImplConfig(const dsi_config_t* dsi_config);
-    void DsiImplPowerUp();
-    void DsiImplPowerDown();
-    void DsiImplSetMode(dsi_mode_t mode);
+    zx_status_t DsiImplPowerUp();
+    zx_status_t DsiImplPowerDown();
+    zx_status_t DsiImplSetMode(dsi_mode_t mode);
     zx_status_t DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_count);
-    bool DsiImplIsPoweredUp();
-    void DsiImplReset() { DsiImplPowerDown(); }
+    zx_status_t DsiImplIsPoweredUp(bool* out);
+    zx_status_t DsiImplReset() { return DsiImplPowerDown(); }
     zx_status_t DsiImplPhyConfig(const dsi_config_t* dsi_config) { return ZX_OK; }
-    void DsiImplPhyPowerUp();
-    void DsiImplPhyPowerDown();
-    void DsiImplPhySendCode(uint32_t code, uint32_t parameter);
+    zx_status_t DsiImplPhyPowerUp();
+    zx_status_t DsiImplPhyPowerDown();
+    zx_status_t DsiImplPhySendCode(uint32_t code, uint32_t parameter);
     zx_status_t DsiImplPhyWaitForReady();
-    void DsiImplPrintDsiRegisters();
+    zx_status_t DsiImplPrintDsiRegisters();
     zx_status_t DsiImplWriteReg(uint32_t reg, uint32_t val);
     zx_status_t DsiImplReadReg(uint32_t reg, uint32_t* val);
     //TODO(payamm): Implement BIST and test on Hikey

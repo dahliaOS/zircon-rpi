@@ -232,7 +232,7 @@ zx_status_t DsiMt::DsiImplConfig(const dsi_config_t* dsi_config) {
     return ZX_OK;
 }
 
-void DsiMt::DsiImplPhyPowerUp() {
+zx_status_t DsiMt::DsiImplPhyPowerUp() {
     // Configure TimeCon0 Register which includes hs_trail, hs_zero, hs_prep and lpx
     // hs_trail: Time that the transmitter drives the flipped differential state after
     //           last payload data bit of a HS transmission burst
@@ -305,6 +305,7 @@ void DsiMt::DsiImplPhyPowerUp() {
                             .set_clk_post(clk_post)
                             .set_clk_prep(clk_prep)
                             .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
 // MT Command Queue looks something like this: <Data1><Data0><Data ID><Config>
@@ -349,7 +350,7 @@ zx_status_t DsiMt::DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_cou
     return status;
 }
 
-void DsiMt::DsiImplSetMode(dsi_mode_t mode) {
+zx_status_t DsiMt::DsiImplSetMode(dsi_mode_t mode) {
     uint8_t dsi_mode = (mode == DSI_MODE_COMMAND) ? 0 : 1;
     auto current_mode = DsiModeCtrlReg::Get().ReadFrom(&(*dsi_mmio_)).mode_con();
 
@@ -361,27 +362,31 @@ void DsiMt::DsiImplSetMode(dsi_mode_t mode) {
     DsiModeCtrlReg::Get().ReadFrom(&(*dsi_mmio_))
                          .set_mode_con(dsi_mode)
                          .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-void DsiMt::DsiImplPowerUp() {
+zx_status_t DsiMt::DsiImplPowerUp() {
     //TODO(payamm): Should we toggle reset here before powering up?
     DsiComCtrlReg::Get().ReadFrom(&(*dsi_mmio_))
                         .set_dsi_en(1)
                         .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-void DsiMt::DsiImplPowerDown() {
+zx_status_t DsiMt::DsiImplPowerDown() {
     DsiImplReset();
     DsiComCtrlReg::Get().ReadFrom(&(*dsi_mmio_))
                         .set_dsi_en(0)
                         .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-bool DsiMt::DsiImplIsPoweredUp() {
-    return (DsiComCtrlReg::Get().ReadFrom(&(*dsi_mmio_)).dsi_en() == 1);
+zx_status_t DsiMt::DsiImplIsPoweredUp(bool* out_powered_up) {
+    *out_powered_up = (DsiComCtrlReg::Get().ReadFrom(&(*dsi_mmio_)).dsi_en() == 1);
+    return ZX_OK;
 }
 
-void DsiMt::DsiImplReset() {
+zx_status_t DsiMt::DsiImplReset() {
     DsiComCtrlReg::Get().ReadFrom(&(*dsi_mmio_))
                         .set_dsi_reset(1)
                         .WriteTo(&(*dsi_mmio_));
@@ -392,9 +397,10 @@ void DsiMt::DsiImplReset() {
                         .set_dsi_reset(0)
                         .WriteTo(&(*dsi_mmio_));
 
+    return ZX_OK;
 }
 
-void DsiMt::DsiImplPrintDsiRegisters() {
+zx_status_t DsiMt::DsiImplPrintDsiRegisters() {
     zxlogf(INFO, "Dumping DSI MT Registers:\n");
     zxlogf(INFO, "######################\n\n");
     zxlogf(INFO, "DsiStartReg = 0x%x\n",
@@ -504,6 +510,7 @@ void DsiMt::DsiImplPrintDsiRegisters() {
     zxlogf(INFO, "DsiBistConReg = 0x%x\n",
              DsiBistConReg::Get().ReadFrom(&(*dsi_mmio_)).reg_value());
     zxlogf(INFO, "######################\n\n");
+    return ZX_OK;
 }
 
 void DsiMt::StartDsi() {

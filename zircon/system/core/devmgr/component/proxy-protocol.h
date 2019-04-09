@@ -180,4 +180,43 @@ struct I2cProxyOp {
     bool stop;
 };
 
+// ZX_PROTOCOL_DSI_IMPL proxy support.
+enum class DsiOp {
+    CONFIG,
+    POWER_UP,
+    POWER_DOWN,
+    SET_MODE,
+    SEND_CMD,
+    IS_POWERED_UP,
+    RESET,
+    PHY_CONFIG,
+    PHY_POWER_UP,
+    PHY_POWER_DOWN,
+    PHY_SEND_CODE,
+    PHY_WAIT_FOR_READY,
+    WRITE_REG,
+    READ_REG,
+    ENABLE_BIST,
+    PRINT_DSI_REGISTERS,
+};
+
+struct DsiProxyRequest {
+    ProxyRequest header;
+    DsiOp op;
+    dsi_config_t config;
+    dsi_mode_t mode;
+    size_t cmd_count;
+    uint32_t code;
+    uint32_t parameter;
+    uint32_t reg;
+    uint32_t val;
+    uint32_t pattern;
+};
+
+struct DsiProxyResponse {
+    ProxyResponse header;
+    bool is_powered_up;
+    uint32_t val;
+};
+
 } // namespace component

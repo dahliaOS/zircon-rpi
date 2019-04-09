@@ -38,6 +38,7 @@ zx_status_t AmlDsiHost::HostModeInit(const display_setting_t& disp_setting) {
     dw_cfg.phy_timer_lp_to_hs = PHY_TMR_LP_TO_HS;
     dw_cfg.auto_clklane = 1;
     dsi_cfg.vendor_config_buffer = &dw_cfg;
+    dsi_cfg.vendor_config_size = sizeof(dw_cfg);
 
     dsiimpl_.Config(&dsi_cfg);
 
@@ -100,7 +101,7 @@ zx_status_t AmlDsiHost::HostOn(const display_setting_t& disp_setting) {
         DISP_ERROR("Could not create AmlMipiPhy object\n");
         return ZX_ERR_NO_MEMORY;
     }
-    zx_status_t status = phy_->Init(parent_, disp_setting.lane_num);
+    zx_status_t status = phy_->Init(pdev_device_, dsiimpl_, disp_setting.lane_num);
     if (status != ZX_OK) {
         DISP_ERROR("MIPI PHY Init failed!\n");
         return status;
@@ -139,13 +140,14 @@ zx_status_t AmlDsiHost::HostOn(const display_setting_t& disp_setting) {
     }
 
     // Load LCD Init values while in command mode
-    lcd_ = fbl::make_unique_checked<astro_display::Lcd>(&ac, panel_type_);
+    lcd_ = fbl::make_unique_checked<astro_display::Lcd>(&ac, panel_type_, lcd_gpio_device_,
+                                                        dsiimpl_);
     if (!ac.check()) {
         DISP_ERROR("Failed to create LCD object\n");
         return ZX_ERR_NO_MEMORY;
     }
 
-    status = lcd_->Init(parent_);
+    status = lcd_->Init();
     if (status != ZX_OK) {
         DISP_ERROR("Error during LCD Initialization! %d\n", status);
         return status;
@@ -170,13 +172,11 @@ zx_status_t AmlDsiHost::Init() {
         return ZX_OK;
     }
 
-    zx_status_t status = device_get_protocol(parent_, ZX_PROTOCOL_PDEV, &pdev_);
+    zx_status_t status = device_get_protocol(pdev_device_, ZX_PROTOCOL_PDEV, &pdev_);
     if (status != ZX_OK) {
         DISP_ERROR("AmlDsiHost: Could not get ZX_PROTOCOL_PDEV protocol\n");
         return status;
     }
-
-    dsiimpl_ = parent_;
 
     // Map MIPI DSI and HHI registers
     mmio_buffer_t mmio;

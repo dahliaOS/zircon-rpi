@@ -4,6 +4,7 @@
 #include "astro-display.h"
 #include <ddk/binding.h>
 #include <ddk/platform-defs.h>
+#include <ddk/protocol/composite.h>
 #include <fbl/auto_call.h>
 #include <fbl/vector.h>
 #include <fuchsia/sysmem/c/fidl.h>
@@ -12,6 +13,17 @@
 namespace astro_display {
 
 namespace {
+
+enum {
+    COMPONENT_PDEV,
+    COMPONENT_DSI_IMPL,
+    COMPONENT_PANEL_GPIO,
+    COMPONENT_LCD_GPIO,
+    COMPONENT_SYSMEM,
+    COMPONENT_CANVAS,
+    COMPONENT_COUNT,
+};
+
 // List of supported pixel formats
 zx_pixel_format_t kSupportedPixelFormats[] = { ZX_PIXEL_FORMAT_RGB_x888 };
 
@@ -155,7 +167,7 @@ zx_status_t AstroDisplay::DisplayInit() {
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
-        status = vpu_->Init(parent_);
+        status = vpu_->Init(pdev_device_);
         if (status != ZX_OK) {
             DISP_ERROR("Could not initialize VPU object\n");
             return status;
@@ -168,7 +180,7 @@ zx_status_t AstroDisplay::DisplayInit() {
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
-        status = clock_->Init(parent_);
+        status = clock_->Init(pdev_device_);
         if (status != ZX_OK) {
             DISP_ERROR("Could not initialize Clock object\n");
             return status;
@@ -183,7 +195,9 @@ zx_status_t AstroDisplay::DisplayInit() {
 
         // Program and Enable DSI Host Interface
         dsi_host_ = fbl::make_unique_checked<astro_display::AmlDsiHost>(&ac,
-                                                                        parent_,
+                                                                        pdev_device_,
+                                                                        dsi_device_,
+                                                                        lcd_gpio_device_,
                                                                         clock_->GetBitrate(),
                                                                         panel_type_);
         if (!ac.check()) {
@@ -211,7 +225,7 @@ zx_status_t AstroDisplay::DisplayInit() {
     }
 
     // Initialize osd object
-    status = osd_->Init(parent_);
+    status = osd_->Init(pdev_device_);
     if (status != ZX_OK) {
         DISP_ERROR("Could not initialize OSD object\n");
         return status;
@@ -409,11 +423,13 @@ uint32_t AstroDisplay::DisplayControllerImplCheckConfiguration(
 // part of ZX_PROTOCOL_DISPLAY_CONTROLLER_IMPL ops
 void AstroDisplay::DisplayControllerImplApplyConfiguration(const display_config_t** display_configs,
                                                         size_t display_count) {
+printf("AstroDisplay::DisplayControllerImplApplyConfiguration\n");
     ZX_DEBUG_ASSERT(display_configs);
 
     fbl::AutoLock lock(&display_lock_);
     uint8_t addr;
     if (display_count == 1 && display_configs[0]->layer_count) {
+printf("AstroDisplay::DisplayControllerImplApplyConfiguration 2\n");
        if (!full_init_done_) {
             zx_status_t status;
             if ((status = DisplayInit()) != ZX_OK) {
@@ -468,8 +484,8 @@ void AstroDisplay::DdkRelease() {
 // This function detect the panel type based.
 void AstroDisplay::PopulatePanelType() {
     uint8_t pt;
-    if ((gpio_config_in(&gpio_, GPIO_NO_PULL) == ZX_OK) &&
-        (gpio_read(&gpio_, &pt) == ZX_OK)) {
+    if ((gpio_config_in(&panel_gpio_, GPIO_NO_PULL) == ZX_OK) &&
+        (gpio_read(&panel_gpio_, &pt) == ZX_OK)) {
         panel_type_ = pt;
         if (board_info_.pid == PDEV_PID_ASTRO) {
             DISP_INFO("Detected panel type = %s (%d)\n",
@@ -603,20 +619,43 @@ int AstroDisplay::VSyncThread() {
 
 // TODO(payamm): make sure unbind/release are called if we return error
 zx_status_t AstroDisplay::Bind() {
-    zx_status_t status;
+printf("AstroDisplay::Bind  1\n");
+    composite_protocol_t composite;
 
-    status = device_get_protocol(parent_, ZX_PROTOCOL_PDEV, &pdev_);
-    if (status !=  ZX_OK) {
-        DISP_ERROR("Could not get parent protocol\n");
+    auto status = device_get_protocol(parent_, ZX_PROTOCOL_COMPOSITE, &composite);
+    if (status != ZX_OK) {
+        DISP_ERROR("Could not get composite protocol\n");
         return status;
     }
 
-    // Make sure DSI IMPL is valid
-    if (!dsiimpl_.is_valid()) {
-        DISP_ERROR("DSI Protocol Not implemented\n");
-        return ZX_ERR_NO_RESOURCES;
+    zx_device_t* components[COMPONENT_COUNT];
+    size_t actual;
+    composite_get_components(&composite, components, COMPONENT_COUNT, &actual);
+    if (actual != COMPONENT_COUNT) {
+        DISP_ERROR("could not get components\n");
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
+for (unsigned i = 0; i < COMPONENT_COUNT; i++) {
+    printf("COMPONENT %u - %s\n", i, device_get_name(components[i]));
+}
+    status = device_get_protocol(components[COMPONENT_PDEV], ZX_PROTOCOL_PDEV, &pdev_);
+    if (status !=  ZX_OK) {
+        DISP_ERROR("Could not get PDEV protocol\n");
+        return status;
+    }
+    pdev_device_ = components[COMPONENT_PDEV];
+
+    dsi_impl_protocol_t dsi;
+    status = device_get_protocol(components[COMPONENT_DSI_IMPL], ZX_PROTOCOL_DSI_IMPL, &dsi);
+    if (status !=  ZX_OK) {
+        DISP_ERROR("Could not get DSI_IMPL protocol\n");
+        return status;
+    }
+    dsiimpl_ = &dsi;
+    dsi_device_ = components[COMPONENT_DSI_IMPL];
+
+printf("AstroDisplay::Bind 2\n");
     // Get board info
     status = pdev_get_board_info(&pdev_, &board_info_);
     if (status != ZX_OK) {
@@ -634,35 +673,30 @@ zx_status_t AstroDisplay::Bind() {
         DISP_ERROR("Running on Unsupported hardware. Use at your own risk\n");
     }
 
+printf("AstroDisplay::Bind 3\n");
     // Obtain GPIO Protocol for Panel reset
-    size_t actual;
-    status = pdev_get_protocol(&pdev_, ZX_PROTOCOL_GPIO, GPIO_PANEL_DETECT,
-                               &gpio_,
-                               sizeof(gpio_),
-                               &actual);
+    status = device_get_protocol(components[COMPONENT_PANEL_GPIO], ZX_PROTOCOL_GPIO, &panel_gpio_);
     if (status != ZX_OK) {
         DISP_ERROR("Could not obtain GPIO protocol.\n");
         return status;
     }
 
-    status = pdev_get_protocol(&pdev_, ZX_PROTOCOL_SYSMEM, 0,
-                               &sysmem_,
-                               sizeof(sysmem_),
-                               &actual);
+    lcd_gpio_device_ = components[COMPONENT_LCD_GPIO];
+
+    status = device_get_protocol(components[COMPONENT_SYSMEM], ZX_PROTOCOL_SYSMEM, &sysmem_);
     if (status != ZX_OK) {
         DISP_ERROR("Could not get Display SYSMEM protocol\n");
         return status;
     }
 
-    status = pdev_get_protocol(&pdev_, ZX_PROTOCOL_AMLOGIC_CANVAS, 0,
-                               &canvas_,
-                               sizeof(canvas_),
-                               &actual);
+    status = device_get_protocol(components[COMPONENT_CANVAS], ZX_PROTOCOL_AMLOGIC_CANVAS,
+                                 &canvas_);
     if (status != ZX_OK) {
         DISP_ERROR("Could not obtain CANVAS protocol\n");
         return status;
     }
 
+printf("AstroDisplay::Bind 4\n");
     status = pdev_get_bti(&pdev_, 0, bti_.reset_and_get_address());
     if (status != ZX_OK) {
         DISP_ERROR("Could not get BTI handle\n");
@@ -698,6 +732,7 @@ zx_status_t AstroDisplay::Bind() {
         return status;
     }
 
+printf("AstroDisplay::Bind ZX_OK\n");
     cleanup.cancel();
     return ZX_OK;
 }
@@ -760,7 +795,8 @@ static zx_driver_ops_t astro_display_ops = [](){
 
 } // namespace astro_display
 
-ZIRCON_DRIVER_BEGIN(astro_display, astro_display::astro_display_ops, "zircon", "0.1", 3)
+ZIRCON_DRIVER_BEGIN(astro_display, astro_display::astro_display_ops, "zircon", "0.1", 4)
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_COMPOSITE),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_AMLOGIC),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_AMLOGIC_S905D2),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_AMLOGIC_DISPLAY),

@@ -99,20 +99,23 @@ zx_status_t DsiDw::GetVideoMode(video_mode_t v, uint8_t& mode) {
     return status;
 }
 
-void DsiDw::DsiImplPowerUp() {
+zx_status_t DsiDw::DsiImplPowerUp() {
     DsiDwPwrUpReg::Get().ReadFrom(&(*dsi_mmio_))
                         .set_shutdown(kPowerOn)
                         .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-void DsiDw::DsiImplPowerDown() {
+zx_status_t DsiDw::DsiImplPowerDown() {
     DsiDwPwrUpReg::Get().ReadFrom(&(*dsi_mmio_))
                         .set_shutdown(kPowerReset)
                         .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-bool DsiDw::DsiImplIsPoweredUp() {
-    return (DsiDwPwrUpReg::Get().ReadFrom(&(*dsi_mmio_)).shutdown() == kPowerOn);
+zx_status_t DsiDw::DsiImplIsPoweredUp(bool* out) {
+    *out = (DsiDwPwrUpReg::Get().ReadFrom(&(*dsi_mmio_)).shutdown() == kPowerOn);
+    return ZX_OK;
 }
 
 zx_status_t DsiDw::DsiImplEnableBist(uint32_t pattern) {
@@ -126,7 +129,7 @@ zx_status_t DsiDw::DsiImplEnableBist(uint32_t pattern) {
     return ZX_OK;
 
 }
-void DsiDw::DsiImplPhySendCode(uint32_t code, uint32_t parameter) {
+zx_status_t DsiDw::DsiImplPhySendCode(uint32_t code, uint32_t parameter) {
     // Write code
     DsiDwPhyTstCtrl1Reg::Get().FromValue(0)
                               .set_reg_value(code)
@@ -152,22 +155,25 @@ void DsiDw::DsiImplPhySendCode(uint32_t code, uint32_t parameter) {
     DsiDwPhyTstCtrl0Reg::Get().FromValue(0)
                               .set_reg_value(kPhyTestCtrlClr)
                               .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-void DsiDw::DsiImplPhyPowerUp() {
+zx_status_t DsiDw::DsiImplPhyPowerUp() {
     DsiDwPhyRstzReg::Get().ReadFrom(&(*dsi_mmio_))
                           .set_phy_forcepll(1)
                           .set_phy_enableclk(1)
                           .set_phy_rstz(1)
                           .set_phy_shutdownz(1)
                           .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
-void DsiDw::DsiImplPhyPowerDown() {
+zx_status_t DsiDw::DsiImplPhyPowerDown() {
     DsiDwPhyRstzReg::Get().ReadFrom(&(*dsi_mmio_))
                           .set_phy_rstz(0)
                           .set_phy_shutdownz(0)
                           .WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
 zx_status_t DsiDw::DsiImplPhyWaitForReady() {
@@ -201,14 +207,15 @@ zx_status_t DsiDw::DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_cou
     return status;
 }
 
-void DsiDw::DsiImplSetMode(dsi_mode_t mode) {
+zx_status_t DsiDw::DsiImplSetMode(dsi_mode_t mode) {
     // Configure the operation mode (cmd or vid)
     DsiDwModeCfgReg::Get().ReadFrom(&(*dsi_mmio_)).set_cmd_video_mode(mode).WriteTo(&(*dsi_mmio_));
+    return ZX_OK;
 }
 
 zx_status_t DsiDw::DsiImplConfig(const dsi_config_t* dsi_config) {
     const display_setting_t disp_setting = dsi_config->display_setting;
-    const designware_config_t dw_cfg = *(static_cast<designware_config_t*>(dsi_config->vendor_config_buffer));
+    auto* dw_cfg = static_cast<const designware_config_t*>(dsi_config->vendor_config_buffer);
 
     bool packed;
     uint8_t code;
@@ -287,8 +294,8 @@ zx_status_t DsiDw::DsiImplConfig(const dsi_config_t* dsi_config) {
 
     // Define the max pkt size during Low Power mode
     DsiDwDpiLpCmdTimReg::Get().ReadFrom(&(*dsi_mmio_))
-                              .set_outvact_lpcmd_time(dw_cfg.lp_cmd_pkt_size)
-                              .set_invact_lpcmd_time(dw_cfg.lp_cmd_pkt_size)
+                              .set_outvact_lpcmd_time(dw_cfg->lp_cmd_pkt_size)
+                              .set_invact_lpcmd_time(dw_cfg->lp_cmd_pkt_size)
                               .WriteTo(&(*dsi_mmio_));
 
     // 3.2   Configure video packet size settings
@@ -340,28 +347,28 @@ zx_status_t DsiDw::DsiImplConfig(const dsi_config_t* dsi_config) {
     // Internal dividers to divide lanebyteclk for timeout purposes
     DsiDwClkmgrCfgReg::Get().ReadFrom(&(*dsi_mmio_))
                             .set_to_clk_div(1)
-                            .set_tx_esc_clk_div(dw_cfg.lp_escape_time)
+                            .set_tx_esc_clk_div(dw_cfg->lp_escape_time)
                             .WriteTo(&(*dsi_mmio_));
 
     // Setup Phy Timers as provided by vendor
     DsiDwPhyTmrLpclkCfgReg::Get().ReadFrom(&(*dsi_mmio_))
-                                 .set_phy_clkhs2lp_time(dw_cfg.phy_timer_clkhs_to_lp)
-                                 .set_phy_clklp2hs_time(dw_cfg.phy_timer_clklp_to_hs)
+                                 .set_phy_clkhs2lp_time(dw_cfg->phy_timer_clkhs_to_lp)
+                                 .set_phy_clklp2hs_time(dw_cfg->phy_timer_clklp_to_hs)
                                  .WriteTo(&(*dsi_mmio_));
     DsiDwPhyTmrCfgReg::Get().ReadFrom(&(*dsi_mmio_))
-                            .set_phy_hs2lp_time(dw_cfg.phy_timer_hs_to_lp)
-                            .set_phy_lp2hs_time(dw_cfg.phy_timer_lp_to_hs)
+                            .set_phy_hs2lp_time(dw_cfg->phy_timer_hs_to_lp)
+                            .set_phy_lp2hs_time(dw_cfg->phy_timer_lp_to_hs)
                             .WriteTo(&(*dsi_mmio_));
 
     DsiDwLpclkCtrlReg::Get().ReadFrom(&(*dsi_mmio_))
-                            .set_auto_clklane_ctrl(dw_cfg.auto_clklane)
+                            .set_auto_clklane_ctrl(dw_cfg->auto_clklane)
                             .set_phy_txrequestclkhs(1)
                             .WriteTo(&(*dsi_mmio_));
 
     return ZX_OK;
 }
 
-void DsiDw::DsiImplPrintDsiRegisters() {
+zx_status_t DsiDw::DsiImplPrintDsiRegisters() {
     DSI_INFO("%s: DUMPING DSI HOST REGS\n", __func__);
     DSI_INFO("DW_DSI_VERSION = 0x%x\n",
              DsiDwVersionReg::Get().ReadFrom(&(*dsi_mmio_)).reg_value());
@@ -465,6 +472,7 @@ void DsiDw::DsiImplPrintDsiRegisters() {
              DsiDwIntMsk0Reg::Get().ReadFrom(&(*dsi_mmio_)).reg_value());
     DSI_INFO("DW_DSI_INT_MSK1 = 0x%x\n",
              DsiDwIntMsk1Reg::Get().ReadFrom(&(*dsi_mmio_)).reg_value());
+    return ZX_OK;
 }
 
 inline bool DsiDw::IsPldREmpty() {
@@ -853,7 +861,7 @@ zx_status_t DsiDw::Bind() {
     // Obtain display metadata needed to load the proper display driver
     display_driver_t display_info;
     size_t actual;
-    status = device_get_metadata(parent_, DEVICE_METADATA_PRIVATE,
+    status = device_get_metadata(parent_, DEVICE_METADATA_DISPLAY_DEVICE,
                                  &display_info,
                                  sizeof(display_driver_t),
                                  &actual);
@@ -868,17 +876,7 @@ zx_status_t DsiDw::Bind() {
         {BIND_PLATFORM_DEV_DID, 0, display_info.did},
     };
 
-    device_add_args_t args = {};
-    args.version = DEVICE_ADD_ARGS_VERSION;
-    args.name = "dw-dsi";
-    args.ctx = this;
-    args.ops = &ddk_device_proto_;
-    args.proto_id = ddk_proto_id_;
-    args.proto_ops = ddk_proto_ops_;
-    args.props = props;
-    args.prop_count = countof(props);
-
-    status = pdev_.DeviceAdd(0, &args, &zxdev_);
+    status = DdkAdd("dw-dsi", 0, props, countof(props));
     if (status != ZX_OK) {
         DSI_ERROR("could not add device %d\n", status);
     }
@@ -887,7 +885,7 @@ zx_status_t DsiDw::Bind() {
 
 // main bind function called from dev manager
 zx_status_t dsi_dw_bind(void* ctx, zx_device_t* parent) {
-    fbl::AllocChecker ac;
+   fbl::AllocChecker ac;
     auto dev = fbl::make_unique_checked<dsi_dw::DsiDw>(&ac, parent);
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;

@@ -19,6 +19,7 @@ Component::Component(zx_device_t* parent)
     // These protocols are all optional, so no error checking is necessary here.
     device_get_protocol(parent, ZX_PROTOCOL_AMLOGIC_CANVAS, &canvas_);
     device_get_protocol(parent, ZX_PROTOCOL_CLOCK, &clock_);
+    device_get_protocol(parent, ZX_PROTOCOL_DSI_IMPL, &dsi_);
     device_get_protocol(parent, ZX_PROTOCOL_ETH_BOARD, &eth_board_);
     device_get_protocol(parent, ZX_PROTOCOL_GPIO, &gpio_);
     device_get_protocol(parent, ZX_PROTOCOL_I2C, &i2c_);
@@ -97,6 +98,62 @@ zx_status_t Component::RpcClock(const uint8_t* req_buf, uint32_t req_size, uint8
         zxlogf(ERROR, "%s: unknown clk op %u\n", __func__, static_cast<uint32_t>(req->op));
         return ZX_ERR_INTERNAL;
     }
+}
+
+zx_status_t Component::RpcDsi(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+                              uint32_t* out_resp_size, const zx_handle_t* req_handles,
+                              uint32_t req_handle_count, zx_handle_t* resp_handles,
+                              uint32_t* resp_handle_count) {
+   if (dsi_.ops == nullptr) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+    auto* req = reinterpret_cast<const DsiProxyRequest*>(req_buf);
+    if (req_size < sizeof(*req)) {
+        zxlogf(ERROR, "%s received %u, expecting %zu\n", __func__, req_size, sizeof(*req));
+        return ZX_ERR_INTERNAL;
+    }
+    auto* resp = reinterpret_cast<DsiProxyResponse*>(resp_buf);
+    *out_resp_size = sizeof(*resp);
+
+    switch (req->op) {
+    case DsiOp::CONFIG:
+        return dsi_impl_config(&dsi_, &req->config);
+    case DsiOp::POWER_UP:
+        return dsi_impl_power_up(&dsi_);
+    case DsiOp::POWER_DOWN:
+        return dsi_impl_power_down(&dsi_);
+    case DsiOp::SET_MODE:
+        return dsi_impl_set_mode(&dsi_, req->mode);
+    case DsiOp::SEND_CMD:
+        return dsi_impl_send_cmd(&dsi_, reinterpret_cast<const mipi_dsi_cmd_t*>(&req[1]),
+                                 req->cmd_count);
+    case DsiOp::IS_POWERED_UP:
+        return dsi_impl_is_powered_up(&dsi_, &resp->is_powered_up);
+    case DsiOp::RESET:
+        return dsi_impl_reset(&dsi_);
+    case DsiOp::PHY_CONFIG:
+        return dsi_impl_phy_config(&dsi_, &req->config);
+    case DsiOp::PHY_POWER_UP:
+        return dsi_impl_phy_power_up(&dsi_);
+    case DsiOp::PHY_POWER_DOWN:
+        return dsi_impl_phy_power_down(&dsi_);
+    case DsiOp::PHY_SEND_CODE:
+        return dsi_impl_phy_send_code(&dsi_, req->code, req->parameter);
+    case DsiOp::PHY_WAIT_FOR_READY:
+        return dsi_impl_phy_wait_for_ready(&dsi_);
+    case DsiOp::WRITE_REG:
+        return dsi_impl_write_reg(&dsi_, req->reg, req->val);
+    case DsiOp::READ_REG:
+        return dsi_impl_read_reg(&dsi_, req->reg, &resp->val);
+    case DsiOp::ENABLE_BIST:
+        return dsi_impl_enable_bist(&dsi_, req->pattern);
+    case DsiOp::PRINT_DSI_REGISTERS:
+        return dsi_impl_print_dsi_registers(&dsi_);
+    default:
+        zxlogf(ERROR, "%s: unknown  DSI_IMPL op %u\n", __func__, static_cast<uint32_t>(req->op));
+        return ZX_ERR_INTERNAL;
+    }
+
 }
 
 zx_status_t Component::RpcEthBoard(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
@@ -394,6 +451,10 @@ zx_status_t Component::DdkRxrpc(zx_handle_t raw_channel) {
     case ZX_PROTOCOL_CLOCK:
         status = RpcClock(req_buf, actual, resp_buf, &resp_len, req_handles, req_handle_count,
                           resp_handles, &resp_handle_count);
+        break;
+    case ZX_PROTOCOL_DSI_IMPL:
+        status = RpcDsi(req_buf, actual, resp_buf, &resp_len, req_handles, req_handle_count,
+                        resp_handles, &resp_handle_count);
         break;
     case ZX_PROTOCOL_ETH_BOARD:
         status = RpcEthBoard(req_buf, actual, resp_buf, &resp_len, req_handles, req_handle_count,

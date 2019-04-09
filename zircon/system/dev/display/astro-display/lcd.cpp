@@ -1209,12 +1209,11 @@ zx_status_t Lcd::Enable() {
         return ZX_OK;
     }
     // reset LCD panel via GPIO according to vendor doc
-    gpio_config_out(&gpio_, 1);
-    gpio_write(&gpio_, 1);
+    gpio_.ConfigOut(1);
     zx_nanosleep(zx_deadline_after(ZX_MSEC(30)));
-    gpio_write(&gpio_, 0);
+    gpio_.Write(0);
     zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
-    gpio_write(&gpio_, 1);
+    gpio_.Write(1);
     zx_nanosleep(zx_deadline_after(ZX_MSEC(30)));
     // check status
     if (GetDisplayId() != ZX_OK) {
@@ -1249,25 +1248,9 @@ zx_status_t Lcd::Enable() {
     return status;
 }
 
-zx_status_t Lcd::Init(zx_device_t* parent) {
+zx_status_t Lcd::Init() {
     if (initialized_) {
         return ZX_OK;
-    }
-    pdev_protocol_t pdev;
-    zx_status_t status = device_get_protocol(parent, ZX_PROTOCOL_PDEV, &pdev);
-    if (status != ZX_OK) {
-        DISP_ERROR("Could not obtain platform device protocol\n");
-        return status;
-    }
-
-    dsiimpl_ = parent;
-
-    // Obtain GPIO protocol
-    size_t actual;
-    status = pdev_get_protocol(&pdev, ZX_PROTOCOL_GPIO, GPIO_LCD, &gpio_, sizeof(gpio_), &actual);
-    if (status != ZX_OK) {
-        DISP_ERROR("Could not obtain GPIO protocol\n");
-        return status;
     }
 
     initialized_ = true;

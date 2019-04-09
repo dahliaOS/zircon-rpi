@@ -50,7 +50,7 @@ class AstroDisplay : public DeviceType,
                      public ddk::DisplayControllerImplProtocol<AstroDisplay, ddk::base_protocol> {
 public:
     AstroDisplay(zx_device_t* parent)
-        : DeviceType(parent), dsiimpl_(parent) {}
+        : DeviceType(parent) {}
 
     // This function is called from the c-bind function upon driver matching
     zx_status_t Bind();
@@ -104,9 +104,12 @@ private:
 
     // Protocol handles used in by this driver
     pdev_protocol_t pdev_ = {};
-    gpio_protocol_t gpio_ = {};
+    gpio_protocol_t panel_gpio_ = {};
     amlogic_canvas_protocol_t canvas_ = {};
     sysmem_protocol_t sysmem_ = {};
+    zx_device_t* pdev_device_;
+    zx_device_t* dsi_device_;
+    zx_device_t* lcd_gpio_device_;
 
     // Board Info
     pdev_board_info_t board_info_;
@@ -151,7 +154,7 @@ private:
     ImportedImageBitmap imported_images_ TA_GUARDED(image_lock_);
 
     // DSIIMPL Protocol
-    ddk::DsiImplProtocolClient dsiimpl_;
+    ddk::DsiImplProtocolClient dsiimpl_ = {};
 
     // Objects
     fbl::unique_ptr<astro_display::Vpu> vpu_;

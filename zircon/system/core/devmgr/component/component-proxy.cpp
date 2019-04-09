@@ -34,6 +34,9 @@ zx_status_t ComponentProxy::DdkGetProtocol(uint32_t proto_id, void* out) {
     case ZX_PROTOCOL_CLOCK:
         proto->ops = &clock_protocol_ops_;
         return ZX_OK;
+    case ZX_PROTOCOL_DSI_IMPL:
+        proto->ops = &dsi_impl_protocol_ops_;
+        return ZX_OK;
     case ZX_PROTOCOL_ETH_BOARD:
         proto->ops = &eth_board_protocol_ops_;
         return ZX_OK;
@@ -161,6 +164,203 @@ zx_status_t ComponentProxy::ClockDisable(uint32_t index) {
     req.index = index;
 
     return Rpc(&req.header, sizeof(req), &resp, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplConfig(const dsi_config_t* dsi_config) {
+printf("%s\n", __func__);
+    uint8_t req_buf[kProxyMaxTransferSize];
+    auto* req = reinterpret_cast<DsiProxyRequest*>(req_buf);
+    DsiProxyResponse resp = {};
+    req->header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req->op = DsiOp::CONFIG;
+    req->config = *dsi_config;
+    if (req->config.vendor_config_buffer) {
+        if (req->config.vendor_config_size == 0) {
+            return ZX_ERR_INVALID_ARGS;
+        }
+        if (req->config.vendor_config_size + sizeof(*req) > sizeof(req_buf)) {
+            return ZX_ERR_BUFFER_TOO_SMALL;
+        }
+        // send vendor_config_buffer following req
+        memcpy(&req[1], req->config.vendor_config_buffer, req->config.vendor_config_size);
+        req->config.vendor_config_buffer = nullptr;
+    }
+
+    return Rpc(&req->header, sizeof(*req) + req->config.vendor_config_size, &resp.header,
+               sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPowerUp() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::POWER_UP;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPowerDown() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::POWER_DOWN;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplSetMode(dsi_mode_t mode) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::SET_MODE;
+    req.mode = mode;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_count) {
+printf("%s\n", __func__);
+    uint8_t req_buf[kProxyMaxTransferSize];
+    auto* req = reinterpret_cast<DsiProxyRequest*>(req_buf);
+    if (sizeof(*req) + sizeof(*cmd_list) * cmd_count > sizeof(req_buf)) {
+        return ZX_ERR_BUFFER_TOO_SMALL;
+    }
+    DsiProxyResponse resp = {};
+    req->header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req->op = DsiOp::SEND_CMD;
+    req->cmd_count = cmd_count;
+    size_t cmd_length = sizeof(*cmd_list) * cmd_count;
+    memcpy(&req[1], cmd_list, cmd_length);
+
+    return Rpc(&req->header, sizeof(*req) + cmd_length, &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplIsPoweredUp(bool* out_on) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::IS_POWERED_UP;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    if (status == ZX_OK) {
+        *out_on = resp.is_powered_up;
+    }
+    return status;
+}
+
+zx_status_t ComponentProxy::DsiImplReset() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::RESET;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPhyConfig(const dsi_config_t* dsi_config) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PHY_CONFIG;
+    req.config = *dsi_config;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPhyPowerUp() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PHY_POWER_UP;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPhyPowerDown() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PHY_POWER_DOWN;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPhySendCode(uint32_t code, uint32_t parameter) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PHY_SEND_CODE;
+    req.code = code;
+    req.parameter = parameter;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPhyWaitForReady() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PHY_WAIT_FOR_READY;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplWriteReg(uint32_t reg, uint32_t val) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::WRITE_REG;
+    req.code = reg;
+    req.parameter = val;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplReadReg(uint32_t reg, uint32_t* out_val) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::READ_REG;
+    req.code = reg;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    if (status == ZX_OK) {
+        *out_val = resp.val;
+    }
+    return status;
+}
+
+zx_status_t ComponentProxy::DsiImplEnableBist(uint32_t pattern) {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::ENABLE_BIST;
+    req.pattern = pattern;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+}
+
+zx_status_t ComponentProxy::DsiImplPrintDsiRegisters() {
+printf("%s\n", __func__);
+    DsiProxyRequest req = {};
+    DsiProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_DSI_IMPL;
+    req.op = DsiOp::PRINT_DSI_REGISTERS;
+
+    return Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
 }
 
 zx_status_t ComponentProxy::EthBoardResetPhy() {

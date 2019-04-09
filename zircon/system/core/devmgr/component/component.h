@@ -8,6 +8,7 @@
 #include <ddk/device.h>
 #include <ddk/driver.h>
 #include <ddk/protocol/amlogiccanvas.h>
+#include <ddk/protocol/dsiimpl.h>
 #include <ddk/protocol/clock.h>
 #include <ddk/protocol/ethernet/board.h>
 #include <ddk/protocol/gpio.h>
@@ -50,6 +51,10 @@ private:
                          uint32_t* out_resp_size, const zx_handle_t* req_handles,
                          uint32_t req_handle_count, zx_handle_t* resp_handles,
                          uint32_t* resp_handle_count);
+    zx_status_t RpcDsi(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+                      uint32_t* out_resp_size, const zx_handle_t* req_handles,
+                      uint32_t req_handle_count, zx_handle_t* resp_handles,
+                      uint32_t* resp_handle_count);
     zx_status_t RpcEthBoard(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
                             uint32_t* out_resp_size, const zx_handle_t* req_handles,
                             uint32_t req_handle_count, zx_handle_t* resp_handles,
@@ -80,6 +85,7 @@ private:
 
     amlogic_canvas_protocol_t canvas_ = {};
     clock_protocol_t clock_ = {};
+    dsi_impl_protocol_t dsi_ = {};
     eth_board_protocol_t eth_board_ = {};
     gpio_protocol_t gpio_ = {};
     i2c_protocol_t i2c_ = {};

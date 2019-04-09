@@ -406,6 +406,7 @@ zx_status_t MtDsiHost::Config(const display_setting_t& disp_setting) {
     dsi_cfg.video_mode_type = VIDEO_MODE_NON_BURST_PULSE;
     dsi_cfg.color_coding = COLOR_CODE_PACKED_24BIT_888;
     dsi_cfg.vendor_config_buffer = nullptr;
+    dsi_cfg.vendor_config_size = 0;
 
     // No vendor specific data for now
     dsiimpl_.Config(&dsi_cfg);

@@ -9,16 +9,17 @@
 #include <ddk/protocol/platform/device.h>
 #include <fbl/unique_ptr.h>
 #include <hwreg/mmio.h>
-#include <ddk/protocol/gpio.h>
+#include <ddktl/protocol/gpio.h>
 #include <ddktl/protocol/dsiimpl.h>
 
 namespace astro_display {
 
 class Lcd {
 public:
-    Lcd(uint8_t panel_type) : panel_type_(panel_type) {}
+    Lcd(uint8_t panel_type, zx_device_t* gpio, const ddk::DsiImplProtocolClient& dsi)
+        : panel_type_(panel_type), gpio_(gpio), dsiimpl_(dsi) {}
 
-    zx_status_t Init(zx_device_t* parent);
+    zx_status_t Init();
     zx_status_t Enable();
     zx_status_t Disable();
 private:
@@ -26,8 +27,8 @@ private:
     zx_status_t GetDisplayId();
 
     uint8_t                                     panel_type_;
-    gpio_protocol_t                             gpio_ = {};
-    ddk::DsiImplProtocolClient                  dsiimpl_;
+    const ddk::GpioProtocolClient               gpio_;
+    const ddk::DsiImplProtocolClient            dsiimpl_;
 
     bool                                        initialized_ = false;
     bool                                        enabled_ =false;

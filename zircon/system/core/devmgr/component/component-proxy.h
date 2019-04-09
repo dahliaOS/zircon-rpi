@@ -10,6 +10,7 @@
 #include <ddktl/device.h>
 #include <ddktl/protocol/amlogiccanvas.h>
 #include <ddktl/protocol/clock.h>
+#include <ddktl/protocol/dsiimpl.h>
 #include <ddktl/protocol/ethernet/board.h>
 #include <ddktl/protocol/gpio.h>
 #include <ddktl/protocol/i2c.h>
@@ -28,6 +29,7 @@ using ComponentProxyBase = ddk::Device<ComponentProxy, ddk::Unbindable, ddk::Get
 class ComponentProxy : public ComponentProxyBase,
                        public ddk::AmlogicCanvasProtocol<ComponentProxy>,
                        public ddk::ClockProtocol<ComponentProxy>,
+                       public ddk::DsiImplProtocol<ComponentProxy>,
                        public ddk::EthBoardProtocol<ComponentProxy>,
                        public ddk::GpioProtocol<ComponentProxy>,
                        public ddk::I2cProtocol<ComponentProxy>,
@@ -54,12 +56,37 @@ public:
         return Rpc(req, req_length, resp, resp_length, nullptr, 0, nullptr, 0, nullptr);
     }
 
+    // Amlogic Canvas
     zx_status_t AmlogicCanvasConfig(zx::vmo vmo, size_t offset, const canvas_info_t* info,
                                     uint8_t* out_canvas_idx);
     zx_status_t AmlogicCanvasFree(uint8_t canvas_idx);
+
+    // Clock
     zx_status_t ClockEnable(uint32_t index);
     zx_status_t ClockDisable(uint32_t index);
+
+    // Dsi Impl
+    zx_status_t DsiImplConfig(const dsi_config_t* dsi_config);
+    zx_status_t DsiImplPowerUp();
+    zx_status_t DsiImplPowerDown();
+    zx_status_t DsiImplSetMode(dsi_mode_t mode);
+    zx_status_t DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_count);
+    zx_status_t DsiImplIsPoweredUp(bool* out_on);
+    zx_status_t DsiImplReset();
+    zx_status_t DsiImplPhyConfig(const dsi_config_t* dsi_config);
+    zx_status_t DsiImplPhyPowerUp();
+    zx_status_t DsiImplPhyPowerDown();
+    zx_status_t DsiImplPhySendCode(uint32_t code, uint32_t parameter);
+    zx_status_t DsiImplPhyWaitForReady();
+    zx_status_t DsiImplWriteReg(uint32_t reg, uint32_t val);
+    zx_status_t DsiImplReadReg(uint32_t reg, uint32_t* out_val);
+    zx_status_t DsiImplEnableBist(uint32_t pattern);
+    zx_status_t DsiImplPrintDsiRegisters();
+
+    // Eth Board
     zx_status_t EthBoardResetPhy();
+
+    // GPIO
     zx_status_t GpioConfigIn(uint32_t flags);
     zx_status_t GpioConfigOut(uint8_t initial_value);
     zx_status_t GpioSetAltFunction(uint64_t function);
@@ -68,10 +95,14 @@ public:
     zx_status_t GpioGetInterrupt(uint32_t flags, zx::interrupt* out_irq);
     zx_status_t GpioReleaseInterrupt();
     zx_status_t GpioSetPolarity(gpio_polarity_t polarity);
+
+    // I2C
     void I2cTransact(const i2c_op_t* op_list, size_t op_count, i2c_transact_callback callback,
                      void* cookie);
     zx_status_t I2cGetMaxTransferSize(size_t* out_size);
     zx_status_t I2cGetInterrupt(uint32_t flags, zx::interrupt* out_irq);
+
+    // Platform Device
     zx_status_t PDevGetMmio(uint32_t index, pdev_mmio_t* out_mmio);
     zx_status_t PDevGetInterrupt(uint32_t index, uint32_t flags, zx::interrupt* out_irq);
     zx_status_t PDevGetBti(uint32_t index, zx::bti* out_bti);
@@ -82,11 +113,15 @@ public:
                               zx_device_t** out_device);
     zx_status_t PDevGetProtocol(uint32_t proto_id, uint32_t index, void* out_out_protocol_buffer,
                                 size_t out_protocol_size, size_t* out_out_protocol_actual);
+
+    // Power
     zx_status_t PowerEnablePowerDomain();
     zx_status_t PowerDisablePowerDomain();
     zx_status_t PowerGetPowerDomainStatus(power_domain_status_t* out_status);
     zx_status_t PowerWritePmicCtrlReg(uint32_t reg_addr, uint32_t value);
     zx_status_t PowerReadPmicCtrlReg(uint32_t reg_addr, uint32_t* out_value);
+
+    // Sysmem
     zx_status_t SysmemConnect(zx::channel allocator2_request);
 
 private:

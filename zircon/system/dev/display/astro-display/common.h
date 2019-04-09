@@ -41,17 +41,6 @@ enum {
     MMIO_CBUS,
 };
 
-// Should match display_gpios table in board driver
-enum {
-    GPIO_BL,
-    GPIO_LCD,
-    GPIO_PANEL_DETECT,
-    GPIO_HW_ID0,
-    GPIO_HW_ID1,
-    GPIO_HW_ID2,
-    GPIO_COUNT,
-};
-
 // Should match display_irqs table in board driver
 enum {
     IRQ_VSYNC,

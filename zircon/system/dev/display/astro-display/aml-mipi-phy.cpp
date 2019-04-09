@@ -211,7 +211,8 @@ zx_status_t AmlMipiPhy::Startup() {
     return ZX_OK;
 }
 
-zx_status_t AmlMipiPhy::Init(zx_device_t* parent, uint32_t lane_num) {
+zx_status_t AmlMipiPhy::Init(zx_device_t* parent, const ddk::DsiImplProtocolClient& dsi,
+                             uint32_t lane_num) {
     if (initialized_) {
         return ZX_OK;
     }
@@ -224,7 +225,7 @@ zx_status_t AmlMipiPhy::Init(zx_device_t* parent, uint32_t lane_num) {
         return status;
     }
 
-    dsiimpl_ = parent;
+    dsiimpl_ = dsi;
 
     // Map Mipi Dsi and Dsi Phy registers
     mmio_buffer_t mmio;
