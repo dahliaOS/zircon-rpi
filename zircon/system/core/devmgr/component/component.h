@@ -51,7 +51,7 @@ private:
                          uint32_t* out_resp_size, const zx_handle_t* req_handles,
                          uint32_t req_handle_count, zx_handle_t* resp_handles,
                          uint32_t* resp_handle_count);
-    zx_status_t RpcDsi(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+    zx_status_t RpcDsi(uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
                       uint32_t* out_resp_size, const zx_handle_t* req_handles,
                       uint32_t req_handle_count, zx_handle_t* resp_handles,
                       uint32_t* resp_handle_count);

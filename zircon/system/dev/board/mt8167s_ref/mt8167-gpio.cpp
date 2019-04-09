@@ -4,6 +4,8 @@
 
 #include <ddk/debug.h>
 #include <ddk/device.h>
+#include <ddk/metadata.h>
+#include <ddk/metadata/gpio.h>
 #include <ddk/platform-defs.h>
 #include <ddk/protocol/platform/bus.h>
 #include <soc/mt8167/mt8167-hw.h>
@@ -36,6 +38,20 @@ zx_status_t Mt8167::GpioInit() {
         },
     };
 
+    // GPIOs to expose from generic GPIO driver.
+    const gpio_pin_t gpio_pins[] = {
+        // For display.
+        { MT8167_GPIO_LCD_RST },
+    };
+    
+    const pbus_metadata_t gpio_metadata[] = {
+        {
+            .type = DEVICE_METADATA_GPIO_PINS,
+            .data_buffer = &gpio_pins,
+            .data_size = sizeof(gpio_pins),
+        }
+    };
+
     pbus_dev_t gpio_dev = {};
     gpio_dev.name = "gpio";
     gpio_dev.vid = PDEV_VID_MEDIATEK;
@@ -44,6 +60,8 @@ zx_status_t Mt8167::GpioInit() {
     gpio_dev.mmio_count = countof(gpio_mmios);
     gpio_dev.irq_list = gpio_irqs;
     gpio_dev.irq_count = countof(gpio_irqs);
+    gpio_dev.metadata_list = gpio_metadata;
+    gpio_dev.metadata_count = countof(gpio_metadata);
 
     zx_status_t status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_GPIO_IMPL, &gpio_dev);
     if (status != ZX_OK) {

@@ -25,6 +25,8 @@ zx_status_t MtDsiHost::Init(const ddk::DsiImplProtocolClient* dsi,
         return ZX_OK;
     }
 
+    dsiimpl_ = *dsi;
+
     // Map MIPI TX
     mmio_buffer_t mmio;
     auto status = pdev_map_mmio_buffer(&pdev_, MMIO_DISP_MIPITX, ZX_CACHE_POLICY_UNCACHED_DEVICE,
@@ -396,14 +398,20 @@ zx_status_t MtDsiHost::Config(const display_setting_t& disp_setting) {
 
     // Configure DSI parameters needed for DSI Video Mode
     dsi_config_t dsi_cfg;
+printf("MtDsiHost::Config preassign\n");
+printf("MtDsiHost::Config disp_setting %p\n", &disp_setting);
+printf("MtDsiHost::Config disp_setting lane_num %u\n", disp_setting.lane_num);
     dsi_cfg.display_setting = disp_setting;
+printf("boink\n");
     dsi_cfg.video_mode_type = VIDEO_MODE_NON_BURST_PULSE;
     dsi_cfg.color_coding = COLOR_CODE_PACKED_24BIT_888;
     dsi_cfg.vendor_config_buffer = nullptr;
     dsi_cfg.vendor_config_size = 0;
 
     // No vendor specific data for now
+printf("dsiimpl_.Config\n");
     dsiimpl_.Config(&dsi_cfg);
+printf("did dsiimpl_.Config\n");
 
     // Configure MIPI D-PHY Timing parameters. Make sure this is called AFTER dsiimpl_.Config
     dsiimpl_.PhyPowerUp();

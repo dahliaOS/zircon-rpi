@@ -223,19 +223,31 @@ printf("%s\n", __func__);
 
 zx_status_t ComponentProxy::DsiImplSendCmd(const mipi_dsi_cmd_t* cmd_list, size_t cmd_count) {
 printf("%s\n", __func__);
+
+    size_t cmd_length = sizeof(*cmd_list) * cmd_count;
+    size_t pld_data_length = 0;
+    for (size_t i = 0; i < cmd_count; i++) {
+        pld_data_length += cmd_list[i].pld_data_count;
+    }
+
     uint8_t req_buf[kProxyMaxTransferSize];
     auto* req = reinterpret_cast<DsiProxyRequest*>(req_buf);
-    if (sizeof(*req) + sizeof(*cmd_list) * cmd_count > sizeof(req_buf)) {
+    if (sizeof(*req) + cmd_length + pld_data_length > sizeof(req_buf)) {
         return ZX_ERR_BUFFER_TOO_SMALL;
     }
     DsiProxyResponse resp = {};
     req->header.proto_id = ZX_PROTOCOL_DSI_IMPL;
     req->op = DsiOp::SEND_CMD;
     req->cmd_count = cmd_count;
-    size_t cmd_length = sizeof(*cmd_list) * cmd_count;
     memcpy(&req[1], cmd_list, cmd_length);
 
-    return Rpc(&req->header, sizeof(*req) + cmd_length, &resp.header, sizeof(resp));
+    auto pld_dest = req_buf + sizeof(*req) + cmd_length;
+    for (size_t i = 0; i < cmd_count; i++) {
+        memcpy(pld_dest, cmd_list[i].pld_data_list, cmd_list[i].pld_data_count);
+        pld_dest += cmd_list[i].pld_data_count;
+    }
+
+    return Rpc(&req->header, sizeof(*req) + cmd_length + pld_data_length, &resp.header, sizeof(resp));
 }
 
 zx_status_t ComponentProxy::DsiImplIsPoweredUp(bool* out_on) {

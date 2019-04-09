@@ -100,14 +100,14 @@ zx_status_t Component::RpcClock(const uint8_t* req_buf, uint32_t req_size, uint8
     }
 }
 
-zx_status_t Component::RpcDsi(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+zx_status_t Component::RpcDsi(uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
                               uint32_t* out_resp_size, const zx_handle_t* req_handles,
                               uint32_t req_handle_count, zx_handle_t* resp_handles,
                               uint32_t* resp_handle_count) {
    if (dsi_.ops == nullptr) {
         return ZX_ERR_NOT_SUPPORTED;
     }
-    auto* req = reinterpret_cast<const DsiProxyRequest*>(req_buf);
+    auto* req = reinterpret_cast<DsiProxyRequest*>(req_buf);
     if (req_size < sizeof(*req)) {
         zxlogf(ERROR, "%s received %u, expecting %zu\n", __func__, req_size, sizeof(*req));
         return ZX_ERR_INTERNAL;
@@ -124,9 +124,19 @@ zx_status_t Component::RpcDsi(const uint8_t* req_buf, uint32_t req_size, uint8_t
         return dsi_impl_power_down(&dsi_);
     case DsiOp::SET_MODE:
         return dsi_impl_set_mode(&dsi_, req->mode);
-    case DsiOp::SEND_CMD:
-        return dsi_impl_send_cmd(&dsi_, reinterpret_cast<const mipi_dsi_cmd_t*>(&req[1]),
-                                 req->cmd_count);
+    case DsiOp::SEND_CMD: {
+        auto* cmd_list = reinterpret_cast<mipi_dsi_cmd_t*>(&req[1]);
+        auto cmd_count = req->cmd_count;
+
+        // setup pld_data_list pointers
+        auto* pld_data = reinterpret_cast<uint8_t*>(&req[1]);
+        for (size_t i = 0; i < cmd_count; i++) {
+            cmd_list[i].pld_data_list = pld_data;
+            pld_data += cmd_list[i].pld_data_count;
+        }
+
+        return dsi_impl_send_cmd(&dsi_, cmd_list, cmd_count);
+    }
     case DsiOp::IS_POWERED_UP:
         return dsi_impl_is_powered_up(&dsi_, &resp->is_powered_up);
     case DsiOp::RESET:

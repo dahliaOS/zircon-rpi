@@ -475,9 +475,11 @@ zx_status_t Mt8167sDisplay::CreateAndInitDisplaySubsystems() {
         return status;
     }
 
+printf("CreateAndInitDisplaySubsystems make dsi_host_\n");
     // Create and initialize DSI Host object
     dsi_host_ = fbl::make_unique_checked<mt8167s_display::MtDsiHost>(&ac, &pdev_, height_, width_,
                                                                      panel_type_);
+printf("CreateAndInitDisplaySubsystems make dsi_host_ %p\n", dsi_host_.get());
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
@@ -616,6 +618,7 @@ zx_status_t Mt8167sDisplay::DisplaySubsystemInit() {
     dither_->Config();
 
     // Configure the DSI0 interface
+printf("pre Config: dsi_host_ %p\n", dsi_host_.get());
     dsi_host_->Config(disp_setting_);
 
     // TODO(payamm): configuring the display RDMA engine does take into account height and width
@@ -649,6 +652,7 @@ void Mt8167sDisplay::DdkRelease() {
 }
 
 zx_status_t Mt8167sDisplay::Bind() {
+printf("Mt8167sDisplay::Bind\n");
     composite_protocol_t composite;
 
     auto status = device_get_protocol(parent_, ZX_PROTOCOL_COMPOSITE, &composite);
@@ -680,6 +684,7 @@ zx_status_t Mt8167sDisplay::Bind() {
             DISP_ERROR("Could not get Display DSI_IMPL protocol\n");
             return status;
         }
+printf("set dsiimpl\n");
         dsiimpl_ = &dsi;
     }
 

@@ -632,6 +632,7 @@ zx_status_t DsiMt::Write(const mipi_dsi_cmd_t& cmd) {
 }
 
 zx_status_t DsiMt::Bind() {
+printf("DsiMt::Bind\n");
     zx_status_t status = device_get_protocol(parent_, ZX_PROTOCOL_PDEV, &pdev_proto_);
     if (status != ZX_OK) {
         DSI_ERROR("Could not get parent protocol (%d)\n", status);
@@ -666,6 +667,7 @@ zx_status_t DsiMt::Bind() {
         {BIND_PLATFORM_DEV_DID, 0, display_info.did},
     };
 
+printf("DsiMt::Bind DdkAdd %u %u %u\n", display_info.vid, display_info.pid, display_info.did);
     status = DdkAdd("mt-dsi", 0, props, countof(props));
     if (status != ZX_OK) {
         DSI_ERROR("could not add device %d\n", status);
