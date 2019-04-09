@@ -38,7 +38,6 @@ public:
     inline const pbus_mmio_t& mmio(size_t i) const { return mmios_[i]; }
     inline const pbus_irq_t& irq(size_t i) const { return irqs_[i]; }
     inline const pbus_gpio_t& gpio(size_t i) const { return gpios_[i]; }
-    inline const pbus_i2c_channel_t& i2c_channel(size_t i) const { return i2c_channels_[i]; }
     inline const pbus_clk_t& clk(size_t i) const { return clks_[i]; }
     inline const pbus_power_domain_t& power_domain(size_t i) const { return power_domains_[i]; }
     inline const pbus_bti_t& bti(size_t i) const { return btis_[i]; }
@@ -50,7 +49,6 @@ public:
     inline size_t mmio_count() const { return mmios_.size(); }
     inline size_t irq_count() const { return irqs_.size(); }
     inline size_t gpio_count() const { return gpios_.size(); }
-    inline size_t i2c_channel_count() const { return i2c_channels_.size(); }
     inline size_t clk_count() const { return clks_.size(); }
     inline size_t power_domain_count() const { return power_domains_.size(); }
     inline size_t bti_count() const { return btis_.size(); }
@@ -67,7 +65,6 @@ private:
     fbl::Array<pbus_mmio_t> mmios_;
     fbl::Array<pbus_irq_t> irqs_;
     fbl::Array<pbus_gpio_t> gpios_;
-    fbl::Array<pbus_i2c_channel_t> i2c_channels_;
     fbl::Array<pbus_clk_t> clks_;
     fbl::Array<pbus_power_domain_t> power_domains_;
     fbl::Array<pbus_bti_t> btis_;

@@ -80,10 +80,6 @@ private:
                                     zx_handle_t* out_handle, uint32_t* out_handle_count);
     zx_status_t RpcGpioReleaseInterrupt(const DeviceResources* dr, uint32_t index);
     zx_status_t RpcGpioSetPolarity(const DeviceResources* dr, uint32_t index, uint32_t flags);
-    zx_status_t RpcI2cTransact(const DeviceResources* dr, uint32_t txid, rpc_i2c_req_t* req,
-                               zx_handle_t channel);
-    zx_status_t RpcI2cGetMaxTransferSize(const DeviceResources* dr, uint32_t index,
-                                         size_t* out_size);
     zx_status_t RpcClockEnable(const DeviceResources* dr, uint32_t index);
     zx_status_t RpcClockDisable(const DeviceResources* dr, uint32_t index);
     zx_status_t RpcSysmemConnect(zx::channel allocator2_request);

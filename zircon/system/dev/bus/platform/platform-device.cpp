@@ -181,7 +181,6 @@ zx_status_t PlatformDevice::RpcGetDeviceInfo(const DeviceResources* dr,
         .mmio_count = static_cast<uint32_t>(dr->mmio_count()),
         .irq_count = static_cast<uint32_t>(dr->irq_count()),
         .gpio_count = static_cast<uint32_t>(dr->gpio_count()),
-        .i2c_channel_count = static_cast<uint32_t>(dr->i2c_channel_count()),
         .clk_count = static_cast<uint32_t>(dr->clk_count()),
         .power_domain_count = static_cast<uint32_t>(dr->power_domain_count()),
         .bti_count = static_cast<uint32_t>(dr->bti_count()),
@@ -344,33 +343,6 @@ zx_status_t PlatformDevice::RpcGpioSetPolarity(const DeviceResources* dr, uint32
         return ZX_ERR_OUT_OF_RANGE;
     }
     return bus_->gpio()->SetPolarity(dr->gpio(index).gpio, flags);
-}
-
-zx_status_t PlatformDevice::RpcI2cTransact(const DeviceResources* dr, uint32_t txid,
-                                           rpc_i2c_req_t* req, zx_handle_t channel) {
-    if (bus_->i2c() == nullptr) {
-        return ZX_ERR_NOT_SUPPORTED;
-    }
-    uint32_t index = req->index;
-    if (index >= dr->i2c_channel_count()) {
-        return ZX_ERR_OUT_OF_RANGE;
-    }
-    const pbus_i2c_channel_t& pdev_channel = dr->i2c_channel(index);
-
-    return bus_->I2cTransact(txid, req, &pdev_channel, channel);
-}
-
-zx_status_t PlatformDevice::RpcI2cGetMaxTransferSize(const DeviceResources* dr, uint32_t index,
-                                                     size_t* out_size) {
-    if (bus_->i2c() == nullptr) {
-        return ZX_ERR_NOT_SUPPORTED;
-    }
-    if (index >= dr->i2c_channel_count()) {
-        return ZX_ERR_OUT_OF_RANGE;
-    }
-    const pbus_i2c_channel_t& pdev_channel = dr->i2c_channel(index);
-
-    return bus_->i2c()->GetMaxTransferSize(pdev_channel.bus_id, out_size);
 }
 
 zx_status_t PlatformDevice::RpcClockEnable(const DeviceResources* dr, uint32_t index) {
@@ -627,34 +599,6 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
             break;
         default:
             zxlogf(ERROR, "%s: unknown Power op %u\n", __func__, req_header->op);
-            return ZX_ERR_INTERNAL;
-        }
-        break;
-    }
-    case ZX_PROTOCOL_I2C: {
-        auto req = reinterpret_cast<rpc_i2c_req_t*>(&req_buf);
-        if (actual < sizeof(*req)) {
-            zxlogf(ERROR, "%s received %u, expecting %zu (I2C)\n", __func__, actual, sizeof(*req));
-            return ZX_ERR_INTERNAL;
-        }
-        auto resp = reinterpret_cast<rpc_i2c_rsp_t*>(&resp_buf);
-        resp_len = sizeof(*resp);
-
-        switch (req_header->op) {
-        case I2C_GET_MAX_TRANSFER:
-            status = RpcI2cGetMaxTransferSize(dr, req->index, &resp->max_transfer);
-            break;
-        case I2C_TRANSACT: {
-            status = RpcI2cTransact(dr, req_header->txid, req, channel);
-            if (status == ZX_OK) {
-                // If platform_i2c_transact succeeds, we return immmediately instead of calling
-                // zx_channel_write below. Instead we will respond in platform_i2c_complete().
-                return ZX_OK;
-            }
-            break;
-        }
-        default:
-            zxlogf(ERROR, "%s: unknown I2C op %u\n", __func__, req_header->op);
             return ZX_ERR_INTERNAL;
         }
         break;
