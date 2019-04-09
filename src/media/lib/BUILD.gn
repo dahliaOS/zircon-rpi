@@ -6,5 +6,7 @@ group("lib") {
   testonly = true
   deps = [
     "ffmpeg",
+    "fuchsia-media",
+    "fuchsia-media:tests",
   ]
 }
