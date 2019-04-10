@@ -11,6 +11,7 @@ mod log;
 mod operations;
 mod sequential_io_generator;
 mod verifier;
+mod blob_target;
 
 extern crate serde;
 
@@ -28,10 +29,30 @@ use {
         thread::spawn,
         time::Instant,
     },
+    fuchsia_merkle::*,
 };
 
 // Magic number that gets written in block header
 static MAGIC_NUMBER: u64 = 0x4f6475346573742e;
+
+fn create_blob() {
+    let data = vec![0xff; 8192];
+    let mut builder = MerkleTreeBuilder::new();
+    for _i in 0..8 {
+        builder.write(&data[..]);
+    }
+
+    let root = builder.finish();
+    println!("{}", root.root());
+
+    let blob_name = String::from(format!("/blob/{}", root.root().to_string()));
+    println!("{}", blob_name);
+    let mut f = File::create(&blob_name).unwrap();
+    f.set_len(8192 * 8).unwrap();
+    for _i in 0..8 {
+        f.write(&data[..]).unwrap();
+    }
+}
 
 fn create_target(target_name: &String, target_length: u64) {
     let metadata = metadata(&target_name);
@@ -70,6 +91,7 @@ fn output_config(generator_args_vec: &Vec<GeneratorArgs>, output_config_file: &S
 }
 
 fn main() -> Result<(), Error> {
+    create_blob();
     // These are a bunch of inputs that each generator thread receives. These
     // should be received as input to the app.
     // TODO(auradkar): Implement args parsing and validation logic.

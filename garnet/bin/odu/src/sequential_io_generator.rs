@@ -106,7 +106,7 @@ impl SequentialIoGenerator {
     /// block.
     /// TODO(auradkar): SInce current IOs are always 4KiB aligned, this function
     /// works well. But not all unaligned cases are covered by this function.
-    fn write_headers(&self, buf: &mut Vec<u8>, sequence_number: u64, offset_range: &Range<u64>) {
+    fn write_headers(&self, buf: &mut Vec<u8>, sequence_number: u64, operation_id: u64, offset_range: &Range<u64>) {
         let start = round_up(offset_range.start as usize, self.block_size as usize);
         let end = offset_range.end as usize;
         let header_size = mem::size_of::<Header>();
@@ -119,6 +119,7 @@ impl SequentialIoGenerator {
                 self.fd_unique_id,
                 self.generator_unique_id,
                 sequence_number,
+                operation_id,
                 offset as u64,
                 buf.capacity() as u64,
                 self.last_number,
@@ -181,9 +182,9 @@ impl Generator for SequentialIoGenerator {
         (cur..end)
     }
 
-    fn fill_buffer(&self, buf: &mut Vec<u8>, sequence_number: u64, offset_range: &Range<u64>) {
+    fn fill_buffer(&self, buf: &mut Vec<u8>, sequence_number: u64, operation_id:u64, offset_range: &Range<u64>) {
         self.zero_fill(buf);
-        self.write_headers(buf, sequence_number, offset_range);
+        self.write_headers(buf, sequence_number, operation_id, offset_range);
     }
 }
 
@@ -207,8 +208,12 @@ struct Header {
     /// updated this block
     generator_unique_id: u64,
 
-    /// io_op_unique_id tells which io operation updated this block
+    /// io_op_unique_id tells which io operation updated this block. This is the
+    /// generated ios and need not be same as order of completion.
     io_op_unique_id: u64,
+
+    // io_op_id tells which operation was issued
+    io_op_id: u64,
 
     // file_offset is offset within the file where this data
     // should be found
@@ -232,6 +237,7 @@ impl Header {
         fd_unique_id: u64,
         generator_unique_id: u64,
         io_op_unique_id: u64,
+        io_op_id: u64,
         file_offset: u64,
         size: u64,
         seed: u64,
@@ -242,6 +248,7 @@ impl Header {
             fd_unique_id: fd_unique_id,
             generator_unique_id: generator_unique_id,
             io_op_unique_id: io_op_unique_id,
+            io_op_id: io_op_id,
             file_offset: file_offset,
             size: size,
             seed: seed,
@@ -276,6 +283,10 @@ impl Header {
         header.io_op_unique_id = LittleEndian::read_u64(&val64);
 
         cursor.read_exact(&mut val64).unwrap();
+        header.io_op_id = LittleEndian::read_u64(&val64);
+
+
+        cursor.read_exact(&mut val64).unwrap();
         header.file_offset = LittleEndian::read_u64(&val64);
 
         cursor.read_exact(&mut val64).unwrap();
@@ -308,6 +319,9 @@ impl Header {
         cursor.write_all(&val64).unwrap();
 
         LittleEndian::write_u64(&mut val64, self.io_op_unique_id);
+        cursor.write_all(&val64).unwrap();
+
+        LittleEndian::write_u64(&mut val64, self.io_op_id);
         cursor.write_all(&val64).unwrap();
 
         LittleEndian::write_u64(&mut val64, self.file_offset);
@@ -458,13 +472,15 @@ mod tests {
         let mut buf = vec![0 as u8; block_size as usize];
         let io_offset_range = block_size..2 * 4096;
         let io_op_unique_id = 10 as u64;
-        gen.fill_buffer(&mut buf, io_op_unique_id, &io_offset_range);
+        let io_op_id = 20 as u64;
+        gen.fill_buffer(&mut buf, io_op_unique_id, io_op_id, &io_offset_range);
         let header: Header = Header::read_header(&buf);
         assert_eq!(header.magic_number, MAGIC_NUMBER);
         assert_eq!(header.process_id, PROCESS_ID);
         assert_eq!(header.fd_unique_id, TARGET_ID);
         assert_eq!(header.generator_unique_id, GENERATOR_ID);
         assert_eq!(header.io_op_unique_id, io_op_unique_id);
+        assert_eq!(header.io_op_id, io_op_id);
         assert_eq!(header.file_offset, io_offset_range.start);
         assert_eq!(header.size, io_offset_range.end - io_offset_range.start);
     }

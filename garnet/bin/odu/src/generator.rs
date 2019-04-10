@@ -7,6 +7,7 @@
 //! Generator thread accept a set of serializable arguments.
 use {
     crate::file_target::FileBlockingTarget,
+    crate::blob_target::BlobBlockingTarget,
     crate::issuer::{run_issuer, IssuerArgs},
     crate::log::Stats,
     crate::operations::{OperationType, PipelineStages, Target},
@@ -122,7 +123,7 @@ pub trait Generator {
     fn get_io_range(&self) -> Range<u64>;
 
     /// Generates and fills the buf with data.
-    fn fill_buffer(&self, buf: &mut Vec<u8>, sequence_number: u64, offset_range: &Range<u64>);
+    fn fill_buffer(&self, buf: &mut Vec<u8>, sequence_number: u64, operation_id: u64, offset_range: &Range<u64>);
 }
 
 /// GeneratorArgs contains only the fields that help generator make decisions
@@ -261,13 +262,16 @@ fn create_target(
     start_instant: &Instant,
 ) -> Arc<Box<Target + Send + Sync>> {
     // Manually check what is passed is what is supported.
-    if target_type != "target_file" {
-        error!("Target type {} not supported", target_type);
-        process::abort();
+    if target_type == "target_file" {
+            return FileBlockingTarget::new(target_name.to_string(), target_id, offset_range, start_instant)
+        .unwrap();
+    } else if target_type == "target_blob" {
+        return BlobBlockingTarget::new(target_name.to_string(), target_id, offset_range, start_instant)
+        .unwrap();
     }
 
-    FileBlockingTarget::new(target_name.to_string(), target_id, offset_range, start_instant)
-        .unwrap()
+        error!("Target type {} not supported", target_type);
+        process::abort();
 }
 
 /// The main thread for generator. generator creates a set of channels that it
@@ -361,7 +365,7 @@ pub fn run_generator(
         io_packet.timestamp_stage_start(&stage);
         io_sequence_number += 1;
         let io_offset_range = io_packet.io_offset_range().clone();
-        gen.fill_buffer(io_packet.buffer_mut(), io_sequence_number, &io_offset_range);
+        gen.fill_buffer(io_packet.buffer_mut(), io_sequence_number, op_type as u64, &io_offset_range);
         {
             let mut map = io_map.lock().unwrap();
             map.insert(io_packet.sequence_number().clone(), io_packet.clone());

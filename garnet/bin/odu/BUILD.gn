@@ -18,6 +18,7 @@ rustc_binary("bin") {
     "//garnet/public/rust/fuchsia-app",
     "//garnet/public/rust/fuchsia-async",
     "//garnet/public/rust/fuchsia-zircon",
+    "//garnet/public/rust/fuchsia-merkle",
     "//third_party/rust-crates/rustc_deps:failure",
     "//third_party/rust-crates/rustc_deps:serde",
     "//third_party/rust-crates/rustc_deps:serde_derive",

@@ -24,7 +24,7 @@ use {
 };
 
 #[derive(Clone)]
-pub struct FileIoPacket {
+pub struct BlobIoPacket {
     // io_sequence_number is monotonically increasing number which doesn't
     // repeat for this run and for this generator. This is used to
     // order-replay load.
@@ -40,29 +40,29 @@ pub struct FileIoPacket {
     // Type of IO operation
     operation_type: OperationType,
 
-    // Range within the file on which this IO will be performed on. May not
+    // Range within the blob on which this IO will be performed on. May not
     // applicable to all operations ex. create
     offset_range: Range<u64>,
 
     // Result of the completed IO operation
     io_result: Option<ErrorKind>,
 
-    // The target(file) on which IO will be performed
+    // The target(blob) on which IO will be performed
     target: TargetType,
 
     // Payload of the IO
     buffer: Vec<u8>,
 }
 
-impl FileIoPacket {
+impl BlobIoPacket {
     pub fn new(
         operation_type: OperationType,
         seq: u64,
         seed: u64,
         offset_range: &Range<u64>,
         target: &TargetType,
-    ) -> FileIoPacket {
-        let mut p = FileIoPacket {
+    ) -> BlobIoPacket {
+        let mut p = BlobIoPacket {
             operation_type: operation_type,
             io_sequence_number: seq,
             seed: seed,
@@ -77,7 +77,7 @@ impl FileIoPacket {
     }
 }
 
-impl IoPacket for FileIoPacket {
+impl IoPacket for BlobIoPacket {
     fn operation_type(&self) -> OperationType {
         self.operation_type.clone()
     }
@@ -151,49 +151,53 @@ impl IoPacket for FileIoPacket {
     }
 }
 
-pub struct FileBlockingTarget {
+pub struct BlobBlockingTarget {
     /// File name
-    _name: String,
+    target_base_directory: String,
 
     /// Set of [supported] operations
     ops: TargetOps,
 
     /// Open file descriptor
-    file: File,
+    file: Option<File>,
 
-    /// Unique file id for this run and for this generator
+    /// Unique file id for this run and for this instance of blob
     target_unique_id: u64,
 
     /// Range within which this Targets operates on the file
     offset_range: Range<u64>,
 
     start_instant: Instant,
+
+    _blob_data: Option<Arc<Box<[u8]>>>,
+
+    blob_name: Option<String>,
 }
 
-impl FileBlockingTarget {
+impl BlobBlockingTarget {
     // Create a new Target instance. Fails when opening an existing file fails.
     // TODO(auradkar): Open should be moved to setup phase when all operations
     // file are supported.
     pub fn new(
-        target_name: String,
-        target_id: u64,
+        target_base_directory: String,
+        target_base_id: u64,
         offset_range: &Range<u64>,
         start_instant: &Instant,
     ) -> Result<TargetType> {
         let ops = TargetOps { write: Some(OperationType::Write),
-                              truncate: None,
+                              truncate: Some(OperationType::Truncate),
                               open: Some(OperationType::Open),
-                              create: None,
+                              create: Some(OperationType::Create),
                             };
-        //let file = OpenOptions::new().append(false).open(&target_name).unwrap();
-        let file = OpenOptions::new().write(true).append(false).open(&target_name).unwrap();
-        Ok(Arc::new(Box::new(FileBlockingTarget {
-            _name: target_name,
-            file: file,
+        Ok(Arc::new(Box::new(BlobBlockingTarget {
+            target_base_directory: target_base_directory,
             ops: ops,
-            target_unique_id: target_id,
+            target_unique_id: target_base_id,
             offset_range: offset_range.clone(),
             start_instant: start_instant.clone(),
+            _blob_data: None,
+            blob_name: None,
+            file: None,
         })))
     }
 
@@ -207,7 +211,7 @@ impl FileBlockingTarget {
             return;
         }
 
-        let raw_fd = self.file.as_raw_fd().clone();
+        let raw_fd = self.file.as_ref().unwrap().as_raw_fd().clone();
         let b = io_packet.buffer_mut();
 
         let ret = unsafe {
@@ -226,8 +230,20 @@ impl FileBlockingTarget {
         }
     }
 
-    fn open(&self, io_packet: &mut IoPacket) {
-        error!("open not yet supported {}", io_packet.sequence_number());
+    fn open(&self, _io_packet: &mut IoPacket) {
+        // let mut  blob_name = self.target_base_directory.clone();
+        let blob_name = format!("{}/{}", self.target_base_directory.clone(), self.blob_name.as_ref().unwrap());
+        let _file = OpenOptions::new().write(true).append(false).open(blob_name).unwrap();
+    }
+
+    fn create(&self, _io_packet: &mut IoPacket) {
+        let _file = OpenOptions::new().append(false).create(true).open(self.blob_name.as_ref().unwrap());
+        error!("open not yet supported {}", _io_packet.sequence_number());
+        process::abort();
+    }
+
+    fn truncate(&self, _io_packet: &mut IoPacket) {
+        error!("open not yet supported {}", _io_packet.sequence_number());
         process::abort();
     }
 
@@ -236,7 +252,7 @@ impl FileBlockingTarget {
     }
 }
 
-impl Target for FileBlockingTarget {
+impl Target for BlobBlockingTarget {
     fn setup(&mut self, _file_name: &String, _range: Range<u64>) -> Result<()> {
         Ok(())
     }
@@ -249,7 +265,7 @@ impl Target for FileBlockingTarget {
         io_offset_range: Range<u64>,
         target: &TargetType,
     ) -> IoPacketType {
-        return Box::new(FileIoPacket::new(operation_type, seq, seed, &io_offset_range, target));
+        return Box::new(BlobIoPacket::new(operation_type, seq, seed, &io_offset_range, target));
     }
 
     fn id(&self) -> u64 {
@@ -263,7 +279,9 @@ impl Target for FileBlockingTarget {
     fn do_io(&self, io_packet: &mut IoPacket) {
         match io_packet.operation_type() {
             OperationType::Write => self.write(io_packet),
+            OperationType::Truncate => self.truncate(io_packet),
             OperationType::Open => self.open(io_packet),
+            OperationType::Create => self.create(io_packet),
             OperationType::Exit => self.exit(io_packet),
             _ => {
                 error!("Unsupported operation");
@@ -319,7 +337,7 @@ impl Target for FileBlockingTarget {
 #[cfg(test)]
 mod tests {
     use {
-        crate::file_target::FileBlockingTarget,
+        crate::blob_target::BlobBlockingTarget,
         crate::operations::OperationType,
         crate::operations::TargetType,
         std::{fs, fs::File, time::Instant},
@@ -331,7 +349,7 @@ mod tests {
         let f = File::create(&file_name).unwrap();
         f.set_len(FILE_LENGTH).unwrap();
         let start_instant: Instant = Instant::now();
-        FileBlockingTarget::new(file_name.to_string(), 0, &(0..FILE_LENGTH), &start_instant)
+        BlobBlockingTarget::new(file_name.to_string(), 0, &(0..FILE_LENGTH), &start_instant)
             .unwrap()
     }
 
@@ -343,7 +361,7 @@ mod tests {
 
     #[test]
     fn simple_write() {
-        let file_name = "/tmp/FileBlockingTargetTestFile".to_string();
+        let file_name = "/tmp/BlobBlockingTargetTestFile".to_string();
 
         let target = setup(&file_name);
         let mut io_packet = target.create_io_packet(OperationType::Write, 0, 0, 0..4096, &target);
@@ -356,7 +374,7 @@ mod tests {
 
     #[test]
     fn write_failure() {
-        let file_name = "/tmp/FileBlockingTargetTestFile2".to_string();
+        let file_name = "/tmp/BlobBlockingTargetTestFile2".to_string();
 
         let target = setup(&file_name);
 

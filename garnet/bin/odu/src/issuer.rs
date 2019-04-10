@@ -69,7 +69,7 @@ pub fn run_issuer(mut args: IssuerArgs) -> Result<(), Error> {
     let mut scan_verifier = true;
 
     // True if the current command is from verifier.
-    let mut verifying_cmd;
+    let mut verifying_cmd:bool;
 
     let mut cmd_or_err;
     let mut cmd;
@@ -77,8 +77,7 @@ pub fn run_issuer(mut args: IssuerArgs) -> Result<(), Error> {
     // This thread/loop is not done till we hear explicitly from generator and
     // from verifier that they both are done. We keep track of who is done.
     while scan_generator || scan_verifier {
-        // true if the current command is received from verifier
-        let mut verifying_cmd = false;
+        verifying_cmd = false;
 
         // May block
         args.active_commands.decrement();

@@ -28,12 +28,12 @@ pub enum OperationType {
     Abort,
     //    Read,
     //    LSeek,
-    //    Truncate,
+    Truncate,
     //    Close,
     //    FSync,
     //
     //    /// DirOps
-    //    Create,
+    Create,
     //    Unlink,
     //    CreateDir,
     //    DeleteDir,
@@ -126,14 +126,16 @@ pub trait Target {
 #[derive(Clone)]
 pub struct TargetOps {
     pub write: Option<OperationType>,
+    pub truncate: Option<OperationType>,
     pub open: Option<OperationType>,
+    pub create: Option<OperationType>,
     //    read: Option<OperationType>,
     //    lseek: Option<OperationType>,
     //    close: Option<OperationType>,
     //    fsync: Option<OperationType>,
     //
     //
-    //    create: Option<OperationType>,
+    
     //    unlink: Option<OperationType>,
     //    createdir: Option<OperationType>,
     //    deletedir: Option<OperationType>,
