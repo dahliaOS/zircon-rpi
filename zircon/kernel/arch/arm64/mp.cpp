@@ -156,6 +156,10 @@ void arch_mp_init_percpu(void) {
 void arch_flush_state_and_halt(event_t* flush_done) {
     DEBUG_ASSERT(arch_ints_disabled());
 
+    // flush the cache by way/set on the local cpu to try to reduce a window
+    // where the cpu takes too long to flush caches inside PSCI (if present).
+    arm64_clean_cache_all();
+
     // signal to the caller that we're done flushing
     event_signal(flush_done, false);
 
