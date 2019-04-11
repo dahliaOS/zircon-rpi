@@ -133,7 +133,7 @@ zx_status_t Device::Bind() {
     // callback used is sysmem_device_ops.message, not
     // sysmem_protocol_ops.message.
     device_add_args.proto_id = ZX_PROTOCOL_SYSMEM;
-    device_add_args.proto_ops = &out_of_proc_sysmem_protocol_ops;
+    device_add_args.proto_ops = &in_proc_sysmem_protocol_ops;
     device_add_args.flags = DEVICE_ADD_INVISIBLE;
 
     status = device_add(parent_device_, &device_add_args, &device_);
