@@ -107,6 +107,10 @@ static void arm_psci_init(const void* driver_data, uint32_t length) {
         dprintf(INFO, "\tPSCI64_CPU_ON %#x\n", result);
         result = psci_get_feature(PSCI64_CPU_OFF);
         dprintf(INFO, "\tPSCI64_CPU_OFF %#x\n", result);
+        result = psci_get_feature(PSCI64_AFFINITY_INFO);
+        dprintf(INFO, "\tPSCI64_AFFINITY_INFO %#x\n", result);
+        result = psci_get_feature(PSCI64_NODE_HW_STATE);
+        dprintf(INFO, "\tPSCI64_NODE_HW_STATE %#x\n", result);
     }
 }
 
