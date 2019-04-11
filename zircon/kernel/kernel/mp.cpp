@@ -219,47 +219,6 @@ void mp_sync_exec(mp_ipi_target_t target, cpu_mask_t mask, mp_sync_task_t task, 
     spin_unlock_irqrestore(&mp.ipi_task_lock, irqstate);
 }
 
-static void mp_unplug_trampoline(void) TA_REQ(thread_lock) __NO_RETURN;
-static void mp_unplug_trampoline(void) {
-    // We're still holding the thread lock from the reschedule that took us
-    // here.
-
-    thread_t* ct = get_current_thread();
-    auto unplug_done = reinterpret_cast<event_t*>(ct->arg);
-
-    cpu_num_t cpu_num = arch_curr_cpu_num();
-    sched_transition_off_cpu(cpu_num);
-
-    // Note that before this invocation, but after we stopped accepting
-    // interrupts, we may have received a synchronous task to perform.
-    // Clearing this flag will cause the mp_sync_exec caller to consider
-    // this CPU done.  If this CPU comes back online before other all
-    // of the other CPUs finish their work (very unlikely, since tasks
-    // should be quick), then this CPU may execute the task.
-    mp_set_curr_cpu_online(false);
-
-    // We had better not be holding any OwnedWaitQueues at this point in time
-    // (it is unclear how we would have ever obtained any in the first place
-    // since everything this thread ever does is in this function).
-    DEBUG_ASSERT(ct->owned_wait_queues.is_empty());
-
-    // do *not* enable interrupts, we want this CPU to never receive another
-    // interrupt
-    spin_unlock(&thread_lock);
-
-    // Stop and then shutdown this CPU's platform timer.
-    platform_stop_timer();
-    platform_shutdown_timer();
-
-    // Shutdown the interrupt controller for this CPU.  On some platforms (arm64 with GIC) receiving
-    // an interrupt at a powered off CPU can result in implementation defined behavior (including
-    // resetting the whole system).
-    shutdown_interrupts_curr_cpu();
-
-    // flush all of our caches
-    arch_flush_state_and_halt(unplug_done);
-}
-
 // Hotplug the given cpus.  Blocks until the CPUs are up, or a failure is
 // detected.
 //
@@ -296,6 +255,51 @@ static zx_status_t mp_unplug_cpu_mask_single_locked(cpu_num_t cpu_id) {
     // (except maybe the idle thread).  Once we're confident we've terminated/migrated them all,
     // this would be a good place to DEBUG_ASSERT.
 
+    struct unplug_args {
+        event_t unplug_done = EVENT_INITIAL_VALUE(unplug_done, false, 0);
+    } args;
+
+    auto mp_unplug_trampoline = []() TA_REQ(thread_lock) __NO_RETURN {
+        // We're still holding the thread lock from the reschedule that took us
+        // here.
+
+        thread_t* ct = get_current_thread();
+        struct unplug_args *args = reinterpret_cast<struct unplug_args*>(ct->arg);
+
+        cpu_num_t cpu_num = arch_curr_cpu_num();
+        sched_transition_off_cpu(cpu_num);
+
+        // Note that before this invocation, but after we stopped accepting
+        // interrupts, we may have received a synchronous task to perform.
+        // Clearing this flag will cause the mp_sync_exec caller to consider
+        // this CPU done.  If this CPU comes back online before other all
+        // of the other CPUs finish their work (very unlikely, since tasks
+        // should be quick), then this CPU may execute the task.
+        mp_set_curr_cpu_online(false);
+
+        // We had better not be holding any OwnedWaitQueues at this point in time
+        // (it is unclear how we would have ever obtained any in the first place
+        // since everything this thread ever does is in this function).
+        DEBUG_ASSERT(ct->owned_wait_queues.is_empty());
+
+        // do *not* enable interrupts, we want this CPU to never receive another
+        // interrupt
+        spin_unlock(&thread_lock);
+
+        // Stop and then shutdown this CPU's platform timer.
+        platform_stop_timer();
+        platform_shutdown_timer();
+
+        // Shutdown the interrupt controller for this CPU.  On some platforms
+        // (arm64 with GIC) receiving an interrupt at a powered off CPU can
+        // result in implementation defined behavior (including resetting the
+        // whole system).
+        shutdown_interrupts_curr_cpu();
+
+        // flush all of our caches
+        arch_flush_state_and_halt(&args->unplug_done);
+    };
+
     // Create a thread for the unplug.  We will cause the target CPU to
     // context switch to this thread.  After this happens, it should no
     // longer be accessing system state and can be safely shut down.
@@ -305,12 +309,11 @@ static zx_status_t mp_unplug_cpu_mask_single_locked(cpu_num_t cpu_id) {
     // immediately (or very soon, if for some reason there is another
     // HIGHEST_PRIORITY task scheduled in between when we resume the
     // thread and when the CPU is woken up).
-    event_t unplug_done = EVENT_INITIAL_VALUE(unplug_done, false, 0);
     thread_t* t = thread_create_etc(
         NULL,
         "unplug_thread",
         NULL,
-        &unplug_done,
+        &args,
         HIGHEST_PRIORITY,
         mp_unplug_trampoline);
     if (t == NULL) {
@@ -334,7 +337,7 @@ static zx_status_t mp_unplug_cpu_mask_single_locked(cpu_num_t cpu_id) {
 
     // Wait for the unplug thread to get scheduled on the target
     do {
-        status = event_wait(&unplug_done);
+        status = event_wait(&args.unplug_done);
     } while (status != ZX_OK);
 
     // Now that the CPU is no longer processing tasks, move all of its timers
@@ -434,23 +437,4 @@ interrupt_eoi mp_mbx_interrupt_irq(void*) {
     // delivered to the cpu.
 
     return IRQ_EOI_DEACTIVATE;
-}
-
-__WEAK zx_status_t arch_mp_cpu_hotplug(uint cpu_id) {
-    return ZX_ERR_NOT_SUPPORTED;
-}
-__WEAK zx_status_t arch_mp_prep_cpu_unplug(uint cpu_id) {
-    return ZX_ERR_NOT_SUPPORTED;
-}
-__WEAK zx_status_t arch_mp_cpu_unplug(uint cpu_id) {
-    return ZX_ERR_NOT_SUPPORTED;
-}
-__WEAK zx_status_t platform_mp_cpu_hotplug(uint cpu_id) {
-    return arch_mp_cpu_hotplug(cpu_id);
-}
-__WEAK zx_status_t platform_mp_prep_cpu_unplug(uint cpu_id) {
-    return arch_mp_prep_cpu_unplug(cpu_id);
-}
-__WEAK zx_status_t platform_mp_cpu_unplug(uint cpu_id) {
-    return arch_mp_cpu_unplug(cpu_id);
 }

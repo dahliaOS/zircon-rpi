@@ -155,9 +155,16 @@ void arch_mp_init_percpu(void) {
 
 void arch_flush_state_and_halt(event_t* flush_done) {
     DEBUG_ASSERT(arch_ints_disabled());
+
+    // signal to the caller that we're done flushing
     event_signal(flush_done, false);
-    platform_halt_cpu();
+
+    platform_halt_current_cpu();
     panic("control should never reach here\n");
+}
+
+zx_status_t arch_mp_cpu_hotplug(uint cpu_id) {
+    return ZX_ERR_NOT_SUPPORTED;
 }
 
 zx_status_t arch_mp_prep_cpu_unplug(uint cpu_id) {

@@ -63,7 +63,7 @@ static void halt_other_cpus(void) {
     }
 }
 
-void platform_halt_cpu(void) {
+void platform_halt_current_cpu(void) {
     // Signal that this CPU is in its halt loop
     halted_cpus.fetch_or(cpu_num_to_mask(arch_curr_cpu_num()));
 }

@@ -152,7 +152,7 @@ void* platform_get_ramdisk(size_t* size) {
     }
 }
 
-void platform_halt_cpu(void) {
+void platform_halt_current_cpu(void) {
     uint32_t result = psci_cpu_off();
     // should have never returned
     panic("psci_cpu_off returned %u\n", result);
@@ -179,6 +179,18 @@ static zx_status_t platform_start_cpu(uint64_t mpid) {
         return ZX_ERR_INTERNAL;
     }
     return ZX_OK;
+}
+
+zx_status_t platform_mp_cpu_hotplug(uint cpu_id) {
+    return arch_mp_cpu_hotplug(cpu_id);
+}
+
+zx_status_t platform_mp_prep_cpu_unplug(uint cpu_id) {
+    return arch_mp_prep_cpu_unplug(cpu_id);
+}
+
+zx_status_t platform_mp_cpu_unplug(uint cpu_id) {
+    return arch_mp_cpu_unplug(cpu_id);
 }
 
 static void topology_cpu_init(void) {
