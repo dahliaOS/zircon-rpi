@@ -11,6 +11,7 @@ group("media") {
     "lib",
     "playback",
     "sessions",
+    "examples",
   ]
 }
 
