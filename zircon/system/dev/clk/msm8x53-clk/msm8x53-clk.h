@@ -10,8 +10,11 @@
 #include <fuchsia/hardware/clock/c/fidl.h>
 #include <lib/mmio/mmio.h>
 #include <zircon/thread_annotations.h>
+#include <soc/msm8x53/msm8x53-clock.h>
 
 namespace clk {
+
+class RcgFrequencyTable;
 
 class Msm8x53Clk;
 using DeviceType = ddk::Device<Msm8x53Clk, ddk::Unbindable>;
@@ -39,20 +42,27 @@ private:
 
     zx_status_t RegisterClockProtocol();
 
+    enum class Toggle {
+        Enabled,
+        Disabled
+    };
+
     // Gate Clocks
     zx_status_t GateClockEnable(uint32_t index);
     zx_status_t GateClockDisable(uint32_t index);
 
+    // RCG Clocks
+    zx_status_t RcgClockEnable(uint32_t index);
+    zx_status_t RcgClockDisable(uint32_t index);
+    zx_status_t RcgClockSetRate(uint32_t index, uint64_t hz);
+    zx_status_t ToggleRcgForceEnable(uint32_t rcgr_cmd_offset, Toggle toggle);
+    zx_status_t AwaitRcgEnableLocked(uint32_t rcgr_cmd_offset) __TA_REQUIRES(lock_);
+
     // Branch Clocks
     zx_status_t BranchClockEnable(uint32_t index);
     zx_status_t BranchClockDisable(uint32_t index);
-    enum class AwaitBranchClockStatus {
-        Enabled,
-        Disabled
-    };
     // Wait for a change to a particular branch clock to take effect.
-    zx_status_t AwaitBranchClock(AwaitBranchClockStatus s,
-                                 const uint32_t cbcr_reg);
+    zx_status_t AwaitBranchClock(Toggle s, const uint32_t cbcr_reg);
 
     // Voter Clocks
     zx_status_t VoterClockEnable(uint32_t index);
@@ -60,6 +70,9 @@ private:
 
     fbl::Mutex lock_;       // Lock guards mmio_.
     std::optional<ddk::MmioBuffer> mmio_;
+
+    fbl::Mutex rcg_rates_lock_;
+    uint64_t rcg_rates_[msm8x53::kRcgClkCount];
 };
 
 } // namespace clk
