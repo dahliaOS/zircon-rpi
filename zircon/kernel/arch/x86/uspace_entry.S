@@ -7,6 +7,7 @@
 #include <asm.h>
 #include <arch/x86/descriptor.h>
 #include <arch/x86/iframe.h>
+#include <arch/x86/kpti.h>
 #include <arch/x86/mmu.h>
 
 // x86_uspace_entry(x86_iframe_t* iframe)

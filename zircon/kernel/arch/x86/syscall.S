@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT
 
 #include <asm.h>
+#include <arch/x86/kpti.h>
 #include <arch/x86/mmu.h>
 #include <arch/x86/mp.h>
 #include <zircon/zx-syscall-numbers.h>

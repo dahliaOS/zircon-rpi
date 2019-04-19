@@ -9,6 +9,7 @@
 
 #include <asm.h>
 #include <arch/x86/descriptor.h>
+#include <arch/x86/kpti.h>
 #include <arch/x86/mmu.h>
 
 #define NUM_INT 256
