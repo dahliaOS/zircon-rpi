@@ -101,13 +101,14 @@ int Vim::Thread() {
         return ZX_OK;
     }
 
+/*
     // Start protocol drivers before adding platform devices.
     // Sysmem is started early so zx_vmo_create_contiguous() works.
     if ((status = SysmemInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: SysmemInit failed: %d\n", status);
         return -1;
     }
-
+*/
     if ((status = GpioInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: GpioInit failed: %d\n", status);
         return -1;
@@ -122,7 +123,7 @@ int Vim::Thread() {
         zxlogf(ERROR, "Thread: ClkInit failed: %d\n", status);
         return -1;
     }
-
+/*
     if ((status = CanvasInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: CanvasInit failed: %d\n", status);
         return -1;
@@ -148,12 +149,14 @@ int Vim::Thread() {
         zxlogf(ERROR, "Thread: EthInit failed: %d\n", status);
         return -1;
     }
+*/
 
     if ((status = UsbInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: UsbInit failed: %d\n", status);
         return -1;
     }
 
+/*
     if ((status = MaliInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: MaliInit failed: %d\n", status);
         return -1;
@@ -184,7 +187,7 @@ int Vim::Thread() {
         zxlogf(ERROR, "Thread: SdInit failed: %d\n", status);
         return -1;
     }
-
+*/
     return ZX_OK;
 }
 
