@@ -61,13 +61,46 @@ static void lockdown_pcie_bus_regions(PcieBusDriver& pcie) {
     ASSERT(res == ZX_OK);
 }
 
+inline void ob(unsigned int port,unsigned char value) {
+   asm volatile ("outb %%al,%%dx": :"d" (port), "a" (value));
+}
+
+void printk80(char *s) {
+  size_t i;
+  for (i = 0; i < strlen(s); i++) {
+    ob(0x80, s[i]);
+  }
+}
+
+char debugbuf[8192];
+char *dbp;
+
+extern "C"
+void exec_mee(void) {
+	TRACEF("Debug %s\n", debugbuf);
+}
+
 static void x86_pcie_init_hook(uint level) {
+    dbp = debugbuf;
+    TRACEF("Enter x86_pcie_init_hook\n");
+    for (int i =0 ; i < 1000; i++) {
+       asm volatile("pause");
+    }
+	ob(0x80, 'x');
+	ob(0x80, '8');
+	ob(0x80, '6');
+	ob(0x80, '_');
+
     // Initialize the bus driver
     zx_status_t res = PcieBusDriver::InitializeDriver(platform_pcie_support);
     if (res != ZX_OK) {
         TRACEF("Failed to initialize PCI bus driver (res = %d).  "
                "PCI will be non-functional.\n",
                res);
+	ob(0x80, 'b');
+	ob(0x80, 'a');
+	ob(0x80, 'd');
+	dbp += snprintf(dbp, 80, "Failed to init PCI %d\n", res);
         return;
     }
 
@@ -100,7 +133,7 @@ static void x86_pcie_init_hook(uint level) {
     // given to us by the bootloader/BIOS, but bootloaders have been known to
     // make mistakes in the past.
     constexpr uint64_t pcie_mmio_base = 0x0;
-    constexpr uint64_t pcie_mmio_size = 0x100000000;
+    constexpr uint64_t pcie_mmio_size = 0x100000000ull;
     res = pcie->AddBusRegion(pcie_mmio_base, pcie_mmio_size, PciAddrSpace::MMIO);
     if (res != ZX_OK) {
         TRACEF("WARNING - Failed to add initial PCIe MMIO region "
@@ -114,6 +147,10 @@ static void x86_pcie_init_hook(uint level) {
         auto pcie = reinterpret_cast<PcieBusDriver*>(ctx);
         zx_status_t res;
 
+        TRACEF("Subtracting %lx size=%lx\n", base, size);
+	dbp += snprintf(dbp, 80, "Subtracting 0x%lx size %lx\n", base, size);
+	//ob(0x80, 's');
+
         res = pcie->SubtractBusRegion(base, size, PciAddrSpace::MMIO);
         if (res != ZX_OK) {
             // Woah, this is Very Bad!  If we failed to prohibit the PCIe bus
@@ -124,6 +161,7 @@ static void x86_pcie_init_hook(uint level) {
                    "[%" PRIx64 ", %" PRIx64 ") from bus driver! (res %d)\n",
                    base, base + size, res);
             lockdown_pcie_bus_regions(*pcie);
+	    dbp += snprintf(dbp, 80, "LOCKDOWN 1 res %d\n", res);
         }
     },
                          pcie.get());
@@ -135,6 +173,7 @@ static void x86_pcie_init_hook(uint level) {
         // lockdown the bus.
         TRACEF("FATAL ERROR - Failed to enumerate e820 (res = %d)\n", res);
         lockdown_pcie_bus_regions(*pcie);
+	dbp += snprintf(dbp, 80, "LOCKDOWN 2\n");
     }
 }
 

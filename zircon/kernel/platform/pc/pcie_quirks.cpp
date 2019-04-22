@@ -18,7 +18,7 @@
 #include <trace.h>
 #include <zircon/types.h>
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 // Top-of-lower-usable-DRAM quirk.
 //
@@ -180,6 +180,9 @@ static void pcie_amd_topmem_quirk(const fbl::RefPtr<PcieDevice>& dev) {
                    top_mem, res);
         }
     }
+
+	// Hack
+	dev->driver().AddBusRegion(0xf0000000, 0xf7000000, PciAddrSpace::MMIO);
 
     if (top_mem2 && dev) {
         uint64_t max = (1ULL << x86_physical_address_width());

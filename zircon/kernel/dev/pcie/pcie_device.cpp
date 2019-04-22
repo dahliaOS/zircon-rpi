@@ -32,7 +32,7 @@
 
 using fbl::AutoLock;
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1 
 
 namespace {  // namespace.  Externals do not need to know about PcieDeviceImpl
 class PcieDeviceImpl : public PcieDevice {
@@ -554,6 +554,9 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
             if (info.bus_addr > ktl::numeric_limits<uint32_t>::max()) {
                 alloc = &upstream->mmio_hi_regions();
             }
+            //if (info.size >= 0x4000000 )
+              //  alloc = &upstream->mmio_hi_regions();
+		//return ZX_ERR_NOT_FOUND;	// ENOPE
         } else {
             alloc = &upstream->pio_regions();
         }
@@ -561,6 +564,7 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
         zx_status_t res = ZX_ERR_NOT_FOUND;
         if (alloc != nullptr) {
             res = alloc->GetRegion({ .base = info.bus_addr, .size = info.size }, info.allocation);
+	    TRACEF("Trying Realloc for base=%lx size=%lx res=%d\n", info.bus_addr, info.size, res);
         }
 
         if (res == ZX_OK)
@@ -595,6 +599,7 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
      * range.  In the case of a 64 bit MMIO BAR, if we run out of space in
      * the high-memory MMIO range, try the low memory range as well.
      */
+    int zz_ = 0;
     while (true) {
         /* MMIO windows and I/O windows on systems where I/O space is actually
          * memory mapped must be aligned to a page boundary, at least. */
@@ -603,7 +608,8 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
                              ? info.size
                              : PAGE_SIZE;
         zx_status_t res = alloc->GetRegion(align_size, align_size, info.allocation);
-
+	TRACEF("Trying Alloc for base=%lx size=%lx res=%d zz=%d\n", info.bus_addr, info.size, res, zz_);
+	zz_++;
         if (res != ZX_OK) {
             if ((res == ZX_ERR_NOT_FOUND) && (alloc == &upstream->mmio_hi_regions())) {
                 LTRACEF("Insufficient space to map 64-bit MMIO BAR in high region while "
@@ -632,6 +638,7 @@ zx_status_t PcieDevice::AllocateBarLocked(pcie_bar_info_t& info) {
     DEBUG_ASSERT(info.allocation != nullptr);
     uint bar_reg = info.first_bar_reg;
     info.bus_addr = info.allocation->base;
+TRACEF("MAllocated base %lx sz %lx\n", info.allocation->base, info.allocation->size);
 
     cfg_->Write(PciConfig::kBAR(bar_reg), static_cast<uint32_t>((info.bus_addr & 0xFFFFFFFF) |
                                                 (cfg_->Read(PciConfig::kBAR(bar_reg)) & ~addr_mask)));

@@ -1,4 +1,6 @@
 // Copyright 2019 The Fuchsia Authors
+ extern "C" void xhow(void);
+extern "C" void exec_mee(void);
 //
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file or at
@@ -393,6 +395,7 @@ bool TestThread::Create(int initial_base_priority) {
     END_TEST;
 }
 
+
 bool TestThread::DoStall() {
     BEGIN_TEST;
     ASSERT_EQ(state_, State::CREATED, "");
@@ -437,7 +440,7 @@ bool TestThread::Reset(bool explicit_kill) {
         EXPECT_TRUE(allow_shutdown_.state(), "");
     }
 
-    constexpr zx_duration_t join_timeout = ZX_MSEC(200);
+    constexpr zx_duration_t join_timeout = ZX_MSEC(2000);
 
     switch (state_) {
     case State::INITIAL:
@@ -508,9 +511,11 @@ int TestThread::ThreadEntry() {
 bool TestThread::WaitForBlocked() {
     BEGIN_TEST;
 
-    constexpr zx_duration_t timeout = ZX_MSEC(500);
+    constexpr zx_duration_t timeout = ZX_MSEC(5000);
     constexpr zx_duration_t poll_interval = ZX_USEC(100);
+    asm volatile("lfence" ::: "memory");
     zx_time_t deadline = current_time() + timeout;
+    asm volatile("lfence" ::: "memory");
 
     while (true) {
         Guard<spin_lock_t, IrqSave> guard{ThreadLock::Get()};
@@ -522,9 +527,31 @@ bool TestThread::WaitForBlocked() {
             ASSERT_EQ(THREAD_READY, state, "");
         }
 
+        asm volatile("lfence" ::: "memory");
         zx_time_t now = current_time();
+        asm volatile("lfence" ::: "memory");
         ASSERT_LT(now, deadline, "");
+        asm volatile("lfence" ::: "memory");
         thread_sleep_relative(poll_interval);
+    }
+
+    END_TEST;
+}
+
+bool Hack() {
+    BEGIN_TEST;
+
+    exec_mee();
+
+    xhow();
+
+    auto t = current_time();
+    auto t0 = current_time();
+    for (uint64_t i = 0; i < 100000000ul; i++) {
+       auto t1 = current_time();
+       ASSERT_LT(t0, t1, "");
+       ASSERT_LT(t, t1, "");
+       t = t1;
     }
 
     END_TEST;
@@ -950,7 +977,7 @@ bool pi_test_multi_waiter() {
                 blocking_queue.ReleaseOneThread();
 
                 TestThread* new_owner = nullptr;
-                zx_time_t deadline = current_time() + ZX_MSEC(500);
+                zx_time_t deadline = current_time() + ZX_MSEC(12000);
                 while (current_time() < deadline) {
                     for (auto& w : waiters) {
                         // If the waiter's is_waiting flag is set, but the thread has
@@ -1202,6 +1229,7 @@ bool pi_test_cycle() {
 }  // anon namespace
 
 UNITTEST_START_TESTCASE(pi_tests)
+UNITTEST("hack", Hack)
 UNITTEST("basic", pi_test_basic)
 UNITTEST("changing priority", pi_test_changing_priority)
 UNITTEST("long chains", pi_test_chain<29>)

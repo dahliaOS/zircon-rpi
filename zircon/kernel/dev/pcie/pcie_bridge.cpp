@@ -24,7 +24,7 @@
 
 using fbl::AutoLock;
 
-#define LOCAL_TRACE 0
+#define LOCAL_TRACE 1
 
 PcieBridge::PcieBridge(PcieBusDriver& bus_drv, uint bus_id, uint dev_id, uint func_id, uint mbus_id)
     : PcieDevice(bus_drv, bus_id, dev_id, func_id, true),
@@ -222,25 +222,30 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
 
         if (ret != ZX_OK) {
             TRACEF("Failed to allocate bridge PIO window [0x%08x, 0x%08x]\n", io_base_, io_limit_);
+	    TRACEF("Hack we'll keep it anyway\n");
             return ret;
         }
 
-        DEBUG_ASSERT(pio_window_ != nullptr);
+        //DEBUG_ASSERT(pio_window_ != nullptr);
+        if (pio_window_)
         pio_regions().AddRegion(*pio_window_);
     }
 
     if (mem_base_ <= mem_limit_) {
         uint64_t size = mem_limit_ - mem_base_ + 1;
+	TRACEF("TRYING LO %lx size %lx\n", pf_mem_base_, size);
         ret = upstream->mmio_lo_regions().GetRegion({ .base = mem_base_, .size = size },
                                                     mmio_window_);
 
         if (ret != ZX_OK) {
             TRACEF("Failed to allocate bridge MMIO window [0x%08x, 0x%08x]\n",
                     mem_base_, mem_limit_);
+	    TRACEF("Hack we'll keep it anyway\n");
             return ret;
         }
 
-        DEBUG_ASSERT(mmio_window_ != nullptr);
+        //DEBUG_ASSERT(mmio_window_ != nullptr);
+        if (mmio_window_)
         mmio_lo_regions().AddRegion(*mmio_window_);
     }
 
@@ -248,14 +253,17 @@ zx_status_t PcieBridge::AllocateBridgeWindowsLocked() {
         uint64_t size = pf_mem_limit_ - pf_mem_base_ + 1;
 
         // Attempt to allocate out of the upstream's prefetchable region.
+	TRACEF("TRYING PF %lx size %lx\n", pf_mem_base_, size);
         ret = upstream->pf_mmio_regions().GetRegion({ .base = pf_mem_base_, .size = size },
                                                     pf_mmio_window_);
         if (ret != ZX_OK) {
             // We failed. If it's the root bridge try to allocate from its MMIO regions.
             if (upstream->type() == PcieUpstreamNode::Type::ROOT) {
+	       TRACEF("TRYING AGAIN LO %lx size %lx\n", pf_mem_base_, size);
                 ret = upstream->mmio_lo_regions().GetRegion({ .base = pf_mem_base_, .size = size },
                                                             pf_mmio_window_);
                 if (ret != ZX_OK) {
+	            TRACEF("TRYING AGAIN HI %lx size %lx\n", pf_mem_base_, size);
                     ret = upstream->mmio_hi_regions().GetRegion({ .base = pf_mem_base_, .size = size },
                                                                 pf_mmio_window_);
                 }

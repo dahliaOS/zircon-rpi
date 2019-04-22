@@ -900,7 +900,7 @@ zx_status_t PcieDevice::InitLegacyIrqStateLocked(PcieUpstreamNode& upstream) {
                    "dev %02x:%02x.%01x (pin %u)\n",
                    bus_id_, dev_id_, func_id_,
                    irq_.legacy.pin);
-            return res;
+            return ZX_OK; // Mega hack.
         }
 
         irq_.legacy.shared_handler = bus_drv_.FindLegacyIrqHandler(irq_.legacy.irq_id);

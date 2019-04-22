@@ -113,6 +113,12 @@ static uint32_t ns_per_hpet_rounded_up;
 
 #define LOCAL_TRACE 0
 
+extern "C"
+void xhow(void) {
+    printf("%s\n",
+           clock_name[calibration_clock]);
+}
+
 zx_time_t current_time(void) {
     zx_time_t time;
 
