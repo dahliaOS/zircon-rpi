@@ -97,6 +97,12 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
     const zx_bind_inst_t root_match[] = {
         BI_MATCH(),
     };
+    const zx_bind_inst_t pdev_match[] = {
+        BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
+        BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_TEST),
+        BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_PBUS_TEST),
+        BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_TEST_COMPOSITE),
+    };
     const zx_bind_inst_t gpio_match[] = {
         BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
         BI_MATCH_IF(EQ, BIND_GPIO_PIN, 3),
@@ -114,6 +120,10 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_POWER),
         BI_MATCH_IF(EQ, BIND_POWER_DOMAIN, 3),
     };
+    device_component_part_t pdev_component[] = {
+        { fbl::count_of(root_match), root_match },
+        { fbl::count_of(pdev_match), pdev_match },
+    };
     device_component_part_t gpio_component[] = {
         { fbl::count_of(root_match), root_match },
         { fbl::count_of(gpio_match), gpio_match },
@@ -130,7 +140,8 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         { fbl::count_of(root_match), root_match },
         { fbl::count_of(power_match), power_match },
     };
-    device_component_t composite[] = {
+    device_component_t components[] = {
+        { fbl::count_of(pdev_component), pdev_component },
         { fbl::count_of(gpio_component), gpio_component },
         { fbl::count_of(clock_component), clock_component },
         { fbl::count_of(i2c_component), i2c_component },
@@ -147,6 +158,7 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         }
     };
 
+    // add platform device to use as a component.
     pbus_dev_t pdev = {};
     pdev.name = "composite-dev";
     pdev.vid = PDEV_VID_TEST;
@@ -154,9 +166,20 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
     pdev.did = PDEV_DID_TEST_COMPOSITE;
     pdev.metadata_list = test_metadata;
     pdev.metadata_count = fbl::count_of(test_metadata);
+    status = pbus_device_add(&pbus, &pdev);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "TestBoard::Create: pbus_device_add failed: %d\n", status);
+    }
 
-    status = pbus_composite_device_add(&pbus, &pdev, composite, fbl::count_of(composite),
-                                       UINT32_MAX);
+    zx_device_prop_t props[] = {
+        {BIND_PLATFORM_DEV_VID, 0, PDEV_VID_TEST},
+        {BIND_PLATFORM_DEV_PID, 0, PDEV_PID_PBUS_TEST},
+        {BIND_PLATFORM_DEV_DID, 0, PDEV_DID_TEST_COMPOSITE},
+    };
+
+    // and now composite device, running in devhost of the platform device
+    status = device_add_composite(parent, "composite-test", props, fbl::count_of(props),
+                                  components, fbl::count_of(components), 0);
     if (status != ZX_OK) {
         zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add failed: %d\n", status);
     }
