@@ -20,7 +20,7 @@ __BEGIN_CDECLS
 // A DPC may not execute on the original current CPU if it is hotunplugged/offlined.
 // DPCs may block, though this may starve other queued work.
 
-#define DPC_THREAD_PRIORITY HIGH_PRIORITY
+#define DPC_THREAD_PRIORITY DPC_PRIORITY
 
 struct dpc;
 typedef void (*dpc_func_t)(struct dpc*);
