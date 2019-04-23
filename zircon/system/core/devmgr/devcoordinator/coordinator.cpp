@@ -720,7 +720,13 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
     if (component_driver_ != nullptr && dev->libname == component_driver_->libname) {
         // If it is, then its parent will know about which one (since the parent
         // is the actual device matched by the component description).
-        const auto& parent = dev->parent();
+        auto parent = dev->parent();
+        // If the parent is a proxy, then the device we bound to is isolated, so
+        // we should skip past the proxy for the purposes of tracking.
+        if (parent->flags & DEV_CTX_PROXY) {
+            parent = parent->parent();
+            ZX_ASSERT(parent->flags & DEV_CTX_MUST_ISOLATE);
+        }
         parent->component()->Unbind();
     }
 
