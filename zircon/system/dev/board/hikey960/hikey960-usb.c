@@ -176,17 +176,21 @@ zx_status_t hikey960_usb_init(hikey960_t* hikey) {
     }
 
     // construct USB config metadata
-    uint8_t buffer[sizeof(struct UsbConfig) + sizeof(FunctionDescriptor)];
+    const size_t configSize = sizeof(struct UsbConfig) + 2 * sizeof(FunctionDescriptor);
+    uint8_t buffer[configSize];
     struct UsbConfig* config = (struct UsbConfig*)buffer;
     config->vid = GOOGLE_USB_VID;
-    config->pid = GOOGLE_USB_CDC_PID;
+    config->pid = GOOGLE_USB_CDC_AND_FUNCTION_TEST_PID;
     strcpy(config->manufacturer, kManufacturer);
     strcpy(config->serial, kSerial);
     strcpy(config->product, kProduct);
     config->functions[0].interface_class = USB_CLASS_COMM;
     config->functions[0].interface_protocol = 0;
     config->functions[0].interface_subclass = USB_CDC_SUBCLASS_ETHERNET;
-    dwc3_metadata[0].data_size = sizeof(struct UsbConfig) + sizeof(FunctionDescriptor);
+    config->functions[1].interface_class = USB_CLASS_VENDOR;
+    config->functions[1].interface_protocol = 0;
+    config->functions[1].interface_subclass = 0;
+    dwc3_metadata[0].data_size = configSize;
     dwc3_metadata[0].data_buffer = config;
 
     status = pbus_composite_device_add(&hikey->pbus, &dwc3_dev, components, countof(components), 1);
