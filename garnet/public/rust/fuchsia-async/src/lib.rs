@@ -28,7 +28,10 @@ pub use self::executor::{
     spawn, spawn_local, DurationExt, EHandle, Executor, PacketReceiver, ReceiverRegistration, Time,
 };
 mod fifo;
-pub use self::fifo::{Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry, WriteEntry};
+pub use self::fifo::{
+    BufferedEntryStream, EntryStream, Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry,
+    WriteEntry,
+};
 pub mod net;
 
 // Re-export pin_mut as its used by the async proc macros
