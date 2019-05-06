@@ -20,6 +20,7 @@ unittest_package("rust-crates-tests") {
     "mundane:mundane_test",
     "packet:packet_test",
     "shared-buffer:shared-buffer_test",
+    "virtio_device:virtio_device_test",
     "zerocopy:zerocopy_test",
   ]
 
@@ -66,6 +67,10 @@ unittest_package("rust-crates-tests") {
     },
     {
       name = "shared_buffer_lib_test"
+      environments = basic_envs
+    },
+    {
+      name = "virtio_device_lib_test"
       environments = basic_envs
     },
     {
