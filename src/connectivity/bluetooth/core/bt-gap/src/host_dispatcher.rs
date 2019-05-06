@@ -529,7 +529,7 @@ impl HostDispatcher {
             .map_err(|_| err_msg("failed to set connectable"))?;
         host_device
             .read()
-            .enable_background_scan(true)
+            .enable_background_scan(false)
             .map_err(|_| err_msg("failed to enable background scan"))?;
 
         // Initialize bt-gap as this host's pairing delegate.
