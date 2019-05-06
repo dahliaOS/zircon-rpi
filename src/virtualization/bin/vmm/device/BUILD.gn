@@ -304,31 +304,6 @@ package("virtio_net") {
   ]
 }
 
-executable("virtio_rng_bin") {
-  visibility = [ ":*" ]
-
-  output_name = "virtio_rng"
-  sources = [
-    "virtio_rng.cc",
-  ]
-  deps = [
-    ":virtio",
-  ]
-}
-
-package("virtio_rng") {
-  binary = "virtio_rng"
-  deps = [
-    ":virtio_rng_bin",
-  ]
-  meta = [
-    {
-      path = rebase_path("//src/virtualization/bin/vmm/meta/virtio_rng.cmx")
-      dest = "virtio_rng.cmx"
-    },
-  ]
-}
-
 executable("virtio_wl_bin") {
   visibility = [ ":*" ]
 
