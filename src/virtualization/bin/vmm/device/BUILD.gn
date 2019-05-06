@@ -274,36 +274,6 @@ package("virtio_magma_mock_system") {
   ]
 }
 
-executable("virtio_net_bin") {
-  visibility = [ ":*" ]
-
-  output_name = "virtio_net"
-  sources = [
-    "guest_ethernet.cc",
-    "guest_ethernet.h",
-    "virtio_net.cc",
-  ]
-  deps = [
-    ":virtio",
-    "//garnet/public/lib/async_promise:async_promise",
-    "//sdk/fidl/fuchsia.netstack",
-    "//zircon/public/fidl/fuchsia-hardware-ethernet:fuchsia-hardware-ethernet",
-  ]
-}
-
-package("virtio_net") {
-  binary = "virtio_net"
-  deps = [
-    ":virtio_net_bin",
-  ]
-  meta = [
-    {
-      path = rebase_path("//src/virtualization/bin/vmm/meta/virtio_net.cmx")
-      dest = "virtio_net.cmx"
-    },
-  ]
-}
-
 executable("virtio_wl_bin") {
   visibility = [ ":*" ]
 
