@@ -46,6 +46,9 @@ zx_status_t ComponentProxy::DdkGetProtocol(uint32_t proto_id, void* out) {
     case ZX_PROTOCOL_MIPI_CSI:
         proto->ops = &mipi_csi_protocol_ops_;
         return ZX_OK;
+    case ZX_PROTOCOL_CODEC:
+        proto->ops = &codec_protocol_ops_;
+        return ZX_OK;
     case ZX_PROTOCOL_PDEV:
         proto->ops = &pdev_protocol_ops_;
         return ZX_OK;
@@ -195,6 +198,96 @@ zx_status_t ComponentProxy::MipiCsiDeInit() {
     req.op = MipiCsiOp::DEINIT;
 
     return Rpc(&req.header, sizeof(req), &resp, sizeof(resp));
+}
+
+void ComponentProxy::CodecInitialize(codec_initialize_callback callback, void* cookie) {
+    CodecProxyRequest req = {};
+    CodecProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::INITIALIZE;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    callback(cookie, status);
+}
+
+void ComponentProxy::CodecGetGainFormat(codec_get_gain_format_callback callback, void* cookie) {
+    CodecProxyRequest req = {};
+    CodecGainFormatProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::GET_GAIN_FORMAT;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    callback(cookie, status, &resp.format);
+}
+
+void ComponentProxy::CodecGetGain(codec_get_gain_callback callback, void* cookie) {
+    CodecProxyRequest req = {};
+    CodecProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::GET_GAIN;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    callback(cookie, status, resp.float_value);
+}
+
+void ComponentProxy::CodecSetGain(float gain, codec_set_gain_callback callback, void* cookie) {
+    CodecProxyRequest req = {};
+    CodecProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::SET_GAIN;
+    req.float_value = gain;
+
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    callback(cookie, status);
+}
+
+void ComponentProxy::CodecGetDaiFormats(codec_get_dai_formats_callback callback, void* cookie) {
+    CodecAsyncProxyRequest req = {};
+    uint8_t resp[kProxyMaxTransferSize];
+    CodecProxyResponse* codec_resp = reinterpret_cast<CodecProxyResponse*>(resp);
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::GET_DAI_FORMATS;
+    auto status = Rpc(&req.header, sizeof(req), reinterpret_cast<ProxyResponse*>(resp),
+                      kProxyMaxTransferSize);
+    if (status != ZX_OK) {
+        callback(cookie, status, nullptr);
+        return;
+    }
+    dai_available_formats_t* formats = reinterpret_cast<dai_available_formats_t*>(codec_resp + 1);
+    if (sizeof(CodecProxyResponse) +
+        sizeof(dai_available_formats_t) +
+        formats->sample_formats_count * sizeof(sample_format_t) +
+        formats->justify_formats_count * sizeof(justify_format_t) +
+        formats->sample_rates_count * sizeof(uint32_t) +
+        formats->bits_per_sample_count * sizeof(uint32_t) >= kProxyMaxTransferSize) {
+        return callback(cookie, ZX_ERR_BUFFER_TOO_SMALL, nullptr);
+    }
+    uint8_t* p = reinterpret_cast<uint8_t*>(formats);
+    p += sizeof(dai_available_formats_t);
+    formats->sample_formats_list  = p; p += formats->sample_formats_count * sizeof(sample_format_t);
+    formats->justify_formats_list = p; p += formats->justify_formats_count * sizeof(justify_format_t);
+    formats->sample_rates_list = reinterpret_cast<uint32_t*>(p);
+    p += formats->sample_rates_count * sizeof(uint32_t);
+    formats->bits_per_sample_list = p;// p += formats->bits_per_sample_count * sizeof(uint32_t);
+    callback(cookie, status, formats);
+}
+
+void ComponentProxy::CodecSetDaiFormat(const dai_format_t* format,
+                                       codec_set_dai_format_callback callback, void* cookie) {
+    CodecDaiFormatProxyRequest req = {};
+    CodecProxyResponse resp = {};
+    req.header.proto_id = ZX_PROTOCOL_CODEC;
+    req.op = CodecOp::SET_DAI_FORMAT;
+    req.format = *format;
+    if (format->lanes_count != 1 || format->lanes_list[0] != 0 || format->channels_count != 2 ||
+        format->channels_list[0] != 0 || format->channels_list[1] != 1) {
+        // TODO(andresoportus): Add support for arbitrary lanes and channels.
+        // All proxies need to be eventually auto-generated anyhow.
+        callback(cookie, ZX_ERR_NOT_SUPPORTED);
+        return;
+    }
+    auto status = Rpc(&req.header, sizeof(req), &resp.header, sizeof(resp));
+    callback(cookie, status);
 }
 
 zx_status_t ComponentProxy::GpioConfigIn(uint32_t flags) {

@@ -1,0 +1,72 @@
+// Copyright 2019 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library ddk.protocol.codec;
+using zx;
+
+enum SampleFormat : uint8 {
+    FORMAT_PCM = 1;
+    FORMAT_I2S = 2;
+};
+
+enum JustifyFormat : uint8 {
+    JUSTIFY_I2S = 1;
+    JUSTIFY_TDM = 2;
+    JUSTIFY_LEFT = 3;
+    JUSTIFY_RIGHT = 4;
+};
+
+struct DaiFormat {
+    /// Lanes to use.
+    vector<uint32> lanes;
+    /// Channels to use.
+    vector<uint32> channels;
+    SampleFormat sample_format;
+    JustifyFormat justify_format;
+    uint32 sample_rate;
+    uint8 bits_per_sample;
+};
+
+struct DaiAvailableFormats {
+    uint32 n_lanes;
+    /// Number of channels per lane.
+    uint32 n_channels;
+    vector<SampleFormat> sample_formats;
+    vector<JustifyFormat> justify_formats;
+    vector<uint32> sample_rates;
+    vector<uint8> bits_per_sample;
+};
+
+enum GainType : uint8 {
+    DECIBELS = 1;
+    PERCENT = 2;
+};
+
+struct GainFormat {
+    GainType type;
+    float32 min_gain;
+    float32 max_gain;
+    float32 gain_step;
+};
+
+[Layout = "ddk-protocol"]
+protocol Codec {
+    // Main controls.
+    [Async]
+    Initialize() -> (zx.status s);
+
+    // DAI Format.
+    [Async]
+    GetDaiFormats() -> (zx.status s, DaiAvailableFormats formats);
+    [Async]
+    SetDaiFormat(DaiFormat format) -> (zx.status s);
+
+    // Gain Control.
+    [Async]
+    GetGainFormat() -> (zx.status s, GainFormat format);
+    [Async]
+    GetGain() -> (zx.status s, float32 gain);
+    [Async]
+    SetGain(float32 gain) -> (zx.status s);
+};

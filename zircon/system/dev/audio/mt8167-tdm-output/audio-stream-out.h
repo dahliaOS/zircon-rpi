@@ -14,7 +14,8 @@
 #include <ddktl/device-internal.h>
 #include <ddktl/device.h>
 #include <ddktl/pdev.h>
-#include <ddktl/protocol/gpio.h>
+#include <ddktl/protocol/codec.h>
+#include <ddktl/protocol/platform/device.h>
 #include <dispatcher-pool/dispatcher-timer.h>
 #include <fbl/mutex.h>
 #include <lib/fzl/pinned-vmo.h>
@@ -23,8 +24,6 @@
 #include <lib/zx/vmo.h>
 #include <soc/mt8167/mt8167-audio-out.h>
 #include <zircon/thread_annotations.h>
-
-#include "codec.h"
 
 namespace audio {
 namespace mt8167 {
@@ -60,12 +59,12 @@ private:
     uint32_t us_per_notification_ = 0;
     fbl::RefPtr<dispatcher::Timer> notify_timer_;
     ddk::PDev pdev_ TA_GUARDED(domain_->token());
-    std::unique_ptr<Codec> codec_;
     zx::vmo ring_buffer_vmo_ TA_GUARDED(domain_->token());
     fzl::PinnedVmo pinned_ring_buffer_ TA_GUARDED(domain_->token());
     std::unique_ptr<MtAudioOutDevice> mt_audio_;
     ddk::GpioProtocolClient codec_reset_ TA_GUARDED(domain_->token());
     ddk::GpioProtocolClient codec_mute_ TA_GUARDED(domain_->token());
+    ddk::CodecProtocolClient codec_;
     zx::bti bti_ TA_GUARDED(domain_->token());
 };
 

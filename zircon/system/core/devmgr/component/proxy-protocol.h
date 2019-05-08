@@ -69,6 +69,49 @@ struct MipiCsiProxyRequest {
     mipi_adap_info_t adap_info;
 };
 
+// ZX_PROTOCOL_CODEC proxy support.
+enum class CodecOp {
+    INITIALIZE,
+    GET_GAIN_FORMAT,
+    GET_GAIN,
+    SET_GAIN,
+    GET_DAI_FORMATS,
+    SET_DAI_FORMAT,
+};
+
+struct CodecProxyRequest {
+    ProxyRequest header;
+    CodecOp op;
+    float float_value;
+};
+
+struct CodecAsyncProxyRequest {
+    ProxyRequest header;
+    CodecOp op;
+    void* cookie;
+};
+
+struct CodecDaiFormatProxyRequest {
+    ProxyRequest header;
+    CodecOp op;
+    dai_format_t format;
+};
+
+struct CodecProxyResponse {
+    ProxyResponse header;
+    float float_value;
+};
+
+struct CodecGainFormatProxyResponse {
+    ProxyResponse header;
+    gain_format_t format;
+};
+
+struct CodecDaiFormatsProxyResponse {
+    ProxyResponse header;
+    dai_available_formats_t formats;
+};
+
 // ZX_PROTOCOL_GPIO proxy support.
 enum class GpioOp {
     CONFIG_IN,

@@ -14,28 +14,65 @@
 #include <ddk/platform-defs.h>
 #include <ddktl/metadata/audio.h>
 #include <ddk/protocol/composite.h>
+#include <fbl/array.h>
+#include <lib/sync/completion.h>
 #include <soc/mt8167/mt8167-clk-regs.h>
 
-#include "tas5782.h"
-#include "tas5805.h"
-
-namespace audio {
-namespace mt8167 {
+namespace {
 
 enum {
     COMPONENT_PDEV,
-    COMPONENT_I2C,
-    COMPONENT_RESET_GPIO, // This is optional
-    COMPONENT_MUTE_GPIO, // This is optional
+    COMPONENT_CODEC,
     COMPONENT_COUNT,
 };
-
 
 // Expects L+R.
 constexpr size_t kNumberOfChannels = 2;
 // Calculate ring buffer size for 1 second of 16-bit, 48kHz.
 constexpr size_t kRingBufferSize = fbl::round_up<size_t, size_t>(48000 * 2 * kNumberOfChannels,
                                                                  PAGE_SIZE);
+constexpr uint32_t kCodecTimeout = 1;
+
+static bool IsFormatAvailable(sample_format_t wanted_sample_format,
+                            justify_format_t wanted_justify_format,
+                            uint32_t wanted_sample_rate,
+                            uint8_t wanted_bits_per_sample,
+                            const dai_available_formats_t* formats) {
+    size_t i = 0;
+    for (i = 0; i < formats->sample_formats_count &&
+             formats->sample_formats_list[i] != wanted_sample_format ; ++i) {
+    }
+    if (i == formats->sample_formats_count) {
+        zxlogf(ERROR, "%s did not find wanted sample format\n", __FILE__);
+        return false;
+    }
+    for (i = 0; i < formats->justify_formats_count &&
+             formats->justify_formats_list[i] != wanted_justify_format; ++i) {
+    }
+    if (i == formats->justify_formats_count) {
+        zxlogf(ERROR, "%s did not find wanted justify format\n", __FILE__);
+        return false;
+    }
+    for (i = 0; i < formats->sample_rates_count &&
+             formats->sample_rates_list[i] != wanted_sample_rate; ++i) {
+    }
+    if (i == formats->sample_rates_count) {
+        zxlogf(ERROR, "%s did not find wanted sample rate\n", __FILE__);
+        return false;
+    }
+    for (i = 0; i < formats->bits_per_sample_count &&
+             formats->bits_per_sample_list[i] != wanted_bits_per_sample; ++i) {
+    }
+    if (i == formats->bits_per_sample_count) {
+        zxlogf(ERROR, "%s did not find wanted bits per sample\n", __FILE__);
+        return false;
+    }
+    return true;
+}
+} // namespace
+
+namespace audio {
+namespace mt8167 {
 
 Mt8167AudioStreamOut::Mt8167AudioStreamOut(zx_device_t* parent)
     : SimpleAudioStream(parent, false), pdev_(parent) {
@@ -72,23 +109,8 @@ zx_status_t Mt8167AudioStreamOut::InitPdev() {
         return status;
     }
 
-    // TODO(andresoportus): Move GPIO control to codecs?
-    // Not all codecs have these GPIOs.
-    if (components[COMPONENT_RESET_GPIO]) {
-        codec_reset_ = components[COMPONENT_RESET_GPIO];
-    }
-    if (components[COMPONENT_MUTE_GPIO]) {
-        codec_mute_ = components[COMPONENT_MUTE_GPIO];
-    }
-
-    if (codec == metadata::Codec::Tas5782) {
-        zxlogf(INFO, "audio: using TAS5782 codec\n");
-        codec_ = Tas5782::Create(components[COMPONENT_I2C], 0);
-    } else if (codec == metadata::Codec::Tas5805) {
-        zxlogf(INFO, "audio: using TAS5805 codec\n");
-        codec_ = Tas5805::Create(components[COMPONENT_I2C], 0);
-    } else {
-        zxlogf(ERROR, "%s could not get codec\n", __FUNCTION__);
+    codec_ = components[COMPONENT_CODEC];
+    if (!pdev_.is_valid()) {
         return ZX_ERR_NO_RESOURCES;
     }
 
@@ -127,7 +149,79 @@ zx_status_t Mt8167AudioStreamOut::InitPdev() {
         // Delay to be safe.
         zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
     }
-    codec_->Init();
+    struct AsyncOut {
+        sync_completion_t completion;
+        zx_status_t status;
+    } out;
+
+    codec_.Initialize(
+        [](void* ctx, zx_status_t s) {
+            AsyncOut* out = reinterpret_cast<AsyncOut*>(ctx);
+            out->status = s;
+            sync_completion_signal(&out->completion);
+        }, &out);
+    status = sync_completion_wait(&out.completion, zx::sec(kCodecTimeout).get());
+    if (status != ZX_OK || out.status != ZX_OK) {
+        zxlogf(ERROR, "%s failed to initialize codec %d\n", __FUNCTION__, status);
+        return status;
+    }
+
+    // clang-format off
+    constexpr sample_format_t wanted_sample_format   = SAMPLE_FORMAT_FORMAT_I2S;
+    constexpr justify_format_t wanted_justify_format = JUSTIFY_FORMAT_JUSTIFY_I2S;
+    constexpr uint32_t wanted_sample_rate            = 48000;
+    constexpr uint8_t wanted_bits_per_sample         = 32;
+    // clang-format on
+
+    codec_.GetDaiFormats(
+        [](void* ctx, zx_status_t s, const dai_available_formats_t* formats) {
+            AsyncOut* out = reinterpret_cast<AsyncOut*>(ctx);
+            out->status = s;
+            if (out->status == ZX_OK) {
+                out->status = IsFormatAvailable(
+                    wanted_sample_format, wanted_justify_format, wanted_sample_rate,
+                    wanted_bits_per_sample, formats) ? ZX_OK : ZX_ERR_INTERNAL;
+            }
+            sync_completion_signal(&out->completion);
+        }, &out);
+    status = sync_completion_wait(&out.completion, zx::sec(kCodecTimeout).get());
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s failed to get DAI formats %d\n", __FUNCTION__, status);
+        return status;
+    }
+    if (out.status != ZX_OK) {
+        zxlogf(ERROR, "%s did not find expected DAI formats %d\n", __FUNCTION__, out.status);
+        return status;
+    }
+
+    uint32_t lanes[] = { 0 };
+    uint32_t channels[] = { 0, 1 };
+    dai_format_t format = {};
+    // clang-format off
+    format.lanes_list      = lanes;
+    format.lanes_count     = countof(lanes);
+    format.channels_list   = channels;
+    format.channels_count  = countof(channels);
+    format.sample_format   = wanted_sample_format;
+    format.justify_format  = wanted_justify_format;
+    format.sample_rate     = wanted_sample_rate;
+    format.bits_per_sample = wanted_bits_per_sample;
+    // clang-format on
+    codec_.SetDaiFormat(
+        &format, [](void* ctx, zx_status_t s) {
+                     AsyncOut* out = reinterpret_cast<AsyncOut*>(ctx);
+                     out->status = s;
+                     sync_completion_signal(&out->completion);
+                 }, &out);
+    status = sync_completion_wait(&out.completion, zx::sec(kCodecTimeout).get());
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s failed to get DAI formats %d\n", __FUNCTION__, status);
+        return status;
+    }
+    if (out.status != ZX_OK) {
+        zxlogf(ERROR, "%s did not find expected DAI formats %d\n", __FUNCTION__, out.status);
+        return status;
+    }
 
     // Initialize the ring buffer
     InitBuffer(kRingBufferSize);
@@ -160,13 +254,49 @@ zx_status_t Mt8167AudioStreamOut::Init() {
     }
 
     // Set our gain capabilities.
-    cur_gain_state_.cur_gain = codec_->GetGain();
+    struct AsyncOut {
+        sync_completion_t completion;
+        zx_status_t status;
+        float gain;
+    } out;
+    codec_.GetGain(
+        [](void* ctx, zx_status_t s, float gain) {
+            AsyncOut* out = reinterpret_cast<AsyncOut*>(ctx);
+            out->status = s;
+            out->gain = gain;
+            sync_completion_signal(&out->completion);
+        }, &out);
+    status = sync_completion_wait(&out.completion, zx::sec(kCodecTimeout).get());
+    if (status != ZX_OK || out.status != ZX_OK) {
+        zxlogf(ERROR, "%s failed to get gain %d\n", __FUNCTION__, status);
+        return status;
+    }
+    cur_gain_state_.cur_gain = out.gain;
     cur_gain_state_.cur_mute = false;
     cur_gain_state_.cur_agc = false;
 
-    cur_gain_state_.min_gain = codec_->GetMinGain();
-    cur_gain_state_.max_gain = codec_->GetMaxGain();
-    cur_gain_state_.gain_step = codec_->GetGainStep();
+
+    struct AsyncOut2 {
+        sync_completion_t completion;
+        zx_status_t status;
+        gain_format_t format;
+    } out2;
+    codec_.GetGainFormat(
+        [](void* ctx, zx_status_t s, const gain_format_t* format) {
+            AsyncOut2* out = reinterpret_cast<AsyncOut2*>(ctx);
+            out->status = s;
+            out->format = *format;
+            sync_completion_signal(&out->completion);
+        }, &out2);
+    status = sync_completion_wait(&out2.completion, zx::sec(kCodecTimeout).get());
+    if (status != ZX_OK || out2.status != ZX_OK) {
+        zxlogf(ERROR, "%s failed to get gain format %d\n", __FUNCTION__, status);
+        return status;
+    }
+
+    cur_gain_state_.min_gain = out2.format.min_gain;
+    cur_gain_state_.max_gain = out2.format.max_gain;
+    cur_gain_state_.gain_step = out2.format.gain_step;
     cur_gain_state_.can_mute = false;
     cur_gain_state_.can_agc = false;
 
@@ -229,12 +359,18 @@ void Mt8167AudioStreamOut::ShutdownHook() {
 }
 
 zx_status_t Mt8167AudioStreamOut::SetGain(const audio_proto::SetGainReq& req) {
-    zx_status_t status = codec_->SetGain(req.gain);
-    if (status != ZX_OK) {
-        return status;
-    }
-    cur_gain_state_.cur_gain = codec_->GetGain();
-    return ZX_OK;
+    struct AsyncOut {
+        sync_completion_t completion;
+        zx_status_t status;
+    } out;
+    codec_.SetGain(
+        req.gain, [](void* ctx, zx_status_t s) {
+                     AsyncOut* out = reinterpret_cast<AsyncOut*>(ctx);
+                     out->status = s;
+                     sync_completion_signal(&out->completion);
+                 }, &out);
+    auto status = sync_completion_wait(&out.completion, zx::sec(kCodecTimeout).get());
+    return status;
 }
 
 zx_status_t Mt8167AudioStreamOut::GetBuffer(const audio_proto::RingBufGetBufferReq& req,

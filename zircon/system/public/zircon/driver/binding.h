@@ -136,6 +136,9 @@ __BEGIN_CDECLS
 // POWER binding variables at 0x0A3X
 #define BIND_CLOCK_ID       0x0A30
 
+// CODEC binding variables at 0x0A4X
+#define BIND_CODEC_TAS_DID   0x0A40
+
 // Fuchsia-defined topological path properties are at 0x0B00 through 0x0B7F.
 // Vendor-defined topological path properties are at 0x0B80 to 0x0BFF.
 // For vendor properties, it is recommended that a vendor ID be included

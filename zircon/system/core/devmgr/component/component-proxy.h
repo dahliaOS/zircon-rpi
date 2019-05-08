@@ -14,6 +14,7 @@
 #include <ddktl/protocol/gpio.h>
 #include <ddktl/protocol/i2c.h>
 #include <ddktl/protocol/mipicsi.h>
+#include <ddktl/protocol/codec.h>
 #include <ddktl/protocol/platform/device.h>
 #include <ddktl/protocol/power.h>
 #include <ddktl/protocol/sysmem.h>
@@ -34,6 +35,7 @@ class ComponentProxy : public ComponentProxyBase,
                        public ddk::GpioProtocol<ComponentProxy>,
                        public ddk::I2cProtocol<ComponentProxy>,
                        public ddk::MipiCsiProtocol<ComponentProxy>,
+                       public ddk::CodecProtocol<ComponentProxy>,
                        public ddk::PDevProtocol<ComponentProxy>,
                        public ddk::PowerProtocol<ComponentProxy>,
                        public ddk::SysmemProtocol<ComponentProxy>,
@@ -97,6 +99,14 @@ public:
     zx_status_t MipiCsiInit(const mipi_info_t* mipi_info,
                             const mipi_adap_info_t* adap_info);
     zx_status_t MipiCsiDeInit();
+
+    void CodecInitialize(codec_initialize_callback callback, void* cookie);
+    void CodecGetDaiFormats(codec_get_dai_formats_callback callback, void* cookie);
+    void CodecSetDaiFormat(const dai_format_t* format,
+                           codec_set_dai_format_callback callback, void* cookie);
+    void CodecGetGainFormat(codec_get_gain_format_callback callback, void* cookie);
+    void CodecGetGain(codec_get_gain_callback callback, void* cookie);
+    void CodecSetGain(float gain, codec_set_gain_callback callback, void* cookie);
 
     // USB Mode Switch
     zx_status_t UsbModeSwitchSetMode(usb_mode_t mode);

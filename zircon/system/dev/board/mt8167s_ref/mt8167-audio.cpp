@@ -58,6 +58,9 @@ static const zx_bind_inst_t cleo_out_i2c_match[] = {
     BI_ABORT_IF(NE, BIND_I2C_BUS_ID, 2),
     BI_MATCH_IF(EQ, BIND_I2C_ADDRESS, 0x2C),
 };
+static const zx_bind_inst_t cleo_out_codec_match[] = {
+    BI_MATCH_IF(EQ, BIND_PROTOCOL, ZX_PROTOCOL_CODEC),
+};
 static const device_component_part_t in_i2c_component[] = {
     { fbl::count_of(root_match), root_match },
     { fbl::count_of(in_i2c_match), in_i2c_match },
@@ -70,7 +73,10 @@ static const device_component_part_t cleo_out_i2c_component[] = {
     { fbl::count_of(root_match), root_match },
     { fbl::count_of(cleo_out_i2c_match), cleo_out_i2c_match },
 };
-
+static const device_component_part_t cleo_out_codec_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(cleo_out_codec_match), cleo_out_codec_match },
+};
 static const zx_bind_inst_t in_gpio_match[] = {
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
     BI_MATCH_IF(EQ, BIND_GPIO_PIN, MT8167_GPIO24_EINT24),
@@ -105,8 +111,11 @@ static const device_component_t mt8167s_ref_out_components[] = {
     { countof(mt8167s_out_reset_gpio_component), mt8167s_out_reset_gpio_component },
     { countof(mt8167s_out_mute_gpio_component), mt8167s_out_mute_gpio_component },
 };
-static const device_component_t cleo_out_components[] = {
+static const device_component_t cleo_codec_components[] = {
     { countof(cleo_out_i2c_component), cleo_out_i2c_component },
+};
+static const device_component_t cleo_controller_components[] = {
+    { countof(cleo_out_codec_component), cleo_out_codec_component },
 };
 
 zx_status_t Mt8167::AudioInit() {
@@ -158,17 +167,22 @@ zx_status_t Mt8167::AudioInit() {
         },
     };
 
-    pbus_dev_t dev_out = {};
-    dev_out.name = "mt8167-audio-out";
-    dev_out.vid = PDEV_VID_MEDIATEK;
-    dev_out.pid = PDEV_PID_MEDIATEK_8167S_REF;
-    dev_out.did = PDEV_DID_MEDIATEK_AUDIO_OUT;
-    dev_out.mmio_list = mmios;
-    dev_out.mmio_count = countof(mmios);
-    dev_out.bti_list = btis_out;
-    dev_out.bti_count = countof(btis_out);
-    dev_out.metadata_list = out_metadata;
-    dev_out.metadata_count = countof(out_metadata);
+    pbus_dev_t controller_out = {};
+    controller_out.name = "mt8167-audio-out";
+    controller_out.vid = PDEV_VID_MEDIATEK;
+    controller_out.pid = PDEV_PID_MEDIATEK_8167S_REF;
+    controller_out.did = PDEV_DID_MEDIATEK_AUDIO_OUT;
+    controller_out.mmio_list = mmios;
+    controller_out.mmio_count = countof(mmios);
+    controller_out.bti_list = btis_out;
+    controller_out.bti_count = countof(btis_out);
+    controller_out.metadata_list = out_metadata;
+    controller_out.metadata_count = countof(out_metadata);
+
+    pbus_dev_t codec_out = {};
+    codec_out.name = "audio-tas5805";
+    codec_out.vid = PDEV_VID_TI;
+    codec_out.did = PDEV_DID_TI_TAS5805;
 
     pbus_dev_t dev_in = {};
     dev_in.name = "mt8167-audio-in";
@@ -247,17 +261,26 @@ zx_status_t Mt8167::AudioInit() {
     }
     clock.Enable(kClkRgAud1);
     clock.Enable(kClkRgAud2);
-    
+
     if (board_info_.pid == PDEV_PID_MEDIATEK_8167S_REF) {
-        status = pbus_.CompositeDeviceAdd(&dev_out, mt8167s_ref_out_components,
-                                          countof(mt8167s_ref_out_components), UINT32_MAX);
+        // TODO(andresoportus): Read the reference board with a composite codec as well.
+        zxlogf(ERROR, "%s: Reference board support disabled\n", __FILE__);
+        return ZX_ERR_INTERNAL;
     } else {
-        status = pbus_.CompositeDeviceAdd(&dev_out, cleo_out_components,
-                                          countof(cleo_out_components), UINT32_MAX);
-    }
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s: pbus_.CompositeDeviceAdd failed %d\n", __FUNCTION__, status);
-        return status;
+        status = pbus_.CompositeDeviceAdd(&codec_out, cleo_codec_components,
+                                          countof(cleo_codec_components), UINT32_MAX);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "%s: pbus_.CompositeDeviceAdd failed %d\n", __FUNCTION__, status);
+            return status;
+        }
+
+        status = pbus_.CompositeDeviceAdd(&controller_out, cleo_controller_components,
+                                          countof(cleo_controller_components), UINT32_MAX);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "%s: pbus_.CompositeDeviceAdd failed %d\n", __FUNCTION__, status);
+            return status;
+        }
+
     }
     status = pbus_.CompositeDeviceAdd(&dev_in, in_components, countof(in_components), UINT32_MAX);
     if (status != ZX_OK) {
