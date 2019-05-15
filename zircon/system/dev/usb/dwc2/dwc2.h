@@ -106,7 +106,7 @@ private:
     zx_status_t InitController();
     zx_status_t Start();
     void StartEp0();
-    void ReadPacket(void* buffer, uint32_t length, uint8_t ep_num);
+    void ReadPacket(void* buffer, uint32_t length);
     bool WritePacket(uint8_t ep_num);
     void StartEndpoints();
     void StopEndpoints();
