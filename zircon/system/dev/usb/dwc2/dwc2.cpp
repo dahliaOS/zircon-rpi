@@ -132,12 +132,8 @@ void Dwc2::HandleRxStatusQueueLevel() {
 
     /* Get the Status from the top of the FIFO */
     auto grxstsp = GRXSTSP::Get().ReadFrom(mmio);
-
     auto ep_num = grxstsp.epnum();
-    if (ep_num > 0) {
-        ep_num += 16;
-    }
-    auto* ep = &endpoints_[ep_num];
+    auto* ep = &endpoints_[ep_num + DWC_EP_OUT_SHIFT];
 
     switch (grxstsp.pktsts()) {
     case DWC_STS_DATA_UPDT: {
@@ -146,8 +142,15 @@ void Dwc2::HandleRxStatusQueueLevel() {
             fifo_count = ep->req_length - ep->req_offset;
         }
         if (fifo_count > 0) {
-            ReadPacket(ep->req_buffer + ep->req_offset, fifo_count, static_cast<uint8_t>(ep_num));
+            ReadPacket(ep->req_buffer + ep->req_offset, fifo_count);
             ep->req_offset += fifo_count;
+            if (ep->req_offset == ep->req_length) {
+                if (ep->ep_num == DWC_EP0_OUT) {
+                    // FIXME check status
+                    dci_intf_->Control(&cur_setup_, ep0_buffer_, ep->req_length, nullptr, 0, nullptr);
+                    CompleteEp0();
+                }
+            }
         }
         break;
     }
@@ -408,15 +411,20 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         return status;
     }
 
-    if ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN) {
+    bool is_in = ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN);
+    if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-    } else {
+    } else if (length == 0) {
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, out_actual);
+    } else {
+        status = -1;
     }
     if (status == ZX_OK) {
         auto* ep = &endpoints_[DWC_EP0_OUT];
         ep->req_offset = 0;
-        ep->req_length = static_cast<uint32_t>(*out_actual);
+        if (is_in) {
+            ep->req_length = static_cast<uint32_t>(*out_actual);
+        }
     }
     return status;
 }
@@ -440,11 +448,12 @@ void Dwc2::StartEp0() {
     DEPCTL::Get(DWC_EP0_OUT).FromValue(0).set_epena(1).WriteTo(mmio);
 }
 
-void Dwc2::ReadPacket(void* buffer, uint32_t length, uint8_t ep_num) {
+void Dwc2::ReadPacket(void* buffer, uint32_t length) {
     auto* regs = get_mmio()->get();
     uint32_t count = (length + 3) >> 2;
     uint32_t* dest = (uint32_t*)buffer;
-    volatile uint32_t* fifo = DWC_REG_DATA_FIFO(regs, ep_num);
+    // FIXME use register thingy
+    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + 0x1000);
 
     for (uint32_t i = 0; i < count; i++) {
         *dest++ = *fifo;
@@ -529,7 +538,7 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     uint32_t ep_mps = ep->max_packet_size;
 
     ep->req_offset = 0;
-    ep->req_length = static_cast<uint32_t>(length);
+    ep->req_length = length;
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
@@ -1007,7 +1016,8 @@ zx_status_t Dwc2::Init() {
         auto* ep = &endpoints_[i];
         ep->ep_num = i;
     }
-    endpoints_[0].req_buffer = ep0_buffer_;
+    endpoints_[DWC_EP0_IN].req_buffer = ep0_buffer_;
+    endpoints_[DWC_EP0_OUT].req_buffer = ep0_buffer_;
 
     auto status = pdev_.MapMmio(0, &mmio_);
     if (status != ZX_OK) {
