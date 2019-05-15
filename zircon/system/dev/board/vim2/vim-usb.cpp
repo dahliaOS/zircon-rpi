@@ -506,6 +506,7 @@ zx_status_t Vim::UsbInit() {
     xhci_dev.bti_count = countof(xhci_btis);
 */
 
+#if 1
     constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
                                      ? alignof(UsbConfig)
                                      : __STDCPP_DEFAULT_NEW_ALIGNMENT__;
@@ -515,15 +516,39 @@ zx_status_t Vim::UsbInit() {
         return ZX_ERR_NO_MEMORY;
     }
     config->vid = GOOGLE_USB_VID;
-    config->pid = GOOGLE_USB_CDC_PID;
+    config->pid = GOOGLE_USB_FUNCTION_TEST_PID;
+    strcpy(config->manufacturer, kManufacturer);
+    strcpy(config->serial, kSerial);
+    strcpy(config->product, kProduct);
+    config->functions[0].interface_class = USB_CLASS_VENDOR;
+    config->functions[0].interface_subclass = 0;
+    config->functions[0].interface_protocol = 0;
+    usb_metadata[0].data_size = sizeof(UsbConfig) + sizeof(FunctionDescriptor);
+    usb_metadata[0].data_buffer = config;
+#else
+    constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
+                                     ? alignof(UsbConfig)
+                                     : __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+    constexpr size_t config_size = sizeof(UsbConfig) + 2 * sizeof(FunctionDescriptor);
+    UsbConfig* config = reinterpret_cast<UsbConfig*>(
+        aligned_alloc(alignment, ROUNDUP(config_size, alignment)));
+    if (!config) {
+        return ZX_ERR_NO_MEMORY;
+    }
+    config->vid = GOOGLE_USB_VID;
+    config->pid = GOOGLE_USB_CDC_AND_FUNCTION_TEST_PID;
     strcpy(config->manufacturer, kManufacturer);
     strcpy(config->serial, kSerial);
     strcpy(config->product, kProduct);
     config->functions[0].interface_class = USB_CLASS_COMM;
-    config->functions[0].interface_protocol = 0;
     config->functions[0].interface_subclass = USB_CDC_SUBCLASS_ETHERNET;
-    usb_metadata[0].data_size = sizeof(UsbConfig) + sizeof(FunctionDescriptor);
+    config->functions[0].interface_protocol = 0;
+    config->functions[1].interface_class = USB_CLASS_VENDOR;
+    config->functions[1].interface_subclass = 0;
+    config->functions[1].interface_protocol = 0;
+    usb_metadata[0].data_size = config_size;
     usb_metadata[0].data_buffer = config;
+#endif
 // TODO: delete usb_config later
 //    usb_config_ = config;
 
