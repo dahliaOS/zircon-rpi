@@ -10,6 +10,7 @@
 #include <optional>
 #include <vector>
 
+#include "src/connectivity/bluetooth/core/bt-host/common/identifier.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/connection.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/hci.h"
 #include "src/connectivity/bluetooth/core/bt-host/sm/smp.h"
@@ -65,11 +66,11 @@ class PairingState final {
   using StatusCallback =
       fit::function<void(hci::ConnectionHandle, hci::Status)>;
 
-  // Constructs a PairingState for the ACL connection |link|. This object will
-  // receive its "encryption change" callbacks.
+  // Constructs a PairingState for the ACL connection |link| to |peer_id|. This
+  // object will receive |link|'s "encryption change" callbacks.
   //
   // |link| must be valid for the lifetime of this object.
-  PairingState(hci::Connection* link, StatusCallback status_cb);
+  PairingState(PeerId peer_id, hci::Connection* link, StatusCallback status_cb);
   ~PairingState() = default;
 
   // True if there is currently a pairing procedure in progress that the local
@@ -77,6 +78,9 @@ class PairingState final {
   bool initiator() const {
     return is_pairing() ? current_pairing_->initiator : false;
   }
+
+  // Peer for this pairing.
+  PeerId peer_id() const { return peer_id_; }
 
   // Starts pairing against the peer, if pairing is not already in progress.
   // If not, this device becomes the pairing initiator, and returns
@@ -195,6 +199,8 @@ class PairingState final {
   // event. Invokes |status_callback_| with HostError::kNotSupported and sets
   // |state_| to kFailed.
   void FailWithUnexpectedEvent();
+
+  const PeerId peer_id_;
 
   // The BR/EDR link whose pairing is being driven by this object.
   hci::Connection* const link_;

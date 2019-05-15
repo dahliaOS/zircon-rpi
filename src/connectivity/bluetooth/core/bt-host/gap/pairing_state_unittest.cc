@@ -19,6 +19,7 @@ using hci::kUserPasskeyNotificationEventCode;
 using hci::kUserPasskeyRequestEventCode;
 using hci::testing::FakeConnection;
 
+const PeerId kTestPeerId(0xf00f1becf00fface);
 const hci::ConnectionHandle kTestHandle(0x0A0B);
 const DeviceAddress kLocalAddress(DeviceAddress::Type::kBREDR,
                                   "AA:BB:CC:00:11:22");
@@ -42,13 +43,13 @@ FakeConnection MakeFakeConnection() {
 
 TEST(GAP_PairingStateTest, PairingStateStartsAsResponder) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
   EXPECT_FALSE(pairing_state.initiator());
 }
 
 TEST(GAP_PairingStateTest, PairingStateRemainsResponderAfterPeerIoCapResponse) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
   pairing_state.OnIoCapabilityResponse(kTestPeerIoCap);
   EXPECT_FALSE(pairing_state.initiator());
 }
@@ -56,7 +57,7 @@ TEST(GAP_PairingStateTest, PairingStateRemainsResponderAfterPeerIoCapResponse) {
 TEST(GAP_PairingStateTest,
      PairingStateBecomesInitiatorAfterLocalPairingInitiated) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
   EXPECT_EQ(PairingState::InitiatorAction::kSendAuthenticationRequest,
             pairing_state.InitiatePairing(NoOpStatusCallback));
   EXPECT_TRUE(pairing_state.initiator());
@@ -64,7 +65,7 @@ TEST(GAP_PairingStateTest,
 
 TEST(GAP_PairingStateTest, PairingStateSendsAuthenticationRequestExactlyOnce) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
   EXPECT_EQ(PairingState::InitiatorAction::kSendAuthenticationRequest,
             pairing_state.InitiatePairing(NoOpStatusCallback));
   EXPECT_TRUE(pairing_state.initiator());
@@ -78,7 +79,7 @@ TEST(
     GAP_PairingStateTest,
     PairingStateRemainsResponderIfPairingInitiatedWhileResponderPairingInProgress) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
   pairing_state.OnIoCapabilityResponse(kTestPeerIoCap);
   ASSERT_FALSE(pairing_state.initiator());
 
@@ -134,7 +135,8 @@ TEST(GAP_PairingStateTest,
      UnexpectedEncryptionChangeDoesNotTriggerStatusCallback) {
   TestStatusHandler status_handler;
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, status_handler.MakeStatusCallback());
+  PairingState pairing_state(kTestPeerId, &connection,
+                             status_handler.MakeStatusCallback());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -151,7 +153,8 @@ TEST(GAP_PairingStateTest,
 TEST(GAP_PairingStateTest, SuccessfulEncryptionChangeTriggersStatusCallback) {
   TestStatusHandler status_handler;
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, status_handler.MakeStatusCallback());
+  PairingState pairing_state(kTestPeerId, &connection,
+                             status_handler.MakeStatusCallback());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -179,7 +182,8 @@ TEST(GAP_PairingStateTest,
      EncryptionChangeErrorTriggersStatusCallbackWithError) {
   TestStatusHandler status_handler;
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, status_handler.MakeStatusCallback());
+  PairingState pairing_state(kTestPeerId, &connection,
+                             status_handler.MakeStatusCallback());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -209,7 +213,8 @@ TEST(GAP_PairingStateTest,
      EncryptionChangeToDisabledTriggersStatusCallbackWithError) {
   TestStatusHandler status_handler;
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, status_handler.MakeStatusCallback());
+  PairingState pairing_state(kTestPeerId, &connection,
+                             status_handler.MakeStatusCallback());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -235,7 +240,7 @@ TEST(GAP_PairingStateTest,
 
 TEST(GAP_PairingStateTest, EncryptionChangeToEnableCallsInitiatorCallbacks) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
 
   // Advance state machine.
   TestStatusHandler status_handler_0;
@@ -281,7 +286,7 @@ TEST(GAP_PairingStateTest, EncryptionChangeToEnableCallsInitiatorCallbacks) {
 TEST(GAP_PairingStateTest,
      InitiatingPairingOnResponderWaitsForPairingToFinish) {
   auto connection = MakeFakeConnection();
-  PairingState pairing_state(&connection, NoOpStatusCallback);
+  PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
 
   // Advance state machine.
   pairing_state.OnIoCapabilityResponse(kTestPeerIoCap);
@@ -361,7 +366,8 @@ class HandlesEvent : public ::testing::TestWithParam<void (*)(PairingState*)> {
  protected:
   HandlesEvent()
       : connection_(MakeFakeConnection()),
-        pairing_state_(&connection_, status_handler_.MakeStatusCallback()) {}
+        pairing_state_(kTestPeerId, &connection_,
+                       status_handler_.MakeStatusCallback()) {}
   ~HandlesEvent() = default;
 
   const FakeConnection& connection() const { return connection_; }
