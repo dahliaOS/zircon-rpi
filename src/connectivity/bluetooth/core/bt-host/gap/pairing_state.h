@@ -9,6 +9,7 @@
 
 #include <optional>
 
+#include "src/connectivity/bluetooth/core/bt-host/hci/connection.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/hci.h"
 #include "src/connectivity/bluetooth/core/bt-host/sm/smp.h"
 
@@ -37,6 +38,22 @@ enum class PairingAction {
   kRequestPasskey,
 };
 
+// Tracks the pairing state of a peer's BR/EDR link. This drives HCI
+// transactions and user interactions for pairing in order to obtain the highest
+// possible level of link security given the capabilities of the controllers
+// and hosts participating in the pairing.
+//
+// This implements Core Spec v5.0 Vol 2, Part F, Sec 4.2 through Sec 4.4, per
+// logic requirements in Vol 3, Part C, Sec 5.2.2.
+//
+// This tracks both the bonded case (both hosts furnish their Link Keys to their
+// controllers) and the unbonded case (both controllers perform Secure Simple
+// Pairing and deliver the resulting Link Keys to their hosts).
+//
+// Pairing is considered complete when the Link Keys have been used to
+// successfully encrypt the link, at which time pairing may be restarted (e.g.
+// with different capabilities).
+//
 // This class is not thread-safe and should only be called on the thread on
 // which it was created.
 class PairingState final {
@@ -46,7 +63,12 @@ class PairingState final {
   // order of events expected.
   using StatusCallback =
       fit::function<void(hci::ConnectionHandle, hci::Status)>;
-  PairingState(StatusCallback status_cb);
+
+  // Constructs a PairingState for the ACL connection |link|. This object will
+  // receive its "encryption change" callbacks.
+  //
+  // |link| must be valid for the lifetime of this object.
+  PairingState(hci::Connection* link, StatusCallback status_cb);
   ~PairingState() = default;
 
   // True if there is currently a pairing procedure in progress that the local
@@ -149,6 +171,9 @@ class PairingState final {
   // event. Invokes |status_callback_| with HostError::kNotSupported and sets
   // |state_| to kFailed.
   void FailWithUnexpectedEvent();
+
+  // The BR/EDR link whose pairing is being driven by this object.
+  hci::Connection* const link_;
 
   // Set to true by locally-initiated pairing and cleared when pairing is reset.
   bool initiator_;
