@@ -233,6 +233,89 @@ public:
     static auto Get() { return hwreg::RegisterAddr<GNPTXSTS>(0x2C); }
 };
 
+class GSNPSID : public hwreg::RegisterBase<GSNPSID, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(31, 0, id);
+    static auto Get() { return hwreg::RegisterAddr<GSNPSID>(0x40); }
+};
+
+class GHWCFG1 : public hwreg::RegisterBase<GHWCFG1, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(1, 0, ep_dir0);
+    DEF_FIELD(3, 2, ep_dir1);
+    DEF_FIELD(5, 4, ep_dir2);
+    DEF_FIELD(7, 6, ep_dir3);
+    DEF_FIELD(9, 8, ep_dir4);
+    DEF_FIELD(11, 10, ep_dir5);
+    DEF_FIELD(13, 12, ep_dir6);
+    DEF_FIELD(15, 14, ep_dir7);
+    DEF_FIELD(17, 16, ep_dir8);
+    DEF_FIELD(19, 18, ep_dir9);
+    DEF_FIELD(21, 20, ep_dir10);
+    DEF_FIELD(23, 22, ep_dir11);
+    DEF_FIELD(25, 24, ep_dir12);
+    DEF_FIELD(27, 26, ep_dir13);
+    DEF_FIELD(29, 28, ep_dir14);
+    DEF_FIELD(31, 30, ep_dir15);
+    static auto Get() { return hwreg::RegisterAddr<GHWCFG1>(0x44); }
+};
+
+class GHWCFG2 : public hwreg::RegisterBase<GHWCFG2, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(2, 0, op_mode);
+    DEF_FIELD(4, 3, architecture);
+    DEF_BIT(5, point2point);
+    DEF_FIELD(7, 6, hs_phy_type);
+    DEF_FIELD(9, 8, fs_phy_type);
+    DEF_FIELD(13, 10, num_dev_ep);
+    DEF_FIELD(17, 14, num_host_chan);
+    DEF_BIT(18, perio_ep_supported);
+    DEF_BIT(19, dynamic_fifo);
+    DEF_BIT(20, multi_proc_int);
+    DEF_FIELD(23, 22, nonperio_tx_q_depth);
+    DEF_FIELD(25, 24, host_perio_tx_q_depth);
+    DEF_FIELD(30, 26, dev_token_q_depth);
+    DEF_BIT(31, otg_enable_ic_usb);
+    static auto Get() { return hwreg::RegisterAddr<GHWCFG2>(0x48); }
+};
+
+class GHWCFG3 : public hwreg::RegisterBase<GHWCFG3, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(3, 0, xfer_size_cntr_width);
+    DEF_FIELD(6, 4, packet_size_cntr_width);
+    DEF_BIT(7, otg_func);
+    DEF_BIT(8, i2c);
+    DEF_BIT(9, vendor_ctrl_if);
+    DEF_BIT(10, optional_features);
+    DEF_BIT(11, synch_reset_type);
+    DEF_BIT(12, adp_supp);
+    DEF_BIT(13, otg_enable_hsic);
+    DEF_BIT(14, bc_support);
+    DEF_BIT(15, otg_lpm_en);
+    DEF_FIELD(31, 16, dfifo_depth);
+    static auto Get() { return hwreg::RegisterAddr<GHWCFG3>(0x4C); }
+};
+
+class GHWCFG4 : public hwreg::RegisterBase<GHWCFG4, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(3, 0, num_dev_perio_in_ep);
+    DEF_BIT(4, power_optimiz);
+    DEF_BIT(5, min_ahb_freq);
+    DEF_BIT(6, part_power_down);
+    DEF_FIELD(15, 14, utmi_phy_data_width);
+    DEF_FIELD(19, 16, num_dev_mode_ctrl_ep);
+    DEF_BIT(20, iddig_filt_en);
+    DEF_BIT(21, vbus_valid_filt_en);
+    DEF_BIT(22, a_valid_filt_en);
+    DEF_BIT(23, b_valid_filt_en);
+    DEF_BIT(24, session_end_filt_en);
+    DEF_BIT(25, ded_fifo_en);
+    DEF_FIELD(29, 26, num_in_eps);
+    DEF_BIT(30, desc_dma);
+    DEF_BIT(31, desc_dma_dyn);
+    static auto Get() { return hwreg::RegisterAddr<GHWCFG4>(0x50); }
+};
+
 class DEPCTL : public hwreg::RegisterBase<DEPCTL, uint32_t, hwreg::EnablePrinter> {
 public:
 #define DWC_DEP0CTL_MPS_64	 0

@@ -1045,6 +1045,18 @@ void Dwc2::DdkRelease() {
 int Dwc2::IrqThread() {
     auto* mmio = get_mmio();
 
+    printf("\nGSNPSID:\n");
+    GSNPSID::Get().ReadFrom(mmio).Print();
+    printf("\nGHWCFG1:\n");
+    GHWCFG1::Get().ReadFrom(mmio).Print();
+    printf("\nGHWCFG2:\n");
+    GHWCFG2::Get().ReadFrom(mmio).Print();
+    printf("\nGHWCFG3:\n");
+    GHWCFG3::Get().ReadFrom(mmio).Print();
+    printf("\nGHWCFG4:\n");
+    GHWCFG4::Get().ReadFrom(mmio).Print();
+    printf("\n");
+
     while (1) {
         auto wait_res = irq_.wait(nullptr);
         if (wait_res != ZX_OK) {
@@ -1207,7 +1219,7 @@ zxlogf(LINFO, "dwc_ep_config address %02x ep_num %d\n", ep_desc->bEndpointAddres
 
     depctl.set_mps(usb_ep_max_packet(ep_desc));
     depctl.set_eptype(usb_ep_type(ep_desc));
-    depctl.set_setd0pid(1);
+    depctl.set_setd0pid(1); // correct for interrupt?
     depctl.set_txfnum(0);   //Non-Periodic TxFIFO
     depctl.set_usbactep(1);
 
