@@ -149,6 +149,9 @@ void Dwc2::HandleRxStatusQueueLevel() {
                     // FIXME check status
                     dci_intf_->Control(&cur_setup_, ep0_buffer_, ep->req_length, nullptr, 0, nullptr);
                     CompleteEp0();
+                } else {
+                    printf("HandleRxStatusQueueLevel call EpComplete\n");
+                    EpComplete(ep->ep_num);
                 }
             }
         }
@@ -337,30 +340,21 @@ void Dwc2::HandleTxFifoEmpty() {
 
 				while (retry--) {
 				    auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
-					if (txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords)
+					if (txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
+                        need_more = true;
 						break;
-//					else
-//						flush_cpu_cache();
+				    }
 				}
 				if (0 == retry) {
 					printf("TxFIFO FULL: Can't trans data to HOST !\n");
+                    need_more = true;
 					break;
 				}
 				/* Write the FIFO */
                 if (WritePacket(ep_num)) {
                     need_more = true;
                 }
-
-//				flush_cpu_cache();
 			}
-
-/*
-        if (DAINTMSK::Get().ReadFrom(mmio).mask() & (1 << ep_num)) {
-            if (WritePacket(ep_num)) {
-                need_more = true;
-            }
-        }
-*/
     }
     if (!need_more) {
         GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(0).WriteTo(mmio);
@@ -495,7 +489,6 @@ bool Dwc2::WritePacket(uint8_t ep_num) {
 
     if (ep->req_offset < ep->req_length) {
         // enable txempty
-        GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(1).WriteTo(mmio);
         return true;
     } else {
         return false;
@@ -1218,9 +1211,8 @@ zxlogf(LINFO, "dwc_ep_config address %02x ep_num %d\n", ep_desc->bEndpointAddres
 
     ep->max_packet_size = usb_ep_max_packet(ep_desc);
     ep->type = ep_type;
+    // TODO program the interval somewhere?
     ep->interval = ep_desc->bInterval;
-    // TODO(voydanoff) USB3 support
-
     ep->enabled = true;
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
