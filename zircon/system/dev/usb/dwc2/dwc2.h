@@ -33,8 +33,6 @@
 
 namespace dwc2 {
 
-//#define SINGLE_EP_IN_QUEUE 1
-
 class Dwc2;
 using Dwc2Type = ddk::Device<Dwc2, ddk::Unbindable>;
 
@@ -139,11 +137,6 @@ private:
     }
 
     Endpoint endpoints_[DWC_MAX_EPS];
-
-#if SINGLE_EP_IN_QUEUE
-    RequestQueue queued_in_reqs_ __TA_GUARDED(lock);
-    usb_request_t* current_in_req_;
-#endif
 
     // Used for synchronizing global state
     // and non ep specific hardware registers.
