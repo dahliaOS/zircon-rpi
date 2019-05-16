@@ -45,9 +45,9 @@ void randomize() {
 bool control_interrupt_test(size_t transfer_size) {
     BEGIN_TEST;
 
-    randomize();
-
     for (int i = 0; i < 100; i++) {
+        randomize();
+
         // Send data to device via OUT control request.
         int ret = usb_device_control_transfer(
             dev, USB_DIR_OUT | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
@@ -65,6 +65,8 @@ bool control_interrupt_test(size_t transfer_size) {
         // Sent and received data should match.
         EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
 
+
+/*
         // Create a thread to wait for interrupt request.
         auto thread_func = [](struct usb_request** req) -> void {
             *req = usb_request_wait(dev, TIMEOUT);
@@ -96,6 +98,7 @@ bool control_interrupt_test(size_t transfer_size) {
         EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
 
         usb_request_free(req);
+*/
     }
 
     END_TEST;
