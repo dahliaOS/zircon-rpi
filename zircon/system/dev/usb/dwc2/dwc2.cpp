@@ -412,10 +412,10 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
     }
 
     bool is_in = ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN);
-    if (is_in) {
-        status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-    } else if (length == 0) {
+    if (le16toh(setup->wLength) == 0) {
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, out_actual);
+    } else if (is_in) {
+        status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
     } else {
         status = -1;
     }
