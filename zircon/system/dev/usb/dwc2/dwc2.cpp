@@ -504,18 +504,8 @@ bool Dwc2::WritePacket(uint8_t ep_num) {
 void Dwc2::EpQueueNextLocked(Endpoint* ep) {
     std::optional<Request> req;
 
-#if SINGLE_EP_IN_QUEUE
-    bool is_in = DWC_EP_IS_IN(ep->ep_num);
-    if (is_in) {
-        if (current_in_req_ == nullptr) {
-            req = queued_in_reqs_.pop();
-        }
-    } else
-#endif
-    {
-        if (ep->current_req == nullptr) {
-            req = ep->queued_reqs.pop();
-        }
+    if (ep->current_req == nullptr) {
+        req = ep->queued_reqs.pop();
     }
 
     if (req.has_value()) {
@@ -629,10 +619,6 @@ void Dwc2::StopEndpoints() {
         // disable all endpoints except EP0_OUT and EP0_IN
         DAINTMSK::Get().FromValue((1 << DWC_EP0_IN) | (1 << DWC_EP0_OUT)).WriteTo(mmio);
     }
-
-#if SINGLE_EP_IN_QUEUE
-    // Do something here
-#endif
 
     for (uint8_t ep_num = 1; ep_num < fbl::count_of(endpoints_); ep_num++) {
         EndTransfers(ep_num, ZX_ERR_IO_NOT_PRESENT);
@@ -793,13 +779,6 @@ void Dwc2::EpComplete(uint8_t ep_num) {
         usb_request_t* req = ep->current_req;
 
         if (req) {
-#if SINGLE_EP_IN_QUEUE
-        if (DWC_EP_IS_IN(ep->ep_num)) {
-            ZX_DEBUG_ASSERT(current_in_req_ == ep->current_req);
-            current_in_req_ = nullptr;
-        }
-#endif
-
             ep->current_req = NULL;
             // Is This Safe??
             Request request(req, sizeof(usb_request_t));
