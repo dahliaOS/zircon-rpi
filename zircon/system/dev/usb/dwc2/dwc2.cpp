@@ -414,6 +414,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, out_actual);
     } else if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
+        endpoints_[DWC_EP0_OUT].send_zlp = ((*out_actual % endpoints_[DWC_EP0_OUT].max_packet_size) == 0);
     } else {
         status = -1;
     }
@@ -714,7 +715,6 @@ void Dwc2::HandleEp0Setup() {
     }
     got_setup_ = false;
 
-
     if (setup->bmRequestType & USB_DIR_IN) {
         ep0_state_ = Ep0State::DATA_IN;
     } else {
@@ -738,7 +738,7 @@ void Dwc2::HandleEp0Setup() {
         if (ep0_state_ == Ep0State::DATA_IN && setup->wLength > 0) {
             StartTransfer(DWC_EP0_IN, static_cast<uint32_t>(actual));
         } else {
-            CompleteEp0();
+           CompleteEp0();
         }
     }
 }
@@ -763,6 +763,7 @@ void Dwc2::HandleEp0() {
         CompleteEp0();
         /* OUT for next SETUP */
         ep0_state_ = Ep0State::IDLE;
+        endpoints_[DWC_EP0_OUT].send_zlp = false;
 //        ep0->stopped = 1;
 //        ep0->is_in = 0;
         break;
