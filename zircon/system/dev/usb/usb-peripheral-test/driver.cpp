@@ -191,6 +191,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
     zxlogf(TRACE, "%s\n", __func__);
     if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE) &&
         setup->bRequest == USB_PERIPHERAL_TEST_SET_DATA) {
+printf("USB_PERIPHERAL_TEST_SET_DATA length %zu\n", length);
         if (length > sizeof(test->test_data)) {
             length = sizeof(test->test_data);
         }
@@ -199,6 +200,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
         return ZX_OK;
     } else if (setup->bmRequestType == (USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_INTERFACE) &&
         setup->bRequest == USB_PERIPHERAL_TEST_GET_DATA) {
+printf("USB_PERIPHERAL_TEST_GET_DATA length %zu\n", length);
         if (length > test->test_data_length) {
             length = test->test_data_length;
         }
@@ -207,6 +209,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
         return ZX_OK;
     } else if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE) &&
         setup->bRequest == USB_PERIPHERAL_TEST_SEND_INTERUPT) {
+printf("USB_PERIPHERAL_TEST_SEND_INTERUPT length %zu\n", length);
         test->lock.Acquire();
         usb_request_t* req = usb_req_list_remove_head(&test->intr_reqs, test->parent_req_size);
         test->lock.Release();
@@ -223,6 +226,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
             .callback = test_intr_complete,
             .ctx = test,
         };
+printf("Queue interrupt\n");
         usb_function_request_queue(&test->function, req, &complete);
         return ZX_OK;
     } else {
