@@ -87,6 +87,7 @@ void Dwc2::HandleEnumDone() {
     endpoints_[0].max_packet_size = 64;
 
     DEPCTL::Get(0).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
+// Necessary? Should be done earlier?
     DEPCTL::Get(16).ReadFrom(mmio).set_epena(1).WriteTo(mmio);
 
 #if 0 // astro future use
@@ -320,41 +321,44 @@ void Dwc2::HandleTxFifoEmpty() {
 			continue;
         }
 
-        auto* ep = &endpoints_[ep_num];
+//@     auto* ep = &endpoints_[ep_num];
 
 //		flush_cpu_cache();
 
 		/* While there is space in the queue and space in the FIFO and
 		 * More data to tranfer, Write packets to the Tx FIFO */
 //		txstatus.d32 = dwc_read_reg32(DWC_REG_GNPTXSTS);
-		while  (/*txstatus.b.nptxqspcavail > 0 &&
-			txstatus.b.nptxfspcavail > dwords &&*/
-			ep->req_offset < ep->req_length) {
-				uint32_t retry = 1000000;
 
-				uint32_t len = ep->req_length - ep->req_offset;
-				if (len > ep->max_packet_size)
-					len = ep->max_packet_size;
-
-				uint32_t dwords = (len + 3) >> 2;
-
-				while (retry--) {
-				    auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
-					if (txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
-                        need_more = true;
-						break;
-				    }
-				}
-				if (0 == retry) {
-					printf("TxFIFO FULL: Can't trans data to HOST !\n");
-                    need_more = true;
-					break;
-				}
+//@		while  (/*txstatus.b.nptxqspcavail > 0 &&
+//@			txstatus.b.nptxfspcavail > dwords &&*/
+//@			ep->req_offset < ep->req_length) {
+//@				uint32_t retry = 1000000;
+//@
+//@				uint32_t len = ep->req_length - ep->req_offset;
+//@				if (len > ep->max_packet_size)
+//@					len = ep->max_packet_size;
+//@
+//@				uint32_t dwords = (len + 3) >> 2;
+//@
+//@				while (retry--) {
+//@				    auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
+//@					if (txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
+//@                        need_more = true;
+//@						break;
+//@				    }
+//@				}
+//@				if (0 == retry) {
+//@					printf("TxFIFO FULL: Can't trans data to HOST !\n");
+//@                    need_more = true;
+//@					break;
+//@				}
 				/* Write the FIFO */
+if (ep_num == 2) printf("WritePacket for interrupt\n");
                 if (WritePacket(ep_num)) {
                     need_more = true;
+                    // break here?
                 }
-			}
+//@			}
     }
     if (!need_more) {
         GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(0).WriteTo(mmio);
@@ -439,6 +443,7 @@ void Dwc2::StartEp0() {
     doeptsize0.set_xfersize(8 * 3);
     doeptsize0.WriteTo(mmio);
 
+    // Necessary?
     DEPCTL::Get(DWC_EP0_OUT).FromValue(0).set_epena(1).WriteTo(mmio);
 }
 
@@ -472,8 +477,9 @@ bool Dwc2::WritePacket(uint8_t ep_num) {
     
         for (uint32_t i = 0; i < dwords; i++) {
             uint32_t temp = *((uint32_t*)req_buffer);
-//zxlogf(LINFO, "write %08x\n", temp);
+//if (ep_num == 2) zxlogf(LINFO, "write %08x\n", temp);
             *fifo = temp;
+            zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
             req_buffer += 4;
         }
     
@@ -535,6 +541,7 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
+if (ep->ep_num == 2) printf("StartTransfer for interrupt\n");
     /* Zero Length Packet? */
     if (length == 0) {
         deptsiz.set_xfersize(is_in ? 0 : ep_mps);
@@ -558,6 +565,7 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     /* EP enable */
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
     depctl.set_cnak(1);
+// Necessary?
     depctl.set_epena(1);
     depctl.WriteTo(mmio);
 
