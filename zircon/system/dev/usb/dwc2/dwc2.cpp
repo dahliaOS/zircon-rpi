@@ -160,7 +160,7 @@ void Dwc2::HandleRxStatusQueueLevel() {
     }
 
     case DWC_DSTS_SETUP_UPDT: {
-    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + 0x1000);
+    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + DWC_REG_DATA_FIFO_START);
     uint32_t* dest = (uint32_t*)&cur_setup_;
     dest[0] = *fifo;
     dest[1] = *fifo;
@@ -452,7 +452,7 @@ void Dwc2::ReadPacket(void* buffer, uint32_t length) {
     uint32_t count = (length + 3) >> 2;
     uint32_t* dest = (uint32_t*)buffer;
     // FIXME use register thingy
-    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + 0x1000);
+    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + DWC_REG_DATA_FIFO_START);
 
     for (uint32_t i = 0; i < count; i++) {
         *dest++ = *fifo;
@@ -479,7 +479,8 @@ bool Dwc2::WritePacket(uint8_t ep_num) {
             uint32_t temp = *((uint32_t*)req_buffer);
 //if (ep_num == 2) zxlogf(LINFO, "write %08x\n", temp);
             *fifo = temp;
-            zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
+hw_mb();
+zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
             req_buffer += 4;
         }
     

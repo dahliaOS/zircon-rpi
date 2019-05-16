@@ -26,7 +26,7 @@
 #define DWC_ADDR_TO_INDEX(addr) (uint8_t)(((addr) & 0xF) + (16 * !((addr) & USB_DIR_IN)))
 
 #define DWC_REG_DATA_FIFO_START 0x1000
-#define DWC_REG_DATA_FIFO(regs, ep)	((volatile uint32_t*)((uint8_t*)regs + (ep + 1) * 0x1000))
+#define DWC_REG_DATA_FIFO(regs, ep)	((volatile uint32_t*)((uint8_t*)regs + (ep + 1) * DWC_REG_DATA_FIFO_START))
 
 class GOTGCTL : public hwreg::RegisterBase<GOTGCTL, uint32_t, hwreg::EnablePrinter> {
 public:
