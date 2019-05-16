@@ -47,54 +47,56 @@ bool control_interrupt_test(size_t transfer_size) {
 
     randomize();
 
-    // Send data to device via OUT control request.
-    int ret = usb_device_control_transfer(
-        dev, USB_DIR_OUT | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
-        USB_PERIPHERAL_TEST_SET_DATA, 0, test_interface, send_buf,
-        static_cast<int>(transfer_size), TIMEOUT);
-    EXPECT_EQ(ret, static_cast<int>(transfer_size));
+    for (int i = 0; i < 100; i++) {
+        // Send data to device via OUT control request.
+        int ret = usb_device_control_transfer(
+            dev, USB_DIR_OUT | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
+            USB_PERIPHERAL_TEST_SET_DATA, 0, test_interface, send_buf,
+            static_cast<int>(transfer_size), TIMEOUT);
+        EXPECT_EQ(ret, static_cast<int>(transfer_size));
 
-    // Receive data back from device via IN control request.
-    ret = usb_device_control_transfer(
-        dev, USB_DIR_IN | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
-        USB_PERIPHERAL_TEST_GET_DATA, 0, test_interface, receive_buf,
-        static_cast<int>(transfer_size), TIMEOUT);
-    EXPECT_EQ(ret, static_cast<int>(transfer_size));
+        // Receive data back from device via IN control request.
+        ret = usb_device_control_transfer(
+            dev, USB_DIR_IN | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
+            USB_PERIPHERAL_TEST_GET_DATA, 0, test_interface, receive_buf,
+            static_cast<int>(transfer_size), TIMEOUT);
+        EXPECT_EQ(ret, static_cast<int>(transfer_size));
 
-    // Sent and received data should match.
-    EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
+        // Sent and received data should match.
+        EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
 
-    // Create a thread to wait for interrupt request.
-    auto thread_func = [](struct usb_request** req) -> void {
-        *req = usb_request_wait(dev, TIMEOUT);
-    };
-    struct usb_request* complete_req = nullptr;
-    std::thread wait_thread (thread_func, &complete_req);
+        // Create a thread to wait for interrupt request.
+        auto thread_func = [](struct usb_request** req) -> void {
+            *req = usb_request_wait(dev, TIMEOUT);
+        };
+        struct usb_request* complete_req = nullptr;
+        std::thread wait_thread (thread_func, &complete_req);
 
-    // Queue read for interrupt request
-    auto* req = usb_request_new(dev, intr_ep);
-    EXPECT_NE(req, nullptr);
-    req->buffer = receive_buf;
-    req->buffer_length = static_cast<int>(transfer_size);
-    ret = usb_request_queue(req);
-    EXPECT_EQ(ret, 0);
+        // Queue read for interrupt request
+        auto* req = usb_request_new(dev, intr_ep);
+        EXPECT_NE(req, nullptr);
+        req->buffer = receive_buf;
+        req->buffer_length = static_cast<int>(transfer_size);
+        ret = usb_request_queue(req);
+        EXPECT_EQ(ret, 0);
 
-    // Ask the device to send us an interrupt request containing the data we sent earlier.
-    ret = usb_device_control_transfer(dev,
-                            USB_DIR_OUT | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
-                            USB_PERIPHERAL_TEST_SEND_INTERUPT, 0, test_interface, nullptr, 0,
-                            TIMEOUT);
-    EXPECT_EQ(ret, 0);
+        // Ask the device to send us an interrupt request containing the data we sent earlier.
+        ret = usb_device_control_transfer(dev,
+                                USB_DIR_OUT | USB_TYPE_VENDOR | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
+                                USB_PERIPHERAL_TEST_SEND_INTERUPT, 0, test_interface, nullptr, 0,
+                                TIMEOUT);
+        EXPECT_EQ(ret, 0);
 
-    wait_thread.join();
+        wait_thread.join();
 
-    EXPECT_EQ(complete_req, req);
-    EXPECT_EQ(static_cast<size_t>(req->actual_length), transfer_size);
+        EXPECT_EQ(complete_req, req);
+        EXPECT_EQ(static_cast<size_t>(req->actual_length), transfer_size);
 
-    // Sent data should match payload of interrupt request.
-    EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
+        // Sent data should match payload of interrupt request.
+        EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
 
-    usb_request_free(req);
+        usb_request_free(req);
+    }
 
     END_TEST;
 }
