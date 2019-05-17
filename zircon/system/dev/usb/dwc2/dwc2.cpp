@@ -84,7 +84,7 @@ void Dwc2::HandleEnumDone() {
 */
     ep0_state_ = Ep0State::IDLE;
 
-    endpoints_[0].max_packet_size = 64;
+    endpoints_[DWC_EP0_IN].max_packet_size = 64;
 
     DEPCTL::Get(0).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
 // Necessary? Should be done earlier?
@@ -320,8 +320,10 @@ void Dwc2::HandleTxFifoEmpty() {
         if (DEPCTL::Get(ep_num).ReadFrom(mmio).epena() == 0) {
 			continue;
         }
-
-//@     auto* ep = &endpoints_[ep_num];
+        auto* ep = &endpoints_[ep_num];
+        if (ep->req_offset == ep->req_length) {
+            continue;
+        }
 
 //		flush_cpu_cache();
 
@@ -357,6 +359,12 @@ if (ep_num == 2) printf("WritePacket for interrupt\n");
                 if (WritePacket(ep_num)) {
                     need_more = true;
                     // break here?
+                } else {
+                    if (ep->send_zlp) {
+printf("handle send_zlp\n");
+                        ep->send_zlp = false;
+                        StartTransfer(ep_num, 0);
+                    }
                 }
 //@			}
     }
@@ -414,7 +422,10 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, out_actual);
     } else if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-        endpoints_[DWC_EP0_OUT].send_zlp = ((*out_actual % endpoints_[DWC_EP0_OUT].max_packet_size) == 0);
+// don't do this
+//        auto* ep = &endpoints_[DWC_EP0_IN];
+//        ep->send_zlp = ((*out_actual % ep->max_packet_size) == 0);
+//printf("CONTROL IN length %u out_actual: %zu max_packet_size %u send_zlp %u\n", le16toh(setup->wLength), *out_actual, ep->max_packet_size, ep->send_zlp);
     } else {
         status = -1;
     }
@@ -463,39 +474,47 @@ void Dwc2::ReadPacket(void* buffer, uint32_t length) {
 bool Dwc2::WritePacket(uint8_t ep_num) {
     auto* ep = &endpoints_[ep_num];
     auto* mmio = get_mmio();
+    volatile uint32_t* fifo = DWC_REG_DATA_FIFO(mmio_->get(), ep_num);
 
-    uint32_t len = ep->req_length - ep->req_offset;
-    if (len > ep->max_packet_size)
-        len = ep->max_packet_size;
+printf("WritePacket req_offset %u req_length %u\n", ep->req_offset, ep->req_length);
+    uint32_t length = ep->req_length - ep->req_offset;
+    if (length > ep->max_packet_size) {
+        length = ep->max_packet_size;
+    }
 
-    uint32_t dwords = (len + 3) >> 2;
+    uint32_t dwords = (length + 3) >> 2;
     uint8_t *req_buffer = &ep->req_buffer[ep->req_offset];
 
     auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
 
-    while  (ep->req_offset < ep->req_length && txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
-        volatile uint32_t* fifo = DWC_REG_DATA_FIFO(mmio_->get(), ep_num);
-    
+    while  (ep->req_offset < ep->req_length) {
+printf("top of loop length %u dwords %u nptxqspcavail %u nptxfspcavail %u\n", length, dwords, txstatus.nptxqspcavail(), txstatus.nptxfspcavail());
+//     && txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
+        if (txstatus.nptxqspcavail() == 0 || txstatus.nptxfspcavail() <= dwords) {
+            return true;
+        }
+
         for (uint32_t i = 0; i < dwords; i++) {
             uint32_t temp = *((uint32_t*)req_buffer);
-//if (ep_num == 2) zxlogf(LINFO, "write %08x\n", temp);
+//printf("write %08x\n", temp);
             *fifo = temp;
 hw_mb();
 zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
             req_buffer += 4;
         }
     
-        ep->req_offset += len;
+        ep->req_offset += length;
 
-        len = ep->req_length - ep->req_offset;
-        if (len > ep->max_packet_size)
-            len = ep->max_packet_size;
+        length = ep->req_length - ep->req_offset;
+        if (length > ep->max_packet_size)
+            length = ep->max_packet_size;
 
-        dwords = (len + 3) >> 2;
+        dwords = (length + 3) >> 2;
         txstatus.ReadFrom(mmio);
     }
 
     if (ep->req_offset < ep->req_length) {
+printf("WritePacket need more\n");
         // enable txempty
         return true;
     } else {
@@ -533,20 +552,21 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
-if (ep->ep_num == 2) printf("StartTransfer for interrupt\n");
+printf("StartTransfer %u length %u\n", ep_num, length);
     /* Zero Length Packet? */
     if (length == 0) {
         deptsiz.set_xfersize(is_in ? 0 : ep_mps);
         deptsiz.set_pktcnt(1);
     } else {
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
-        if (is_in && length < ep_mps) {
+//        if (is_in && length < ep_mps) {
             deptsiz.set_xfersize(length);
-        }
-        else {
-            deptsiz.set_xfersize(length - ep->req_offset);
-        }
+//        }
+//        else {
+//            deptsiz.set_xfersize(length - ep->req_offset);
+//        }
     }
+    deptsiz.Print();
     deptsiz.WriteTo(mmio);
 
     if (is_in) {
@@ -908,11 +928,18 @@ zx_status_t Dwc2::InitController() {
     // reset phy clock
     PCGCCTL::Get().FromValue(0).WriteTo(mmio);
 
+printf("GRXFSIZ:\n");
+GRXFSIZ::Get().ReadFrom(mmio).Print();
+printf("GNPTXFSIZ:\n");
+GNPTXFSIZ::Get().ReadFrom(mmio).Print();
+
+
     // RX fifo size
     GRXFSIZ::Get().FromValue(0).set_size(256).WriteTo(mmio);
 
     // TX fifo size
     GNPTXFSIZ::Get().FromValue(0).set_depth(512).set_startaddr(256).WriteTo(mmio);
+//@@    DTXFSIZ::Get(0).FromValue(0).set_depth(512).set_startaddr(256).WriteTo(mmio);
 
     FlushFifo(0x10);
 
@@ -1057,6 +1084,11 @@ int Dwc2::IrqThread() {
     printf("\nGHWCFG4:\n");
     GHWCFG4::Get().ReadFrom(mmio).Print();
     printf("\n");
+
+for (unsigned i = 0; i < 15; i++) {
+    printf("DTXFSIZ[%u]:\n", i);
+    DTXFSIZ::Get(i).ReadFrom(mmio).Print();
+}
 
     while (1) {
         auto wait_res = irq_.wait(nullptr);
