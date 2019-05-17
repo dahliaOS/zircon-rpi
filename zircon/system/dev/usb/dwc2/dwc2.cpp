@@ -358,12 +358,13 @@ void Dwc2::HandleTxFifoEmpty() {
 if (ep_num == 2) printf("WritePacket for interrupt\n");
                 if (WritePacket(ep_num)) {
                     need_more = true;
+                    StartTransfer(ep_num);
                     // break here?
                 } else {
                     if (ep->send_zlp) {
 printf("handle send_zlp\n");
                         ep->send_zlp = false;
-                        StartTransfer(ep_num, 0);
+                        StartTransfer(ep_num);
                     }
                 }
 //@			}
@@ -487,31 +488,22 @@ printf("WritePacket req_offset %u req_length %u\n", ep->req_offset, ep->req_leng
 
     auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
 
-    while  (ep->req_offset < ep->req_length) {
 printf("top of loop length %u dwords %u nptxqspcavail %u nptxfspcavail %u\n", length, dwords, txstatus.nptxqspcavail(), txstatus.nptxfspcavail());
-//     && txstatus.nptxqspcavail() > 0 && txstatus.nptxfspcavail() > dwords) {
-        if (txstatus.nptxqspcavail() == 0 || txstatus.nptxfspcavail() <= dwords) {
-            return true;
-        }
+    if (txstatus.nptxqspcavail() == 0 || txstatus.nptxfspcavail() <= dwords) {
+        return true;
+    }
 
-        for (uint32_t i = 0; i < dwords; i++) {
-            uint32_t temp = *((uint32_t*)req_buffer);
+    for (uint32_t i = 0; i < dwords; i++) {
+        uint32_t temp = *((uint32_t*)req_buffer);
 //printf("write %08x\n", temp);
-            *fifo = temp;
+        *fifo = temp;
 hw_mb();
 zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
-            req_buffer += 4;
-        }
-    
-        ep->req_offset += length;
-
-        length = ep->req_length - ep->req_offset;
-        if (length > ep->max_packet_size)
-            length = ep->max_packet_size;
-
-        dwords = (length + 3) >> 2;
-        txstatus.ReadFrom(mmio);
+        req_buffer += 4;
     }
+
+    ep->req_offset += length;
+printf("WritePacket update ep->req_offset: %u\n",  ep->req_offset);
 
     if (ep->req_offset < ep->req_length) {
 printf("WritePacket need more\n");
@@ -536,23 +528,26 @@ void Dwc2::EpQueueNextLocked(Endpoint* ep) {
         usb_request_mmap(usb_req, (void **)&ep->req_buffer);
         ep->send_zlp = usb_req->header.send_zlp && (usb_req->header.length % ep->max_packet_size) == 0;
 
-        StartTransfer(ep->ep_num, static_cast<uint32_t>(usb_req->header.length));
+        ep->req_length = static_cast<uint32_t>(usb_req->header.length);
+        StartTransfer(ep->ep_num);
     }
 }
 
-void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
+void Dwc2::StartTransfer(uint8_t ep_num) {
     auto* ep = &endpoints_[ep_num];
     auto* mmio = get_mmio();
     bool is_in = DWC_EP_IS_IN(ep_num);
 
     uint32_t ep_mps = ep->max_packet_size;
 
-    ep->req_offset = 0;
-    ep->req_length = length;
-
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
-printf("StartTransfer %u length %u\n", ep_num, length);
+    auto length = ep->req_length - ep->req_offset;
+if (ep_num == 0) {
+    if (length > 64) length = 64;
+}
+
+printf("StartTransfer %u length %u ep_mps %u\n", ep_num, length, ep_mps);
     /* Zero Length Packet? */
     if (length == 0) {
         deptsiz.set_xfersize(is_in ? 0 : ep_mps);
@@ -670,7 +665,9 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
 void Dwc2::HandleEp0Status(bool is_in) {
     ep0_state_ = Ep0State::STATUS;
 
-    StartTransfer((is_in ? DWC_EP0_IN : DWC_EP0_OUT), 0);
+    uint8_t ep_num = (is_in ? DWC_EP0_IN : DWC_EP0_OUT);
+    endpoints_[ep_num].req_length = 0;
+    StartTransfer(ep_num);
 
     /* Prepare for more SETUP Packets */
     StartEp0();
@@ -744,7 +741,9 @@ void Dwc2::HandleEp0Setup() {
     if (setup->wLength > 0 && ep0_state_ == Ep0State::DATA_OUT) {
         // queue a read for the data phase
         ep0_state_ = Ep0State::DATA_OUT;
-        StartTransfer(DWC_EP0_OUT, setup->wLength);
+endpoints_[DWC_EP0_OUT].req_offset = 0;
+endpoints_[DWC_EP0_OUT].req_length = setup->wLength;
+        StartTransfer(DWC_EP0_OUT);
     } else {
         size_t actual = 0;
         // FIXME check result
@@ -756,7 +755,9 @@ void Dwc2::HandleEp0Setup() {
 //            }
 
         if (ep0_state_ == Ep0State::DATA_IN && setup->wLength > 0) {
-            StartTransfer(DWC_EP0_IN, static_cast<uint32_t>(actual));
+endpoints_[DWC_EP0_IN].req_offset = 0;
+endpoints_[DWC_EP0_IN].req_length = static_cast<uint32_t>(actual);
+            StartTransfer(DWC_EP0_IN);
         } else {
            CompleteEp0();
         }
