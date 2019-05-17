@@ -202,7 +202,10 @@ void Dwc2::HandleInEpInterrupt() {
                 if (0 == ep_num) {
                     HandleEp0();
                 } else {
-                    EpComplete(ep_num);
+                    auto* ep = &endpoints_[ep_num];
+                    if (ep->req_offset == ep->req_length) {
+                        EpComplete(ep_num);
+                    }
                     if (diepint.nak()) {
     printf("diepint.nak ep_num %u\n", ep_num);
                         DIEPINT::Get(ep_num).ReadFrom(mmio).set_nak(1).WriteTo(mmio);
@@ -283,7 +286,7 @@ if (ep_num > 0) zxlogf(LINFO, "dwc_handle_outepintr_irq xfercompl\n");
                     }
                     HandleEp0();
                 } else {
-                    EpComplete(ep_num);
+                    EpComplete((uint8_t)(ep_num + 16));
                 }
             }
             /* Endpoint disable  */
@@ -316,14 +319,19 @@ void Dwc2::HandleTxFifoEmpty() {
     bool need_more = false;
     auto* mmio = get_mmio();
 
+printf("HandleTxFifoEmpty\n");
+
     for (uint8_t ep_num = DWC_EP0_IN; ep_num < MAX_EPS_CHANNELS; ep_num++) {
         if (DEPCTL::Get(ep_num).ReadFrom(mmio).epena() == 0) {
+if (ep_num == 1) printf("not enabled!\n");
 			continue;
         }
         auto* ep = &endpoints_[ep_num];
         if (ep->req_offset == ep->req_length) {
+if (ep_num == 1) printf("ep->req_offset == ep->req_length! %u\n", ep->req_length);
             continue;
         }
+
 
 //		flush_cpu_cache();
 
@@ -355,7 +363,7 @@ void Dwc2::HandleTxFifoEmpty() {
 //@					break;
 //@				}
 				/* Write the FIFO */
-if (ep_num == 2) printf("WritePacket for interrupt\n");
+printf("WritePacket for %u\n", ep_num);
                 if (WritePacket(ep_num)) {
                     need_more = true;
                     StartTransfer(ep_num);
@@ -370,6 +378,7 @@ printf("handle send_zlp\n");
 //@			}
     }
     if (!need_more) {
+printf("turn off nptxfempty\n");
         GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(0).WriteTo(mmio);
     }
 }
@@ -544,7 +553,7 @@ void Dwc2::StartTransfer(uint8_t ep_num) {
 
     auto length = ep->req_length - ep->req_offset;
 if (ep_num == 0) {
-    if (length > 64) length = 64;
+    if (length > ep_mps) length = ep_mps;
 }
 
 printf("StartTransfer %u length %u ep_mps %u\n", ep_num, length, ep_mps);
@@ -554,17 +563,13 @@ printf("StartTransfer %u length %u ep_mps %u\n", ep_num, length, ep_mps);
         deptsiz.set_pktcnt(1);
     } else {
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
-//        if (is_in && length < ep_mps) {
-            deptsiz.set_xfersize(length);
-//        }
-//        else {
-//            deptsiz.set_xfersize(length - ep->req_offset);
-//        }
+        deptsiz.set_xfersize(length);
     }
     deptsiz.Print();
     deptsiz.WriteTo(mmio);
 
     if (is_in) {
+printf("turn on nptxfempty\n");
         GINTSTS::Get().FromValue(0).set_nptxfempty(1).WriteTo(mmio);
         GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(1).WriteTo(mmio);
     }
@@ -801,10 +806,12 @@ void Dwc2::EpComplete(uint8_t ep_num) {
         auto* ep = &endpoints_[ep_num];
         usb_request_t* req = ep->current_req;
 
+
         if (req) {
             ep->current_req = NULL;
             // Is This Safe??
             Request request(req, sizeof(usb_request_t));
+printf("EpComplete %u actual %u\n", ep_num, ep->req_offset);
             request.Complete(ZX_OK, ep->req_offset);
         }
 
@@ -1171,7 +1178,7 @@ for (unsigned i = 0; i < 15; i++) {
 }
 
 void Dwc2::UsbDciRequestQueue(usb_request_t* req, const usb_request_complete_t* cb) {
-    zxlogf(INFO, "XXXXXXX Dwc2::UsbDciRequestQueue ep: 0x%02x length %zu\n", req->header.ep_address, req->header.length);
+    printf("XXXXXXX Dwc2::UsbDciRequestQueue ep: 0x%02x length %zu\n", req->header.ep_address, req->header.length);
     uint8_t ep_num = DWC_ADDR_TO_INDEX(req->header.ep_address);
     if (ep_num == 0 || ep_num >= fbl::count_of(endpoints_)) {
         zxlogf(ERROR, "dwc_request_queue: bad ep address 0x%02X\n", req->header.ep_address);

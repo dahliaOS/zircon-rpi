@@ -254,7 +254,7 @@ RUN_TEST(control_interrupt_test_64);
 RUN_TEST(control_interrupt_test_100);
 RUN_TEST(control_interrupt_test_256);
 RUN_TEST(control_interrupt_test_1000);
-//RUN_TEST(bulk_test);
+RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 
 int main(int argc, char** argv) {

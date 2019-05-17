@@ -117,7 +117,7 @@ static void test_intr_complete(void* ctx, usb_request_t* req) {
 static void test_bulk_out_complete(void* ctx, usb_request_t* req) {
     auto* test = static_cast<usb_test_t*>(ctx);
 
-    zxlogf(LTRACE, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
+    zxlogf(INFO, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
 
     if (req->response.status == ZX_ERR_IO_NOT_PRESENT) {
         fbl::AutoLock lock(&test->lock);
@@ -136,7 +136,7 @@ static void test_bulk_out_complete(void* ctx, usb_request_t* req) {
             void* buffer;
             usb_request_mmap(req, &buffer);
             usb_request_copy_to(in_req, buffer, req->response.actual, 0);
-            req->header.length = req->response.actual;
+            in_req->header.length = req->response.actual;
 
             usb_request_complete_t complete = {
                 .callback = test_bulk_in_complete,
@@ -156,13 +156,14 @@ static void test_bulk_out_complete(void* ctx, usb_request_t* req) {
         .callback = test_bulk_out_complete,
         .ctx = test,
     };
+    req->header.length = BULK_REQ_SIZE;
     usb_function_request_queue(&test->function, req, &complete);
 }
 
 static void test_bulk_in_complete(void* ctx, usb_request_t* req) {
     auto* test = static_cast<usb_test_t*>(ctx);
 
-    zxlogf(LTRACE, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
+    zxlogf(INFO, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
 
     fbl::AutoLock lock(&test->lock);
     zx_status_t status = usb_req_list_add_tail(&test->bulk_in_reqs, req, test->parent_req_size);
@@ -226,7 +227,6 @@ printf("USB_PERIPHERAL_TEST_SEND_INTERUPT length %zu\n", length);
             .callback = test_intr_complete,
             .ctx = test,
         };
-printf("Queue interrupt\n");
         usb_function_request_queue(&test->function, req, &complete);
         return ZX_OK;
     } else {
