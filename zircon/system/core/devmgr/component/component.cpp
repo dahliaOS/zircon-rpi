@@ -168,6 +168,29 @@ void Component::I2cTransactCallback(void* cookie, zx_status_t status, const i2c_
     sync_completion_signal(&ctx->completion);
 }
 
+void Component::CodecTransactCallback(void* cookie, zx_status_t status,
+                                      const dai_supported_formats_t* formats_list,
+                                      size_t formats_count) {
+//     auto* ctx = static_cast<CodecTransactContext*>(cookie);
+//     ctx->status = status;
+//     if (status == ZX_OK && ctx->buffer) {
+//         auto* p = reinterpret_cast<uint8_t*>(ctx->buffer);
+//         memcpy(p, formats, sizeof(dai_supported_formats_t));
+//         p += sizeof(dai_supported_formats_t);
+//         // clang-format off
+// //        size_t size_sample_formats  = formats->sample_formats_count  * sizeof(sample_format_t);
+//         size_t size_justify_formats = formats->justify_formats_count * sizeof(justify_format_t);
+//         size_t size_frame_rates    = formats->frame_rates_count    * sizeof(uint32_t);
+//         size_t size_bits_per_sample = formats->bits_per_sample_count * sizeof(uint32_t);
+// //        memcpy(p, formats->sample_formats_list,  size_sample_formats);  p += size_sample_formats;
+//         memcpy(p, formats->justify_formats_list, size_justify_formats); p += size_justify_formats;
+//         memcpy(p, formats->frame_rates_list,    size_frame_rates);    p += size_frame_rates;
+//         memcpy(p, formats->bits_per_sample_list, size_bits_per_sample); p += size_bits_per_sample;
+//         // clang-format on
+//         ctx->size = p - reinterpret_cast<uint8_t*>(ctx->buffer);
+//     }
+}
+
 zx_status_t Component::RpcI2c(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
                               uint32_t* out_resp_size, const zx_handle_t* req_handles,
                               uint32_t req_handle_count, zx_handle_t* resp_handles,
@@ -419,6 +442,181 @@ zx_status_t Component::RpcMipiCsi(const uint8_t* req_buf, uint32_t req_size, uin
     }
 }
 
+zx_status_t Component::RpcCodec(const uint8_t* req_buf, uint32_t req_size, uint8_t* resp_buf,
+                                uint32_t* out_resp_size, const zx_handle_t* req_handles,
+                                uint32_t req_handle_count, zx_handle_t* resp_handles,
+                                uint32_t* resp_handle_count) {
+    printf("%s\n", __func__);
+    if (!codec_.is_valid()) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    auto* req = reinterpret_cast<const CodecProxyRequest*>(req_buf);
+    auto* resp = reinterpret_cast<ProxyResponse*>(resp_buf);
+    *out_resp_size = sizeof(*resp);
+
+    switch (req->op) {
+    case CodecOp::RESET:
+    {
+        struct AsyncOut {
+            sync_completion_t completion;
+            zx_status_t status;
+        } out;
+        codec_.Reset(
+            [](void* cookie, zx_status_t status) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                out->status = status;
+                sync_completion_signal(&out->completion);
+            }, &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        if (status == ZX_OK) {
+            status = out.status;
+        }
+        return status;
+    }
+    case CodecOp::IS_BRIDGEABLE:
+    {
+        auto* resp = reinterpret_cast<CodecIsBridgeableProxyResponse*>(resp_buf);
+        *out_resp_size = sizeof(*resp);
+        struct AsyncOut {
+            sync_completion_t completion;
+            bool supports_bridged_mode;
+        } out;
+        codec_.IsBridgeable(
+            [](void* cookie, bool supports_bridged_mode) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                out->supports_bridged_mode = supports_bridged_mode;
+                sync_completion_signal(&out->completion);
+            }, &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        resp->supports_bridged_mode = out.supports_bridged_mode;
+        return status;
+    }
+    case CodecOp::SET_BRIDGED_MODE:
+    {
+        auto* req = reinterpret_cast<const CodecSetBridgedProxyRequest*>(req_buf);
+        codec_.SetBridgedMode(req->enable_bridged_mode, [](void* cookie) {}, nullptr);
+        return ZX_OK;
+    }
+    case CodecOp::GET_DAI_FORMATS:
+    {
+        struct AsyncOut {
+            sync_completion_t completion;
+            zx_status_t status;
+            void* buffer;
+            size_t size;
+        } out;
+        out.buffer = &resp[1];
+
+        // TODO check that it fits.
+        codec_.GetDaiFormats(
+            [](void* cookie, zx_status_t status,
+               const dai_supported_formats_t* formats_list,
+               size_t formats_count) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                auto* p = reinterpret_cast<uint8_t*>(out->buffer);
+                memcpy(p, formats_list, sizeof(dai_supported_formats_t) * formats_count);
+                p += sizeof(dai_supported_formats_t) * formats_count;
+                for (size_t i = 0; i < formats_count; ++i) {
+                    size_t size_number_of_channels = formats_list[i].number_of_channels_count * sizeof(uint32_t);
+                    size_t size_sample_formats     = formats_list[i].sample_formats_count     * sizeof(sample_format_t);
+                    size_t size_justify_formats    = formats_list[i].justify_formats_count    * sizeof(justify_format_t);
+                    size_t size_frame_rates        = formats_list[i].frame_rates_count        * sizeof(uint32_t);
+                    size_t size_bits_per_channel   = formats_list[i].bits_per_channel_count   * sizeof(uint8_t);
+                    size_t size_bits_per_sample    = formats_list[i].bits_per_sample_count    * sizeof(uint8_t);
+                    memcpy(p, formats_list[i].number_of_channels_list, size_number_of_channels); p += size_number_of_channels;
+                    memcpy(p, formats_list[i].sample_formats_list,     size_sample_formats);     p += size_sample_formats;
+                    memcpy(p, formats_list[i].justify_formats_list,    size_justify_formats);    p += size_justify_formats;
+                    memcpy(p, formats_list[i].frame_rates_list,        size_frame_rates);        p += size_frame_rates;
+                    memcpy(p, formats_list[i].bits_per_channel_list,   size_bits_per_channel);   p += size_bits_per_channel;
+                    memcpy(p, formats_list[i].bits_per_sample_list,    size_bits_per_sample);    p += size_bits_per_sample;
+                }
+                out->size = p - reinterpret_cast<uint8_t*>(out->buffer);
+                out->status = status;
+                sync_completion_signal(&out->completion);
+            } , &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        if (status == ZX_OK) {
+            status = out.status;
+        }
+        if (status == ZX_OK) {
+            *out_resp_size = static_cast<uint32_t>(sizeof(*resp) + out.size);
+        }
+        return status;
+    }
+    case CodecOp::SET_DAI_FORMAT:
+    {
+        struct AsyncOut {
+            sync_completion_t completion;
+            zx_status_t status;
+        } out;
+        auto* req = reinterpret_cast<const CodecDaiFormatProxyRequest*>(req_buf);
+        dai_format_t format = req->format; // Copy format and edit any pointers next.
+        format.channels_to_use_list = req->channels_to_use;
+
+        codec_.SetDaiFormat(&format, [](void* cookie, zx_status_t status) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                out->status = status;
+                sync_completion_signal(&out->completion);
+            }, &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        if (status == ZX_OK) {
+            status = out.status;
+        }
+        return status;
+    }
+    case CodecOp::GET_GAIN_FORMAT:
+    {
+        auto* resp = reinterpret_cast<CodecGainFormatProxyResponse*>(resp_buf);
+        *out_resp_size = sizeof(*resp);
+        struct AsyncOut {
+            sync_completion_t completion;
+            gain_format_t format;
+        } out;
+        codec_.GetGainFormat(
+            [](void* cookie, const gain_format_t* format) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                out->format = *format;
+                sync_completion_signal(&out->completion);
+            }, &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        if (status == ZX_OK) {
+            resp->format = out.format;
+        }
+        return status;
+    }
+    case CodecOp::GET_GAIN_STATE:
+    {
+        auto* resp = reinterpret_cast<CodecGainStateProxyResponse*>(resp_buf);
+        *out_resp_size = sizeof(*resp);
+        struct AsyncOut {
+            sync_completion_t completion;
+            gain_state_t state;
+        } out;
+        codec_.GetGainState(
+            [](void* cookie, const gain_state_t* state) {
+                auto* out = reinterpret_cast<AsyncOut*>(cookie);
+                out->state = *state;
+                sync_completion_signal(&out->completion);
+            }, &out);
+        auto status = sync_completion_wait(&out.completion, zx::sec(1).get());
+        if (status == ZX_OK) {
+            resp->state = out.state;
+        }
+        return status;
+    }
+    case CodecOp::SET_GAIN_STATE:
+    {
+        auto* req = reinterpret_cast<const CodecGainStateProxyRequest*>(req_buf);
+        codec_.SetGainState(&req->state, [](void* cookie) {}, nullptr);
+        return ZX_OK;
+    }
+    default:
+        zxlogf(ERROR, "%s: unknown CODEC op %u\n", __func__, static_cast<uint32_t>(req->op));
+        return ZX_ERR_INTERNAL;
+    }
+}
+
 zx_status_t Component::DdkRxrpc(zx_handle_t raw_channel) {
     zx::unowned_channel channel(raw_channel);
     if (!channel->is_valid()) {
@@ -486,6 +684,10 @@ zx_status_t Component::DdkRxrpc(zx_handle_t raw_channel) {
     case ZX_PROTOCOL_MIPI_CSI:
         status = RpcMipiCsi(req_buf, actual, resp_buf, &resp_len, req_handles, req_handle_count,
                             resp_handles, &resp_handle_count);
+        break;
+    case ZX_PROTOCOL_CODEC:
+        status = RpcCodec(req_buf, actual, resp_buf, &resp_len, req_handles, req_handle_count,
+                          resp_handles, &resp_handle_count);
         break;
     default:
         zxlogf(ERROR, "%s: unknown protocol %u\n", __func__, req_header->proto_id);
