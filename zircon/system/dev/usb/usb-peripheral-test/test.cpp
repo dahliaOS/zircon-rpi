@@ -45,7 +45,7 @@ void randomize() {
 bool control_interrupt_test(size_t transfer_size) {
     BEGIN_TEST;
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 1; i++) {
         randomize();
 
         // Send data to device via OUT control request.
@@ -104,6 +104,15 @@ bool control_interrupt_test(size_t transfer_size) {
     END_TEST;
 }
 
+bool control_interrupt_test_n() {
+    for (unsigned i = 131; i < 300; i++) {
+        if (!control_interrupt_test(i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Test control and interrupt requests with 8 byte transfer size.
 bool control_interrupt_test_8() {
     return control_interrupt_test(8);
@@ -118,6 +127,17 @@ bool control_interrupt_test_64() {
 bool control_interrupt_test_100() {
     return control_interrupt_test(100);
 }
+
+bool control_interrupt_test_200() {
+    return control_interrupt_test(200);
+}
+bool control_interrupt_test_255() {
+    return control_interrupt_test(255);
+}
+bool control_interrupt_test_300() {
+    return control_interrupt_test(300);
+}
+
 
 // Test control and interrupt requests with 256 byte transfer size.
 bool control_interrupt_test_256() {
@@ -252,12 +272,16 @@ int usb_discovery_done(void *client_data) {
 } // anonymous namespace
 
 BEGIN_TEST_CASE(usb_peripheral_tests)
-RUN_TEST(control_interrupt_test_8);
-RUN_TEST(control_interrupt_test_64);
-RUN_TEST(control_interrupt_test_100);
-RUN_TEST(control_interrupt_test_256);
-RUN_TEST(control_interrupt_test_1000);
-RUN_TEST(bulk_test);
+RUN_TEST(control_interrupt_test_n);
+//RUN_TEST(control_interrupt_test_8);
+//RUN_TEST(control_interrupt_test_64);
+//RUN_TEST(control_interrupt_test_100);
+//RUN_TEST(control_interrupt_test_200);
+//RUN_TEST(control_interrupt_test_255);
+//RUN_TEST(control_interrupt_test_256);
+//RUN_TEST(control_interrupt_test_300);
+//RUN_TEST(control_interrupt_test_1000);
+//RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 
 int main(int argc, char** argv) {

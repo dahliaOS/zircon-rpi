@@ -316,6 +316,13 @@ public:
     static auto Get() { return hwreg::RegisterAddr<GHWCFG4>(0x50); }
 };
 
+class DTXFSIZ : public hwreg::RegisterBase<DTXFSIZ, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(15, 0, startaddr);
+    DEF_FIELD(31, 16, depth);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DTXFSIZ>(0x104 + 4 * i); }
+};
+
 class DEPCTL : public hwreg::RegisterBase<DEPCTL, uint32_t, hwreg::EnablePrinter> {
 public:
 #define DWC_DEP0CTL_MPS_64	 0
