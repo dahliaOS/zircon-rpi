@@ -153,7 +153,7 @@ printf("new fifo_count %u\n", fifo_count);
             if (ep->req_offset == ep->req_length) {
                 if (ep->ep_num == DWC_EP0_OUT) {
                     // FIXME check status
-                    dci_intf_->Control(&cur_setup_, ep0_buffer_, ep->req_length, nullptr, 0, nullptr);
+                    dci_intf_->Control(&cur_setup_, ep0_buffer_.virt(), ep->req_length, nullptr, 0, nullptr);
                     CompleteEp0();
                 }
             }
@@ -355,8 +355,8 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
     zx_status_t status;
 
     auto* setup = &cur_setup_;
-    auto* buffer = ep0_buffer_;
-    auto length = sizeof(ep0_buffer_);
+    auto* buffer = ep0_buffer_.virt();
+    auto length = ep0_buffer_.size();
 
     if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)) {
         // handle some special setup requests in this driver
@@ -865,18 +865,18 @@ zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
     }
 
     fbl::AllocChecker ac;
-    auto mt_usb = fbl::make_unique_checked<Dwc2>(&ac, parent, &pdev);
+    auto dev = fbl::make_unique_checked<Dwc2>(&ac, parent, &pdev);
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    status = mt_usb->Init();
+    status = dev->Init();
     if (status != ZX_OK) {
         return status;
     }
 
     // devmgr is now in charge of the device.
-    __UNUSED auto* dummy = mt_usb.release();
+    __UNUSED auto* dummy = dev.release();
     return ZX_OK;
 }
 
@@ -885,8 +885,6 @@ zx_status_t Dwc2::Init() {
         auto* ep = &endpoints_[i];
         ep->ep_num = i;
     }
-    endpoints_[DWC_EP0_IN].req_buffer = ep0_buffer_;
-    endpoints_[DWC_EP0_OUT].req_buffer = ep0_buffer_;
 
     auto status = pdev_.MapMmio(0, &mmio_);
     if (status != ZX_OK) {
@@ -897,6 +895,24 @@ zx_status_t Dwc2::Init() {
     if (status != ZX_OK) {
         return status;
     }
+
+    status = pdev_.GetBti(0, &bti_);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    status = ep0_buffer_.Init(bti_.get(), UINT16_MAX, IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    status = ep0_buffer_.PhysMap();
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    endpoints_[DWC_EP0_IN].req_buffer = (uint8_t*)ep0_buffer_.virt();
+    endpoints_[DWC_EP0_OUT].req_buffer = (uint8_t*)ep0_buffer_.virt();
 
     if ((status = InitController()) != ZX_OK) {
         zxlogf(ERROR, "usb_dwc: failed to init controller.\n");
