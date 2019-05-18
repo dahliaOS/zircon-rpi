@@ -146,9 +146,10 @@ private:
 
     bool configured_ = false;
 
+    zx::bti bti_;
+    ddk::IoBuffer ep0_buffer_;
     usb_setup_t cur_setup_ = {};   
     Ep0State ep0_state_ = Ep0State::DISCONNECTED;
-    uint8_t ep0_buffer_[UINT16_MAX];
     bool got_setup_ = false;
 
     ddk::PDev pdev_;

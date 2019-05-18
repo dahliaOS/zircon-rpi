@@ -323,80 +323,6 @@ public:
     static auto Get(unsigned i) { return hwreg::RegisterAddr<DTXFSIZ>(0x104 + 4 * i); }
 };
 
-class DEPCTL : public hwreg::RegisterBase<DEPCTL, uint32_t, hwreg::EnablePrinter> {
-public:
-#define DWC_DEP0CTL_MPS_64	 0
-#define DWC_DEP0CTL_MPS_32	 1
-#define DWC_DEP0CTL_MPS_16	 2
-#define DWC_DEP0CTL_MPS_8	 3
-    DEF_FIELD(10, 0, mps);
-    DEF_FIELD(14, 11, nextep);
-    DEF_BIT(15, usbactep);
-    DEF_BIT(16, dpid);
-    DEF_BIT(17, naksts);
-    DEF_FIELD(19, 18, eptype);
-    DEF_BIT(20, snp);
-    DEF_BIT(21, stall);
-    DEF_FIELD(25, 22, txfnum);
-    DEF_BIT(26, cnak);
-    DEF_BIT(27, snak);
-    DEF_BIT(28, setd0pid);
-    DEF_BIT(29, setd1pid);
-    DEF_BIT(30, epdis);
-    DEF_BIT(31, epena);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPCTL>(0x900 + 0x20 * i); }
-};
-
-class DIEPINT : public hwreg::RegisterBase<DIEPINT, uint32_t, hwreg::EnablePrinter> {
-public:
-    DEF_BIT(0, xfercompl);
-    DEF_BIT(1, epdisabled);
-    DEF_BIT(2, ahberr);
-    DEF_BIT(3, timeout);
-    DEF_BIT(4, intktxfemp);
-    DEF_BIT(5, intknepmis);
-    DEF_BIT(6, inepnakeff);
-    DEF_BIT(8, txfifoundrn);
-    DEF_BIT(9, bna);
-    DEF_BIT(13, nak);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DIEPINT>(0x908 + 0x20 * i); }
-};
-
-class DOEPINT : public hwreg::RegisterBase<DOEPINT, uint32_t, hwreg::EnablePrinter> {
-public:
-    DEF_BIT(0, xfercompl);
-    DEF_BIT(1, epdisabled);
-    DEF_BIT(2, ahberr);
-    DEF_BIT(3, setup);
-    DEF_BIT(4, outtknepdis);
-    DEF_BIT(5, stsphsercvd);
-    DEF_BIT(6, back2backsetup);
-    DEF_BIT(8, outpkterr);
-    DEF_BIT(9, bna);
-    DEF_BIT(11, pktdrpsts);
-    DEF_BIT(12, babble);
-    DEF_BIT(13, nak);
-    DEF_BIT(14, nyet);
-    DEF_BIT(15, sr);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DOEPINT>(0xB08 + 0x20 * i); }
-};
-
-class DEPTSIZ : public hwreg::RegisterBase<DEPTSIZ, uint32_t, hwreg::EnablePrinter> {
-public:
-    DEF_FIELD(18, 0, xfersize);
-    DEF_FIELD(28, 19, pktcnt);
-    DEF_FIELD(30, 29, mc);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPTSIZ>(0x910 + 0x20 * i); }
-};
-
-class DEPTSIZ0 : public hwreg::RegisterBase<DEPTSIZ0, uint32_t, hwreg::EnablePrinter> {
-public:
-    DEF_FIELD(6, 0, xfersize);
-    DEF_FIELD(20, 19, pktcnt);
-    DEF_FIELD(30, 29, supcnt);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPTSIZ0>(0x910 + 0x20 * i); }
-};
-
 class DCFG : public hwreg::RegisterBase<DCFG, uint32_t, hwreg::EnablePrinter> {
 public:
     DEF_FIELD(1, 0, devspd);
@@ -485,6 +411,86 @@ class DAINTMSK : public hwreg::RegisterBase<DAINTMSK, uint32_t, hwreg::EnablePri
 public:
     DEF_FIELD(31, 0, mask);
     static auto Get() { return hwreg::RegisterAddr<DAINTMSK>(0x81C); }
+};
+
+class DEPCTL : public hwreg::RegisterBase<DEPCTL, uint32_t, hwreg::EnablePrinter> {
+public:
+#define DWC_DEP0CTL_MPS_64	 0
+#define DWC_DEP0CTL_MPS_32	 1
+#define DWC_DEP0CTL_MPS_16	 2
+#define DWC_DEP0CTL_MPS_8	 3
+    DEF_FIELD(10, 0, mps);
+    DEF_FIELD(14, 11, nextep);
+    DEF_BIT(15, usbactep);
+    DEF_BIT(16, dpid);
+    DEF_BIT(17, naksts);
+    DEF_FIELD(19, 18, eptype);
+    DEF_BIT(20, snp);
+    DEF_BIT(21, stall);
+    DEF_FIELD(25, 22, txfnum);
+    DEF_BIT(26, cnak);
+    DEF_BIT(27, snak);
+    DEF_BIT(28, setd0pid);
+    DEF_BIT(29, setd1pid);
+    DEF_BIT(30, epdis);
+    DEF_BIT(31, epena);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPCTL>(0x900 + 0x20 * i); }
+};
+
+class DIEPINT : public hwreg::RegisterBase<DIEPINT, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_BIT(0, xfercompl);
+    DEF_BIT(1, epdisabled);
+    DEF_BIT(2, ahberr);
+    DEF_BIT(3, timeout);
+    DEF_BIT(4, intktxfemp);
+    DEF_BIT(5, intknepmis);
+    DEF_BIT(6, inepnakeff);
+    DEF_BIT(8, txfifoundrn);
+    DEF_BIT(9, bna);
+    DEF_BIT(13, nak);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DIEPINT>(0x908 + 0x20 * i); }
+};
+
+class DOEPINT : public hwreg::RegisterBase<DOEPINT, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_BIT(0, xfercompl);
+    DEF_BIT(1, epdisabled);
+    DEF_BIT(2, ahberr);
+    DEF_BIT(3, setup);
+    DEF_BIT(4, outtknepdis);
+    DEF_BIT(5, stsphsercvd);
+    DEF_BIT(6, back2backsetup);
+    DEF_BIT(8, outpkterr);
+    DEF_BIT(9, bna);
+    DEF_BIT(11, pktdrpsts);
+    DEF_BIT(12, babble);
+    DEF_BIT(13, nak);
+    DEF_BIT(14, nyet);
+    DEF_BIT(15, sr);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DOEPINT>(0xB08 + 0x20 * i); }
+};
+
+class DEPTSIZ : public hwreg::RegisterBase<DEPTSIZ, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(18, 0, xfersize);
+    DEF_FIELD(28, 19, pktcnt);
+    DEF_FIELD(30, 29, mc);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPTSIZ>(0x910 + 0x20 * i); }
+};
+
+class DEPTSIZ0 : public hwreg::RegisterBase<DEPTSIZ0, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(6, 0, xfersize);
+    DEF_FIELD(20, 19, pktcnt);
+    DEF_FIELD(30, 29, supcnt);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPTSIZ0>(0x910 + 0x20 * i); }
+};
+
+class DEPDMA : public hwreg::RegisterBase<DEPDMA, uint32_t, hwreg::EnablePrinter> {
+public:
+    DEF_FIELD(31, 0, addr);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPDMA>(0x914 + 0x20 * i); }
 };
 
 class PCGCCTL : public hwreg::RegisterBase<PCGCCTL, uint32_t, hwreg::EnablePrinter> {
