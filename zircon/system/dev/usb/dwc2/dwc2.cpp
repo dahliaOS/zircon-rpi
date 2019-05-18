@@ -812,8 +812,6 @@ void Dwc2::HandleEp0() {
 }
 
 void Dwc2::EpComplete(uint8_t ep_num) {
-printf("EpComplete %u\n", ep_num);
-
     if (ep_num != 0) {
         auto* ep = &endpoints_[ep_num];
         usb_request_t* req = ep->current_req;
@@ -823,7 +821,6 @@ printf("EpComplete %u\n", ep_num);
             ep->current_req = NULL;
             // Is This Safe??
             Request request(req, sizeof(usb_request_t));
-printf("EpComplete %u ep->req_offset %u  ep->req_length %u\n", ep_num, ep->req_offset, ep->req_length);
             request.Complete(ZX_OK, ep->req_offset);
 
             EpQueueNextLocked(ep);
