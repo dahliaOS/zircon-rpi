@@ -31,14 +31,16 @@ PairingState::InitiatorAction PairingState::InitiatePairing(
     current_pairing_ = Data();
     current_pairing_->initiator = true;
     current_pairing_->initiator_callbacks.push_back(std::move(status_cb));
-    bt_log(TRACE, "gap-bredr", "Initiating pairing on %#.04x", handle());
+    bt_log(TRACE, "gap-bredr", "Initiating pairing on %#.04x (id %s)", handle(),
+           bt_str(peer_id()));
     state_ = State::kInitiatorPairingStarted;
     return InitiatorAction::kSendAuthenticationRequest;
   }
 
   if (is_pairing()) {
     bt_log(TRACE, "gap-bredr",
-           "Already pairing %#.04x; blocking callback on completion", handle());
+           "Already pairing %#.04x (id: %s); blocking callback on completion",
+           handle(), bt_str(peer_id()));
     current_pairing_->initiator_callbacks.push_back(std::move(status_cb));
   }
 
@@ -56,8 +58,9 @@ std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
 
     // TODO(xow): Compute pairing event to wait for.
   } else {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     return std::nullopt;
   }
@@ -79,8 +82,9 @@ void PairingState::OnIoCapabilityResponse(hci::IOCapability peer_iocap) {
 
     // TODO(xow): Compute pairing event to wait for.
   } else {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
   }
 }
@@ -88,8 +92,9 @@ void PairingState::OnIoCapabilityResponse(hci::IOCapability peer_iocap) {
 void PairingState::OnUserConfirmationRequest(uint32_t numeric_value,
                                              UserConfirmationCallback cb) {
   if (state() != State::kWaitPairingEvent) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     cb(false);
     return;
@@ -103,8 +108,9 @@ void PairingState::OnUserConfirmationRequest(uint32_t numeric_value,
 
 void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
   if (state() != State::kWaitPairingEvent) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     cb(std::nullopt);
     return;
@@ -118,8 +124,9 @@ void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
 
 void PairingState::OnUserPasskeyNotification(uint32_t numeric_value) {
   if (state() != State::kWaitPairingEvent) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     return;
   }
@@ -131,16 +138,17 @@ void PairingState::OnUserPasskeyNotification(uint32_t numeric_value) {
 
 void PairingState::OnSimplePairingComplete(hci::StatusCode status_code) {
   if (state() != State::kWaitPairingComplete) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     return;
   }
   ZX_ASSERT(is_pairing());
 
-  if (const hci::Status status(status_code);
-      bt_is_error(status, INFO, "gap-bredr", "Pairing failed on link %#.04x",
-                  handle())) {
+  if (const hci::Status status(status_code); bt_is_error(
+          status, INFO, "gap-bredr", "Pairing failed on link %#.04x (id: %s)",
+          handle(), bt_str(peer_id()))) {
     SignalStatus(status);
     state_ = State::kFailed;
     return;
@@ -152,8 +160,9 @@ void PairingState::OnSimplePairingComplete(hci::StatusCode status_code) {
 void PairingState::OnLinkKeyNotification(const UInt128& link_key,
                                          hci::LinkKeyType key_type) {
   if (state() != State::kWaitLinkKey) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     return;
   }
@@ -170,8 +179,9 @@ void PairingState::OnLinkKeyNotification(const UInt128& link_key,
 void PairingState::OnAuthenticationComplete(hci::StatusCode status_code) {
   if (state() != State::kInitiatorPairingStarted &&
       state() != State::kInitiatorWaitAuthComplete) {
-    bt_log(ERROR, "gap-bredr", "Unexpected event %s while in state \"%s\"",
-           __func__, ToString(state()));
+    bt_log(ERROR, "gap-bredr",
+           "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
+           handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
     return;
   }
@@ -179,7 +189,8 @@ void PairingState::OnAuthenticationComplete(hci::StatusCode status_code) {
 
   if (const hci::Status status(status_code);
       bt_is_error(status, INFO, "gap-bredr",
-                  "Authentication failed on link %#.04x", handle())) {
+                  "Authentication failed on link %#.04x (id: %s)", handle(),
+                  bt_str(peer_id()))) {
     SignalStatus(status);
     state_ = State::kFailed;
     return;
@@ -191,8 +202,10 @@ void PairingState::OnAuthenticationComplete(hci::StatusCode status_code) {
 void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
   if (state() != State::kWaitEncryption) {
     bt_log(INFO, "gap-bredr",
-           "%s(%s, %s) in state \"%s\", before pairing completed", __func__,
-           bt_str(status), enabled ? "true" : "false", ToString(state()));
+           "%#.04x (id: %s): Ignoring %s(%s, %s) in state \"%s\", before "
+           "pairing completed",
+           handle(), bt_str(peer_id()), __func__, bt_str(status),
+           enabled ? "true" : "false", ToString(state()));
     return;
   }
 
@@ -200,7 +213,8 @@ void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
     // With Secure Connections, encryption should never be disabled (v5.0 Vol 2,
     // Part E, Sec 7.1.16) at all.
     bt_log(WARN, "gap-bredr",
-           "Pairing failed due to encryption disable on link %#.04x", handle());
+           "Pairing failed due to encryption disable on link %#.04x (id: %s)",
+           handle(), bt_str(peer_id()));
     status = hci::Status(HostError::kFailed);
   }
 
@@ -247,8 +261,9 @@ const char* PairingState::ToString(PairingState::State state) {
 }
 
 void PairingState::SignalStatus(hci::Status status) {
-  bt_log(SPEW, "gap-bredr", "Signaling pairing listeners for %#.04x with %s",
-         handle(), bt_str(status));
+  bt_log(SPEW, "gap-bredr",
+         "Signaling pairing listeners for %#.04x (id: %s) with %s", handle(),
+         bt_str(peer_id()), bt_str(status));
   status_callback_(handle(), status);
   if (is_pairing()) {
     for (auto& cb : current_pairing_->initiator_callbacks) {
