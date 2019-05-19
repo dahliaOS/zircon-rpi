@@ -469,13 +469,14 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
 
 void Dwc2::HandleEp0Status(bool is_in) {
 printf("HandleEp0Status is_in %d\n", is_in);
-    ep0_state_ = Ep0State::STATUS;
-
+    ep0_state_ = (is_in ? Ep0State::STATUS_IN : Ep0State::STATUS_OUT);
     uint8_t ep_num = (is_in ? DWC_EP0_IN : DWC_EP0_OUT);
     StartTransfer(ep_num, 0);
 
     /* Prepare for more SETUP Packets */
-    StartEp0();
+    if (is_in) {
+        StartEp0();
+    }
 }
 
 /*
@@ -550,10 +551,15 @@ printf("HandleEp0 Ep0State::DATA_IN CompleteEp0\n");
 printf("HandleEp0 Ep0State::DATA_OUT CompleteEp0\n");
         HandleEp0Status(true);
         break;
-    case Ep0State::STATUS:
-printf("HandleEp0 Ep0State::STATUS CompleteEp0\n");
+    case Ep0State::STATUS_OUT:
+printf("HandleEp0 Ep0State::STATUS_IN\n");
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
+        break;
+    case Ep0State::STATUS_IN:
+printf("HandleEp0 Ep0State::STATUS_IN\n");
+        ep0_state_ = Ep0State::IDLE;
+//        StartEp0();
         break;
 
     case Ep0State::STALL:

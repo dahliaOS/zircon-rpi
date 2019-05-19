@@ -66,7 +66,8 @@ private:
         IDLE,
         DATA_OUT,
         DATA_IN,
-        STATUS,
+        STATUS_OUT,
+        STATUS_IN,
         STALL,
     };
 
