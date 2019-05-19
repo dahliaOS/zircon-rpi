@@ -145,7 +145,6 @@ private:
     ddk::IoBuffer ep0_buffer_;
     usb_setup_t cur_setup_ = {};   
     Ep0State ep0_state_ = Ep0State::DISCONNECTED;
-    bool got_setup_ = false;
 
     ddk::PDev pdev_;
     std::optional<ddk::UsbDciInterfaceProtocolClient> dci_intf_;
