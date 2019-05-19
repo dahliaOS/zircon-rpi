@@ -127,13 +127,14 @@ void Dwc2::HandleEnumDone() {
     dci_intf_->SetSpeed(USB_SPEED_HIGH);
 }
 
+/*
 void Dwc2::HandleRxStatusQueueLevel() {
     auto* mmio = get_mmio();
     auto* regs = mmio->get();
 
     GINTMSK::Get().ReadFrom(mmio).set_rxstsqlvl(0).WriteTo(mmio);
 
-    /* Get the Status from the top of the FIFO */
+    // Get the Status from the top of the FIFO
     auto grxstsp = GRXSTSP::Get().ReadFrom(mmio);
     auto ep_num = grxstsp.epnum() + DWC_EP_OUT_SHIFT;
     auto* ep = &endpoints_[ep_num];
@@ -185,6 +186,7 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
 
     GINTMSK::Get().ReadFrom(mmio).set_rxstsqlvl(1).WriteTo(mmio);
 }
+*/
 
 void Dwc2::HandleInEpInterrupt() {
     auto* mmio = get_mmio();
@@ -278,11 +280,11 @@ zxlogf(LINFO, "Dwc2::HandleOutEpInterrupt ep_bits %x\n", ep_bits);
         if (ep_bits & 1) {
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
-zxlogf(LINFO, "dwc_handle_outepintr_irq doepint.val %08x\n", doepint.reg_value());
+zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
             /* Transfer complete */
             if (doepint.xfercompl()) {
-zxlogf(LINFO, "dwc_handle_outepintr_irq xfercompl\n");
+zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
@@ -299,7 +301,7 @@ zxlogf(LINFO, "dwc_handle_outepintr_irq xfercompl\n");
                 }
             }
             if (doepint.setup()) {
-zxlogf(LINFO, "dwc_handle_outepintr_irq setup\n");
+zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
 zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
@@ -308,19 +310,17 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
                 got_setup_ = true;
                 HandleEp0Setup();
             }
-            /* Endpoint disable  */
             if (doepint.epdisabled()) {
-zxlogf(LINFO, "dwc_handle_outepintr_irq epdisabled\n");
+zxlogf(LINFO, "HandleOutEpInterrupt epdisabled\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_epdisabled(1).WriteTo(mmio);
             }
-            /* AHB Error */
             if (doepint.ahberr()) {
-zxlogf(LINFO, "dwc_handle_outepintr_irq ahberr\n");
+zxlogf(LINFO, "HandleOutEpInterrupt ahberr\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_ahberr(1).WriteTo(mmio);
             }
-            /* Setup Phase Done (contr0l EPs) */
             if (doepint.setup()) {
+zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
             }
         }
@@ -871,7 +871,7 @@ GNPTXFSIZ::Get().ReadFrom(mmio).Print();
 
     auto gintmsk = GINTMSK::Get().FromValue(0);
 
-    gintmsk.set_rxstsqlvl(1);
+//    gintmsk.set_rxstsqlvl(1);
     gintmsk.set_usbreset(1);
     gintmsk.set_enumdone(1);
     gintmsk.set_inepintr(1);
@@ -1055,12 +1055,12 @@ for (unsigned i = 0; i < 15; i++) {
         if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
         zxlogf(LINFO, "\n");
 
-        if (gintsts.rxstsqlvl()) {
-            HandleRxStatusQueueLevel();
-        }
+//        if (gintsts.rxstsqlvl()) {
+//            HandleRxStatusQueueLevel();
+//        }
 //        if (gintsts.nptxfempty()) {
 //            HandleTxFifoEmpty();
- //       }
+//        }
         if (gintsts.usbreset() || gintsts.resetdet()) {
             HandleReset();
         }
