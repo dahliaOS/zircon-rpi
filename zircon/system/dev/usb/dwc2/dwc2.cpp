@@ -125,7 +125,6 @@ void Dwc2::HandleInEpInterrupt() {
             /* Transfer complete */
             if (diepint.xfercompl()) {
                 DIEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
-printf("diepint.xfercompl\n");
                 if (0 == ep_num) {
                     HandleEp0TransferComplete();
                 } else {
@@ -190,8 +189,6 @@ void Dwc2::HandleOutEpInterrupt() {
     ep_bits &= DWC_EP_OUT_MASK;
     ep_bits >>= DWC_EP_OUT_SHIFT;
 
-zxlogf(LINFO, "Dwc2::HandleOutEpInterrupt ep_bits %x\n", ep_bits);
-
     /* Clear the interrupt */
     DAINT::Get().FromValue(DWC_EP_OUT_MASK).WriteTo(mmio);
 
@@ -199,10 +196,10 @@ zxlogf(LINFO, "Dwc2::HandleOutEpInterrupt ep_bits %x\n", ep_bits);
         if (ep_bits & 1) {
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
-zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
+//zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
             if (doepint.setup()) {
-zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
+//zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
 zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
@@ -211,7 +208,7 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
+//zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
@@ -311,9 +308,6 @@ void Dwc2::SetAddress(uint8_t address) {
 void Dwc2::StartEp0() {
     auto* mmio = get_mmio();
 
-printf("XXXX StartEp0\n");
-//    ep0_state_ = Ep0State::IDLE;
-
 // Needed?
     endpoints_[DWC_EP0_IN].req_offset = 0;
     endpoints_[DWC_EP0_OUT].req_offset = 0;
@@ -363,7 +357,7 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
-printf("StartTransfer %u length %u ep_mps %u\n", ep_num, ep->req_length, ep_mps);
+//printf("StartTransfer %u length %u ep_mps %u\n", ep_num, ep->req_length, ep_mps);
     /* Zero Length Packet? */
     if (length == 0) {
         deptsiz.set_xfersize(is_in ? 0 : ep_mps);
@@ -468,7 +462,6 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
 }
 
 void Dwc2::HandleEp0Status(bool is_in) {
-printf("HandleEp0Status is_in %d\n", is_in);
     ep0_state_ = (is_in ? Ep0State::STATUS_IN : Ep0State::STATUS_OUT);
     uint8_t ep_num = (is_in ? DWC_EP0_IN : DWC_EP0_OUT);
     StartTransfer(ep_num, 0);
@@ -535,29 +528,22 @@ void Dwc2::HandleEp0Setup() {
 void Dwc2::HandleEp0TransferComplete() {
     switch (ep0_state_) {
     case Ep0State::IDLE: {
-printf("HandleEp0TransferComplete Ep0State::IDLE\n");
         StartEp0();
         break;
     }
     case Ep0State::DATA_IN:
-printf("HandleEp0TransferComplete Ep0State::DATA_IN\n");
         HandleEp0Status(false);
         break;
     case Ep0State::DATA_OUT:
-printf("HandleEp0TransferComplete Ep0State::DATA_OUT\n");
         HandleEp0Status(true);
         break;
     case Ep0State::STATUS_OUT:
-printf("HandleEp0TransferComplete Ep0State::STATUS_IN\n");
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
         break;
     case Ep0State::STATUS_IN:
-printf("HandleEp0TransferComplete Ep0State::STATUS_IN\n");
         ep0_state_ = Ep0State::IDLE;
-//        StartEp0();
         break;
-
     case Ep0State::STALL:
     default:
         zxlogf(LINFO, "EP0 state is %d, should not get here\n", static_cast<int>(ep0_state_));
@@ -960,7 +946,7 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
     // convert address to index in range 0 - 31
     // low bit is IN/OUT
     uint8_t ep_num = DWC_ADDR_TO_INDEX(ep_desc->bEndpointAddress);
-zxlogf(LINFO, "dwc_ep_config address %02x ep_num %d\n", ep_desc->bEndpointAddress, ep_num);
+zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddress, ep_num);
     if (ep_num == 0) {
         return ZX_ERR_INVALID_ARGS;
     }
