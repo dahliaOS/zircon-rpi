@@ -196,6 +196,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
             length = sizeof(test->test_data);
         }
         memcpy(test->test_data, write_buffer, length);
+printf("USB_PERIPHERAL_TEST_SET_DATA got length %zu\n", length);
         test->test_data_length = length;
         return ZX_OK;
     } else if (setup->bmRequestType == (USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_INTERFACE) &&
@@ -204,6 +205,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
             length = test->test_data_length;
         }
         memcpy(read_buffer, test->test_data, length);
+printf("USB_PERIPHERAL_TEST_GET_DATA returning %zu\n", length);
         *out_read_actual = length;
         return ZX_OK;
     } else if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE) &&

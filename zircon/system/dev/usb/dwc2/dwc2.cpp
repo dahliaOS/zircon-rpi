@@ -251,7 +251,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
 
     auto* setup = &cur_setup_;
     auto* buffer = ep0_buffer_.virt();
-    auto length = ep0_buffer_.size();
+//    auto length = ep0_buffer_.size();
 
     if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)) {
         // handle some special setup requests in this driver
@@ -291,9 +291,12 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
     }
 
     bool is_in = ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN);
-    if (le16toh(setup->wLength) == 0) {
+    auto length = le16toh(setup->wLength);
+    if (length == 0) {
+printf("Call control empty\n");
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, nullptr);
     } else if (is_in) {
+printf("Call control length %u\n", length);
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
         ep0_buffer_.CacheFlush(0, *out_actual);
     } else {
@@ -367,7 +370,6 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
 
-//printf("StartTransfer %u length %u ep_mps %u\n", ep_num, ep->req_length, ep_mps);
     /* Zero Length Packet? */
     if (length == 0) {
         deptsiz.set_xfersize(is_in ? 0 : ep_mps);
@@ -544,9 +546,18 @@ void Dwc2::HandleEp0TransferComplete() {
     case Ep0State::DATA_IN:
         HandleEp0Status(false);
         break;
-    case Ep0State::DATA_OUT:
+    case Ep0State::DATA_OUT: {
+        auto* mmio = get_mmio();
+        auto length = DEPTSIZ0::Get(DWC_EP0_OUT).ReadFrom(mmio).xfersize();
+        auto* ep = &endpoints_[DWC_EP0_OUT];
+printf("HandleEp0TransferComplete Ep0State::DATA_OUT length: %u req_offset %u req_length %u\n", length, ep->req_offset, ep->req_length);
+        // FIXME larger than mps       
+        // FIXME check status
+        dci_intf_->Control(&cur_setup_, ep0_buffer_.virt(), length, nullptr, 0, nullptr);
+
         HandleEp0Status(true);
         break;
+    }
     case Ep0State::STATUS_OUT:
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
