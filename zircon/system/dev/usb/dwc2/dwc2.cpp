@@ -75,48 +75,28 @@ void Dwc2::HandleSuspend() {
 void Dwc2::HandleEnumDone() {
     auto* mmio = get_mmio();
 
-    zxlogf(INFO, "dwc_handle_enumdone_irq\n");
+    zxlogf(INFO, "HandleEnumDone\n");
 
 /*
     if (dwc->astro_usb.ops) {
         astro_usb_do_usb_tuning(&dwc->astro_usb, false, false);
     }
 */
+    
+    // ???
     ep0_state_ = Ep0State::IDLE;
 
     endpoints_[DWC_EP0_IN].max_packet_size = 64;
 
+// why is this needed? StartEp0() should have done this already.
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
 
     DEPCTL::Get(0).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
 // Necessary? Should be done earlier?
     DEPCTL::Get(16).ReadFrom(mmio).set_epena(1).WriteTo(mmio);
 
-#if 0 // astro future use
-    depctl.d32 = dwc_read_reg32(DWC_REG_IN_EP_REG(1));
-    if (!depctl.b.usbactep) {
-        depctl.b.mps = BULK_EP_MPS;
-        depctl.b.eptype = 2;//BULK_STYLE
-        depctl.b.setd0pid = 1;
-        depctl.b.txfnum = 0;   //Non-Periodic TxFIFO
-        depctl.b.usbactep = 1;
-        dwc_write_reg32(DWC_REG_IN_EP_REG(1), depctl.d32);
-    }
-
-    depctl.d32 = dwc_read_reg32(DWC_REG_OUT_EP_REG(2));
-    if (!depctl.b.usbactep) {
-        depctl.b.mps = BULK_EP_MPS;
-        depctl.b.eptype = 2;//BULK_STYLE
-        depctl.b.setd0pid = 1;
-        depctl.b.txfnum = 0;   //Non-Periodic TxFIFO
-        depctl.b.usbactep = 1;
-        dwc_write_reg32(DWC_REG_OUT_EP_REG(2), depctl.d32);
-    }
-#endif
-
     DCTL::Get().ReadFrom(mmio).set_cgnpinnak(1).WriteTo(mmio);
 
-    /* high speed */
 #if 0 // astro
     GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(9).WriteTo(mmio);
     regs->gusbcfg.usbtrdtim = 9;
@@ -126,67 +106,6 @@ void Dwc2::HandleEnumDone() {
 
     dci_intf_->SetSpeed(USB_SPEED_HIGH);
 }
-
-/*
-void Dwc2::HandleRxStatusQueueLevel() {
-    auto* mmio = get_mmio();
-    auto* regs = mmio->get();
-
-    GINTMSK::Get().ReadFrom(mmio).set_rxstsqlvl(0).WriteTo(mmio);
-
-    // Get the Status from the top of the FIFO
-    auto grxstsp = GRXSTSP::Get().ReadFrom(mmio);
-    auto ep_num = grxstsp.epnum() + DWC_EP_OUT_SHIFT;
-    auto* ep = &endpoints_[ep_num];
-
-printf("HandleRxStatusQueueLevel ep_num %u pktsts %u\n", ep_num, grxstsp.pktsts());
-
-    switch (grxstsp.pktsts()) {
-    case DWC_STS_DATA_UPDT: {
-        uint32_t fifo_count = grxstsp.bcnt();
-printf("DWC_STS_DATA_UPDT fifo_count %u ep->req_offset %u ep->req_length %u\n", fifo_count, ep->req_offset, ep->req_length);
-        if (fifo_count > ep->req_length - ep->req_offset) {
-            fifo_count = ep->req_length - ep->req_offset;
-        }
-printf("new fifo_count %u\n", fifo_count);
-        if (fifo_count > 0) {
-
-            ReadPacket(ep->req_buffer + ep->req_offset, fifo_count);
-            ep->req_offset += fifo_count;
-            if (ep->req_offset == ep->req_length) {
-                if (ep->ep_num == DWC_EP0_OUT) {
-                    // FIXME check status
-                    ep0_buffer_.CacheFlushInvalidate(0, ep->req_length);
-                    dci_intf_->Control(&cur_setup_, ep0_buffer_.virt(), ep->req_length, nullptr, 0, nullptr);
-                    CompleteEp0();
-                }
-            }
-        }
-        break;
-    }
-
-    case DWC_DSTS_SETUP_UPDT: {
-    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + DWC_REG_DATA_FIFO_START);
-    uint32_t* dest = (uint32_t*)&cur_setup_;
-    dest[0] = *fifo;
-    dest[1] = *fifo;
-zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
-        cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
-        cur_setup_.wLength);
-        got_setup_ = true;
-        break;
-    }
-
-    case DWC_DSTS_GOUT_NAK:
-    case DWC_STS_XFER_COMP:
-    case DWC_DSTS_SETUP_COMP:
-    default:
-        break;
-    }
-
-    GINTMSK::Get().ReadFrom(mmio).set_rxstsqlvl(1).WriteTo(mmio);
-}
-*/
 
 void Dwc2::HandleInEpInterrupt() {
     auto* mmio = get_mmio();
@@ -290,7 +209,6 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
         cur_setup_.wLength);
                 got_setup_ = true;
-//                HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
 zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
@@ -298,9 +216,6 @@ zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
                 if (ep_num == 0) {
-                    if (doepint.setup()) { // astro
-                        DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
-                    }
                     HandleEp0TransferComplete();
                 } else {
                     auto* ep = &endpoints_[ep_num + 16];
@@ -318,53 +233,11 @@ zxlogf(LINFO, "HandleOutEpInterrupt epdisabled\n");
 zxlogf(LINFO, "HandleOutEpInterrupt ahberr\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_ahberr(1).WriteTo(mmio);
             }
-            if (doepint.setup()) {
-zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
-                DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
-            }
         }
         ep_num++;
         ep_bits >>= 1;
     }
 }
-
-/*
-void Dwc2::HandleTxFifoEmpty() {
-    bool need_more = false;
-    auto* mmio = get_mmio();
-
-printf("HandleTxFifoEmpty\n");
-
-    for (uint8_t ep_num = DWC_EP0_IN; ep_num < MAX_EPS_CHANNELS; ep_num++) {
-        if (DEPCTL::Get(ep_num).ReadFrom(mmio).epena() == 0) {
-if (ep_num == 1) printf("not enabled!\n");
-			continue;
-        }
-        auto* ep = &endpoints_[ep_num];
-        if (ep->req_offset == ep->req_length) {
-if (ep_num == 1) printf("ep->req_offset == ep->req_length! %u\n", ep->req_length);
-            continue;
-        }
-
-printf("WritePacket for %u\n", ep_num);
-        if (WritePacket(ep_num)) {
-            need_more = true;
-            StartTransfer(ep_num);
-            // break here?
-        } else {
-            if (ep->send_zlp) {
-printf("handle send_zlp\n");
-                ep->send_zlp = false;
-                StartTransfer(ep_num);
-            }
-        }
-    }
-    if (!need_more) {
-printf("turn off nptxfempty\n");
-        GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(0).WriteTo(mmio);
-    }
-}
-*/
 
 zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
     zx_status_t status;
@@ -438,6 +311,8 @@ void Dwc2::SetAddress(uint8_t address) {
 void Dwc2::StartEp0() {
     auto* mmio = get_mmio();
 
+printf("XXXX StartEp0\n");
+//    ep0_state_ = Ep0State::IDLE;
 
 // Needed?
     endpoints_[DWC_EP0_IN].req_offset = 0;
@@ -456,54 +331,6 @@ void Dwc2::StartEp0() {
     ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
     DEPCTL::Get(DWC_EP0_OUT).FromValue(0).set_epena(1).WriteTo(mmio);
-}
-
-void Dwc2::ReadPacket(void* buffer, uint32_t length) {
-    auto* regs = get_mmio()->get();
-    uint32_t count = (length + 3) >> 2;
-    uint32_t* dest = (uint32_t*)buffer;
-    // FIXME use register thingy
-    volatile uint32_t* fifo = (uint32_t *)((uint8_t *)regs + DWC_REG_DATA_FIFO_START);
-
-    for (uint32_t i = 0; i < count; i++) {
-        *dest++ = *fifo;
-    }
-}
-
-bool Dwc2::WritePacket(uint8_t ep_num) {
-    auto* ep = &endpoints_[ep_num];
-    auto* mmio = get_mmio();
-    volatile uint32_t* fifo = DWC_REG_DATA_FIFO(mmio_->get(), ep_num);
-
-    uint32_t length = ep->req_length - ep->req_offset;
-    if (length > ep->max_packet_size) {
-        length = ep->max_packet_size;
-    }
-
-    uint32_t dwords = (length + 3) >> 2;
-    uint8_t *req_buffer = &ep->req_buffer[ep->req_offset];
-
-    auto txstatus = GNPTXSTS::Get().ReadFrom(mmio);
-
-    if (txstatus.nptxqspcavail() == 0 || txstatus.nptxfspcavail() <= dwords) {
-        return true;
-    }
-
-    for (uint32_t i = 0; i < dwords; i++) {
-        uint32_t temp = *((uint32_t*)req_buffer);
-        *fifo = temp;
-hw_mb();
-zx_cache_flush((void *)fifo, sizeof(*fifo), ZX_CACHE_FLUSH_DATA);
-        req_buffer += 4;
-    }
-
-    ep->req_offset += length;
-
-    if (ep->req_offset < ep->req_length) {
-        return true;
-    } else {
-        return false;
-    }
 }
 
 void Dwc2::EpQueueNextLocked(Endpoint* ep) {
@@ -545,17 +372,8 @@ printf("StartTransfer %u length %u ep_mps %u\n", ep_num, ep->req_length, ep_mps)
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
         deptsiz.set_xfersize(length);
     }
-//    deptsiz.Print();
     deptsiz.WriteTo(mmio);
     hw_wmb();
-
-/*
-    if (is_in) {
-printf("turn on nptxfempty\n");
-        GINTSTS::Get().FromValue(0).set_nptxfempty(1).WriteTo(mmio);
-        GINTMSK::Get().ReadFrom(mmio).set_nptxfempty(1).WriteTo(mmio);
-    }
-*/
 
     /* EP enable */
     if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
@@ -1059,12 +877,6 @@ for (unsigned i = 0; i < 15; i++) {
         if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
         zxlogf(LINFO, "\n");
 
-//        if (gintsts.rxstsqlvl()) {
-//            HandleRxStatusQueueLevel();
-//        }
-//        if (gintsts.nptxfempty()) {
-//            HandleTxFifoEmpty();
-//        }
         if (gintsts.usbreset() || gintsts.resetdet()) {
             HandleReset();
         }
