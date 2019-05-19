@@ -124,7 +124,7 @@ private:
     void HandleReset();
     void HandleSuspend();
     void HandleEnumDone();
-    void HandleRxStatusQueueLevel();
+//    void HandleRxStatusQueueLevel();
     void HandleInEpInterrupt();
     void HandleOutEpInterrupt();
 //    void HandleTxFifoEmpty();
