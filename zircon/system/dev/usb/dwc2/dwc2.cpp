@@ -848,6 +848,7 @@ for (unsigned i = 0; i < 15; i++) {
             continue;
         }
 
+/*
         zxlogf(LINFO, "IRQ IRQ IRQ IRQ IRQ IRQ 0x%08X 0x%08X:", gintsts.reg_value(), gintmsk.reg_value());
 
         if (gintsts.modemismatch()) zxlogf(LINFO, " modemismatch");
@@ -882,6 +883,7 @@ for (unsigned i = 0; i < 15; i++) {
         if (gintsts.sessreqintr()) zxlogf(LINFO, " sessreqintr");
         if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
         zxlogf(LINFO, "\n");
+*/
 
         if (gintsts.usbreset() || gintsts.resetdet()) {
             HandleReset();
