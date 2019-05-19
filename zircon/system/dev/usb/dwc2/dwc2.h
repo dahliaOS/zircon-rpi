@@ -104,14 +104,10 @@ private:
     zx_status_t InitController();
     zx_status_t Start();
     void StartEp0();
-    void ReadPacket(void* buffer, uint32_t length);
-    bool WritePacket(uint8_t ep_num);
     void StartEndpoints();
     void StopEndpoints();
     void HandleEp0Setup();
-    void Ep0StartOut();
     void HandleEp0Status(bool is_in);
-//    void CompleteEp0();
     void HandleEp0TransferComplete();
     void HandleTransferComplete(uint8_t ep_num);
     void EndTransfers(uint8_t ep_num, zx_status_t reason);
@@ -124,10 +120,8 @@ private:
     void HandleReset();
     void HandleSuspend();
     void HandleEnumDone();
-//    void HandleRxStatusQueueLevel();
     void HandleInEpInterrupt();
     void HandleOutEpInterrupt();
-//    void HandleTxFifoEmpty();
 
     zx_status_t HandleSetup(size_t* out_actual);
     void SetAddress(uint8_t address);
