@@ -111,14 +111,14 @@ private:
     void HandleEp0Setup();
     void Ep0StartOut();
     void HandleEp0Status(bool is_in);
-    void CompleteEp0();
-    void HandleEp0();
-    void EpComplete(uint8_t ep_num);
+//    void CompleteEp0();
+    void HandleEp0TransferComplete();
+    void HandleTransferComplete(uint8_t ep_num);
     void EndTransfers(uint8_t ep_num, zx_status_t reason);
     zx_status_t SetStall(uint8_t ep_num, bool stall);
     void EnableEp(uint8_t ep_num, bool enable);
     void EpQueueNextLocked(Endpoint* ep);
-    void StartTransfer(uint8_t ep_num);
+    void StartTransfer(uint8_t ep_num, uint32_t length);
 
     // Interrupts
     void HandleReset();
