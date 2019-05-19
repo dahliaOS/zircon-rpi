@@ -48,6 +48,7 @@ void Dwc2::HandleReset() {
 
     DOEPMSK::Get().FromValue(0).
         set_setup(1).
+        set_stsphsercvd(1).
         set_xfercompl(1).
         set_ahberr(1).
         set_epdisabled(1).
@@ -197,6 +198,15 @@ void Dwc2::HandleOutEpInterrupt() {
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 //zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
+
+
+
+            if (doepint.stsphsercvd()) {
+zxlogf(LINFO, "HandleOutEpInterrupt stsphsercvd\n");
+                DOEPINT::Get(ep_num).ReadFrom(mmio).set_stsphsercvd(1).WriteTo(mmio);
+            }
+
+
 
             if (doepint.setup()) {
 //zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
