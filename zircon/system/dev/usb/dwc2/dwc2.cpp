@@ -208,7 +208,7 @@ zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
 zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
         cur_setup_.wLength);
-                got_setup_ = true;
+                HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
 zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
@@ -500,11 +500,6 @@ void Dwc2::CompleteEp0() { // ep0_complete_request
 void Dwc2::HandleEp0Setup() {
     auto* setup = &cur_setup_;
 
-    if (!got_setup_) {
-        return;
-    }
-    got_setup_ = false;
-
     auto length = letoh16(setup->wLength);
     bool is_in = ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN);
     size_t actual = 0;
@@ -540,24 +535,25 @@ void Dwc2::HandleEp0Setup() {
 void Dwc2::HandleEp0TransferComplete() {
     switch (ep0_state_) {
     case Ep0State::IDLE: {
-        HandleEp0Setup();
+printf("HandleEp0TransferComplete Ep0State::IDLE\n");
+        StartEp0();
         break;
     }
     case Ep0State::DATA_IN:
-printf("HandleEp0 Ep0State::DATA_IN CompleteEp0\n");
+printf("HandleEp0TransferComplete Ep0State::DATA_IN\n");
         HandleEp0Status(false);
         break;
     case Ep0State::DATA_OUT:
-printf("HandleEp0 Ep0State::DATA_OUT CompleteEp0\n");
+printf("HandleEp0TransferComplete Ep0State::DATA_OUT\n");
         HandleEp0Status(true);
         break;
     case Ep0State::STATUS_OUT:
-printf("HandleEp0 Ep0State::STATUS_IN\n");
+printf("HandleEp0TransferComplete Ep0State::STATUS_IN\n");
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
         break;
     case Ep0State::STATUS_IN:
-printf("HandleEp0 Ep0State::STATUS_IN\n");
+printf("HandleEp0TransferComplete Ep0State::STATUS_IN\n");
         ep0_state_ = Ep0State::IDLE;
 //        StartEp0();
         break;
