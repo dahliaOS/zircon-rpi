@@ -132,7 +132,9 @@ printf("HandleInEpInterrupt bits 0x%x mask 0x%x\n", ep_bits, ep_mask);
                 if (0 == ep_num) {
                     HandleEp0TransferComplete();
                 } else {
-                    auto* ep = &endpoints_[ep_num];
+                    auto* ep = &endpoints_[ep_num];                   
+                    auto remaining = DEPTSIZ::Get(ep_num).ReadFrom(get_mmio()).xfersize();
+                    ep->req_offset = ep->req_length - remaining;
                     if (ep->req_offset == ep->req_length) {
                         HandleTransferComplete(ep_num);
                     }
@@ -202,12 +204,12 @@ printf("HandleOutEpInterrupt bits 0x%x mask 0x%x\n", ep_bits, ep_mask);
         if (ep_bits & 1) {
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
-//zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
+if (ep_num != 0) zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
 
 
             if (doepint.stsphsercvd()) {
-zxlogf(LINFO, "HandleOutEpInterrupt stsphsercvd\n");
+if (ep_num != 0) zxlogf(LINFO, "HandleOutEpInterrupt stsphsercvd\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_stsphsercvd(1).WriteTo(mmio);
             }
 
@@ -223,16 +225,18 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-//zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
+if (ep_num != 0) zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
                 if (ep_num == 0) {
                     HandleEp0TransferComplete();
                 } else {
-                    auto* ep = &endpoints_[ep_num + 16];
+                    auto* ep = &endpoints_[ep_num + DWC_EP_OUT_SHIFT];
+                    auto remaining = DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(get_mmio()).xfersize();
+                    ep->req_offset = ep->req_length - remaining;
                     if (ep->req_offset == ep->req_length) {
-                        HandleTransferComplete((uint8_t)(ep_num + 16));
+                        HandleTransferComplete((uint8_t)(ep_num + DWC_EP_OUT_SHIFT));
                     }
                 }
             }
@@ -387,7 +391,10 @@ printf("StartTransfer ep_num %u, length %u\n", ep_num, length);
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
         deptsiz.set_xfersize(length);
     }
-if (ep_num == 2) deptsiz.Print();
+if (ep_num != 0) {
+    printf("StartTransfer DEPTSIZ:\n");
+    deptsiz.Print();
+}
     deptsiz.WriteTo(mmio);
     hw_wmb();
 
@@ -402,7 +409,7 @@ if (ep_num == 2) deptsiz.Print();
         usb_request_physmap(req, bti_.get());
         usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
         usb_request_phys_iter_next(&iter, &phys);
-if (ep_num == 2) printf("Set phys to %p\n", (void *)phys);
+if (ep_num != 0) printf("Set phys to %p\n", (void *)phys);
         DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)phys).WriteTo(mmio);
     }
 
@@ -411,7 +418,7 @@ if (ep_num == 2) printf("Set phys to %p\n", (void *)phys);
     depctl.set_epena(1);
     depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
-if (ep_num == 2) depctl.Print();
+if (ep_num != 0) depctl.Print();
     hw_wmb();
 }
 
@@ -597,14 +604,17 @@ printf("HandleEp0TransferComplete Ep0State::DATA_OUT length: %u req_offset %u re
 
 void Dwc2::HandleTransferComplete(uint8_t ep_num) {
     if (ep_num != 0) {
+
         auto* ep = &endpoints_[ep_num];
         usb_request_t* req = ep->current_req;
-
+printf("HandleTransferComplete %u req %p\n", ep_num, req);
 
         if (req) {
             ep->current_req = NULL;
+
             // Is This Safe??
             Request request(req, sizeof(usb_request_t));
+printf("HandleTransferComplete call Complete\n");
             request.Complete(ZX_OK, ep->req_offset);
 
             EpQueueNextLocked(ep);
