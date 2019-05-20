@@ -124,6 +124,8 @@ private:
     void HandleInEpInterrupt();
     void HandleOutEpInterrupt();
 
+    void UpdateNextEps();
+
     zx_status_t HandleSetup(size_t* out_actual);
     void SetAddress(uint8_t address);
 

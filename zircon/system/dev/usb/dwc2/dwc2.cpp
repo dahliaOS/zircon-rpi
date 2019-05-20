@@ -31,6 +31,7 @@ void Dwc2::HandleReset() {
             // disable all active IN EPs
             diepctl.set_snak(1);
             diepctl.set_epdis(1);
+            // set nextep?
             diepctl.WriteTo(mmio);
         }
 
@@ -61,7 +62,7 @@ void Dwc2::HandleReset() {
         WriteTo(mmio);
 
     /* Reset Device Address */
-    DCFG::Get().ReadFrom(mmio).set_devaddr(0).WriteTo(mmio);
+    DCFG::Get().ReadFrom(mmio).set_devaddr(0).set_epmscnt(2).WriteTo(mmio);
 
     StartEp0();
 
@@ -92,9 +93,9 @@ void Dwc2::HandleEnumDone() {
 // why is this needed? StartEp0() should have done this already.
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
 
-    DEPCTL::Get(0).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
+    DEPCTL::Get(DWC_EP0_IN).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).set_nextep(0).WriteTo(mmio);
 // Necessary? Should be done earlier?
-    DEPCTL::Get(16).ReadFrom(mmio).set_epena(1).WriteTo(mmio);
+    DEPCTL::Get(DWC_EP0_OUT).ReadFrom(mmio).set_epena(1).WriteTo(mmio);
 
     DCTL::Get().ReadFrom(mmio).set_cgnpinnak(1).WriteTo(mmio);
 
@@ -112,8 +113,10 @@ void Dwc2::HandleInEpInterrupt() {
     auto* mmio = get_mmio();
     uint8_t ep_num = 0;
 
-    uint32_t ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
-    ep_bits &= DAINTMSK::Get().ReadFrom(mmio).reg_value();
+    auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
+    auto ep_mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
+printf("HandleInEpInterrupt bits 0x%x mask 0x%x\n", ep_bits, ep_mask);
+    ep_bits &= ep_mask;
     ep_bits &= DWC_EP_IN_MASK;
 
     DAINT::Get().FromValue(DWC_EP_IN_MASK).WriteTo(mmio);
@@ -141,7 +144,7 @@ void Dwc2::HandleInEpInterrupt() {
             }
             /* Endpoint disable  */
             if (diepint.epdisabled()) {
-    printf("HandleInEpInterrupt diepint.epdisabled\n");
+printf("HandleInEpInterrupt diepint.epdisabled\n");
                 /* Clear the bit in DIEPINTn for this interrupt */
                 DIEPINT::Get(ep_num).ReadFrom(mmio).set_epdisabled(1).WriteTo(mmio);
             }
@@ -186,6 +189,8 @@ void Dwc2::HandleOutEpInterrupt() {
     /* Read in the device interrupt bits */
     auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
     auto ep_mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
+printf("HandleOutEpInterrupt bits 0x%x mask 0x%x\n", ep_bits, ep_mask);
+
     ep_bits &= ep_mask;
     ep_bits &= DWC_EP_OUT_MASK;
     ep_bits >>= DWC_EP_OUT_SHIFT;
@@ -343,7 +348,9 @@ void Dwc2::StartEp0() {
 void Dwc2::EpQueueNextLocked(Endpoint* ep) {
     std::optional<Request> req;
 
+printf("EpQueueNextLocked %u\n", ep->ep_num);
     if (ep->current_req == nullptr) {
+printf("EpQueueNextLocked %u pop request\n", ep->ep_num);
         req = ep->queued_reqs.pop();
     }
 
@@ -366,6 +373,8 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     auto* mmio = get_mmio();
     bool is_in = DWC_EP_IS_IN(ep_num);
 
+printf("StartTransfer ep_num %u, length %u\n", ep_num, length);
+
     uint32_t ep_mps = ep->max_packet_size;
 
     auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
@@ -378,12 +387,23 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
         deptsiz.set_xfersize(length);
     }
+if (ep_num == 2) deptsiz.Print();
     deptsiz.WriteTo(mmio);
     hw_wmb();
 
-    /* EP enable */
     if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
         DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+    } else {
+        auto* req = ep->current_req;
+        ZX_DEBUG_ASSERT(req);
+        // TODO(voydanoff) scatter/gather support
+        phys_iter_t iter;
+        zx_paddr_t phys;
+        usb_request_physmap(req, bti_.get());
+        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+if (ep_num == 2) printf("Set phys to %p\n", (void *)phys);
+        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)phys).WriteTo(mmio);
     }
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
@@ -391,6 +411,7 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     depctl.set_epena(1);
     depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
+if (ep_num == 2) depctl.Print();
     hw_wmb();
 }
 
@@ -457,12 +478,14 @@ void Dwc2::StopEndpoints() {
 void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
     auto* mmio = get_mmio();
 
+printf("EnableEp %u %d\n", ep_num, enable);
     fbl::AutoLock lock(&lock_);
 
     uint32_t bit = 1 << ep_num;
 
     auto mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
     if (enable) {
+// Is this right? maybe just set the one bit?
         auto daint = DAINT::Get().ReadFrom(mmio).reg_value();
         daint |= bit;
         DAINT::Get().FromValue(daint).WriteTo(mmio);
@@ -702,7 +725,6 @@ GNPTXFSIZ::Get().ReadFrom(mmio).Print();
 
     auto gintmsk = GINTMSK::Get().FromValue(0);
 
-//    gintmsk.set_rxstsqlvl(1);
     gintmsk.set_usbreset(1);
     gintmsk.set_enumdone(1);
     gintmsk.set_inepintr(1);
@@ -988,6 +1010,9 @@ zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddre
     ep->interval = ep_desc->bInterval;
     ep->enabled = true;
 
+    // FIXME synchronize
+    UpdateNextEps();
+
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
 
     depctl.set_mps(usb_ep_max_packet(ep_desc));
@@ -995,8 +1020,11 @@ zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddre
     depctl.set_setd0pid(1); // correct for interrupt?
     depctl.set_txfnum(0);   //Non-Periodic TxFIFO
     depctl.set_usbactep(1);
-
     depctl.WriteTo(mmio);
+
+// TODO check already configured?
+    auto dcfg = DCFG::Get().ReadFrom(mmio);
+    dcfg.set_epmscnt(dcfg.epmscnt() + 1).WriteTo(mmio);
 
     EnableEp(ep_num, true);
 
@@ -1027,7 +1055,40 @@ zx_status_t Dwc2::UsbDciDisableEp(uint8_t ep_address) {
     DEPCTL::Get(ep_num).ReadFrom(mmio).set_usbactep(0).WriteTo(mmio);
     ep->enabled = false;
 
+// TODO check was configured?
+    auto dcfg = DCFG::Get().ReadFrom(mmio);
+    dcfg.set_epmscnt(dcfg.epmscnt() - 1).WriteTo(mmio);
+
+    // FIXME synchronize
+    UpdateNextEps();
+
     return ZX_OK;
+}
+
+void Dwc2::UpdateNextEps() {
+    auto* mmio = get_mmio();
+    uint8_t prev_ep = DWC_EP0_IN;
+
+    for (uint8_t ep_num = 1; ep_num < MAX_EPS_CHANNELS; ep_num++) {
+        if (endpoints_[ep_num].enabled) {
+//printf("UpdateNextEps: set %u nextep -> %u\n", prev_ep, ep_num);
+            DEPCTL::Get(prev_ep).ReadFrom(mmio).set_nextep(ep_num).WriteTo(mmio);
+            prev_ep = ep_num;
+        } else {
+            DEPCTL::Get(ep_num).ReadFrom(mmio).set_nextep(0).WriteTo(mmio);
+        }
+    }
+//printf("UpdateNextEps: set %u nextep -> %u\n", prev_ep, DWC_EP0_IN);
+    DEPCTL::Get(prev_ep).ReadFrom(mmio).set_nextep(DWC_EP0_IN).WriteTo(mmio);
+
+
+/*
+printf("UpdateNextEps\n");
+for (int i = 0; i < 16; i++) {
+printf("DEPCTL(%d):\n", i);
+    DEPCTL::Get(i).ReadFrom(mmio).Print();
+}
+*/
 }
 
 zx_status_t Dwc2::UsbDciEpSetStall(uint8_t ep_address) {
