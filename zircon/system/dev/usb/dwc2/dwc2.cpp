@@ -89,6 +89,7 @@ void Dwc2::HandleEnumDone() {
     ep0_state_ = Ep0State::IDLE;
 
     endpoints_[DWC_EP0_IN].max_packet_size = 64;
+    endpoints_[DWC_EP0_OUT].max_packet_size = 64;
 
 // why is this needed? StartEp0() should have done this already.
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
@@ -123,6 +124,12 @@ void Dwc2::HandleInEpInterrupt() {
         if (ep_bits & 1) {
             auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
             diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
+
+printf("XXXX HandleOutEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+diepint.reg_value(),
+DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
+DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
+
 
             /* Transfer complete */
             if (diepint.xfercompl()) {
@@ -221,6 +228,10 @@ zxlogf(LINFO, "XXXX HandleOutEpInterrupt stsphsercvd\n");
             }
 
             if (doepint.setup()) {
+// TODO:   On this interrupt, the application must read the DOEPTSIZn register to determine the
+//         number of SETUP packets received and process the last received SETUP packet.          
+//         check Back2BackSETup
+
 //zxlogf(LINFO, "XXXX HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
@@ -320,7 +331,7 @@ printf("Call control length %u got actual %zu\n", length, *out_actual);
 uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
 printf("sending %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3]);
 
-        ep0_buffer_.CacheFlush(0, 64/**out_actual*/);
+        ep0_buffer_.CacheFlush(0, *out_actual);
     } else {
         status = -1;
     }
@@ -390,7 +401,17 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
 
     uint32_t ep_mps = ep->max_packet_size;
 
-    auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
+
+    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
+        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+    }
+
+    if (ep_num == DWC_EP0_OUT && length > 0) {
+        ep0_buffer_.CacheFlushInvalidate(0, length);
+    }
+
+//    auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
+    auto deptsiz = DEPTSIZ::Get(ep_num).FromValue(0);
 
     /* Zero Length Packet? */
     if (length == 0) {
@@ -400,26 +421,23 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
         deptsiz.set_xfersize(length);
     }
+if (is_in && length) {
+printf("StartTransfer ep_num %u length %u ep_mps %u DEPTSIZ:\n", ep_num, length, ep_mps);
+deptsiz.Print();
+}
     deptsiz.WriteTo(mmio);
     hw_wmb();
 
-    /* EP enable */
-    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
-printf("StartTransfer set ep0 phys\n");
-        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
-    }
-
-    if (ep_num == DWC_EP0_OUT && length > 0) {
-length = 64;
-//printf("ep0_buffer_.CacheFlushInvalidate %u\n", length);
-        ep0_buffer_.CacheFlushInvalidate(0, length);
-    }
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
     depctl.set_cnak(1);
     depctl.set_epena(1);
     depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
+if (is_in && length) {
+    printf("DEPCTL:\n");
+    depctl.Print();
+}
     hw_wmb();
 }
 
@@ -513,24 +531,6 @@ void Dwc2::HandleEp0Status(bool is_in) {
     }
 }
 
-/*
-void Dwc2::CompleteEp0() { // ep0_complete_request
-    auto* ep = &endpoints_[0];
-    auto* mmio = get_mmio();
-
-    if (ep0_state_ == Ep0State::STATUS) {
-        ep->req_offset = 0;
-        ep->req_length = 0;
-    } else if ((cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_IN) {
-        if (DEPTSIZ0::Get(DWC_EP0_IN).ReadFrom(mmio).xfersize() == 0) {
-			HandleEp0Status(false);
-		}
-    } else {
-        HandleEp0Status(true);
-    }
-}
-*/
-
 void Dwc2::HandleEp0Setup() {
     auto* setup = &cur_setup_;
 
@@ -548,9 +548,11 @@ void Dwc2::HandleEp0Setup() {
         if (is_in) {
             ep0_state_ = Ep0State::DATA_IN;
             // send data in
-            endpoints_[DWC_EP0_IN].req_offset = 0;
-            endpoints_[DWC_EP0_IN].req_length = static_cast<uint32_t>(actual);
-            StartTransfer(DWC_EP0_IN, endpoints_[DWC_EP0_IN].req_length);
+            auto* ep = &endpoints_[DWC_EP0_IN];
+            ep->req_offset = 0;
+            ep->req_length = static_cast<uint32_t>(actual);
+printf("queue IN data write ep->req_length %u\n", ep->req_length);
+            StartTransfer(DWC_EP0_IN, ep->req_length);
         } else {
             ep0_state_ = Ep0State::DATA_OUT;
             // queue a read for the data phase
@@ -575,6 +577,7 @@ void Dwc2::HandleEp0TransferComplete() {
         break;
     }
     case Ep0State::DATA_IN:
+printf("HandleEp0TransferComplete Ep0State::DATA_IN -> HandleEp0Status\n");
         HandleEp0Status(false);
         break;
     case Ep0State::DATA_OUT: {
@@ -596,10 +599,12 @@ printf("         %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02
         break;
     }
     case Ep0State::STATUS_OUT:
+printf("HandleEp0TransferComplete Ep0State::STATUS_OUT -> StartEp0\n");
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
         break;
     case Ep0State::STATUS_IN:
+printf("HandleEp0TransferComplete Ep0State::STATUS_IN -> IDLE\n");
         ep0_state_ = Ep0State::IDLE;
         break;
     case Ep0State::STALL:
