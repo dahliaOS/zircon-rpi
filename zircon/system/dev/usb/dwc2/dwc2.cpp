@@ -359,7 +359,7 @@ void Dwc2::EpQueueNextLocked(Endpoint* ep) {
         auto* usb_req = req->take();
         ep->current_req = usb_req;
         
-        usb_request_mmap(usb_req, (void **)&ep->req_buffer);
+//        usb_request_mmap(usb_req, (void **)&ep->req_buffer);
         ep->send_zlp = usb_req->header.send_zlp && (usb_req->header.length % ep->max_packet_size) == 0;
 
         ep->req_offset = 0;
@@ -595,6 +595,8 @@ printf("received %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02
 void Dwc2::HandleTransferComplete(uint8_t ep_num) {
     if (ep_num != 0) {
         auto* ep = &endpoints_[ep_num];
+        fbl::AutoLock al(&ep->lock);
+
         usb_request_t* req = ep->current_req;
 
 
@@ -796,8 +798,8 @@ zx_status_t Dwc2::Init() {
         return status;
     }
 
-    endpoints_[DWC_EP0_IN].req_buffer = (uint8_t*)ep0_buffer_.virt();
-    endpoints_[DWC_EP0_OUT].req_buffer = (uint8_t*)ep0_buffer_.virt();
+//    endpoints_[DWC_EP0_IN].req_buffer = (uint8_t*)ep0_buffer_.virt();
+//    endpoints_[DWC_EP0_OUT].req_buffer = (uint8_t*)ep0_buffer_.virt();
 
     DEPDMA::Get(DWC_EP0_IN).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());

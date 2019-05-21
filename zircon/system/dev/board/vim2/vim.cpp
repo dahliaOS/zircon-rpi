@@ -34,6 +34,7 @@
 
 namespace vim {
 
+/*
 // TODO(rjascani): Remove this when not needed for testing any longer
 const pbus_dev_t tee_dev = []() {
     pbus_dev_t dev;
@@ -43,6 +44,7 @@ const pbus_dev_t tee_dev = []() {
     dev.did = PDEV_DID_OPTEE;
     return dev;
 }();
+*/
 
 zx_status_t Vim::Create(void* ctx, zx_device_t* parent) {
     pbus_protocol_t pbus;

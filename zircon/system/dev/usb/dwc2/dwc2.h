@@ -80,7 +80,6 @@ private:
         // request currently being processed.
         usb_request_t* current_req __TA_GUARDED(lock) = nullptr;
 
-        uint8_t* req_buffer;
         uint32_t req_offset;
         uint32_t req_length;    
     
@@ -114,7 +113,7 @@ private:
     void EndTransfers(uint8_t ep_num, zx_status_t reason);
     zx_status_t SetStall(uint8_t ep_num, bool stall);
     void EnableEp(uint8_t ep_num, bool enable);
-    void EpQueueNextLocked(Endpoint* ep);
+    void EpQueueNextLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
     void StartTransfer(uint8_t ep_num, uint32_t length);
 
     // Interrupts
