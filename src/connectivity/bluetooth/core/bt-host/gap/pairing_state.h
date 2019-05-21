@@ -163,7 +163,9 @@ class PairingState final {
     kResponderWaitIoCapRequest,
 
     // Wait for controller event for pairing action.
-    kWaitPairingEvent,
+    kWaitUserConfirmationRequest,
+    kWaitUserPasskeyRequest,
+    kWaitUserPasskeyNotification,
 
     // Wait for Simple Pairing Complete.
     kWaitPairingComplete,
@@ -189,9 +191,21 @@ class PairingState final {
 
     // Callbacks from callers of |InitiatePairing|.
     std::vector<StatusCallback> initiator_callbacks;
+
+    // IO Capability obtained from the pairing delegate.
+    hci::IOCapability local_iocap;
+
+    // IO Capability from peer through IO Capability Response.
+    hci::IOCapability peer_iocap;
+
+    // HCI event to respond to in order to complete or reject pairing.
+    hci::EventCode expected_event;
   };
 
   static const char* ToString(State state);
+
+  // Returns state for the three pairing action events, kFailed otherwise.
+  static State GetStateForPairingEvent(hci::EventCode event_code);
 
   State state() const { return state_; }
 
@@ -218,6 +232,10 @@ class PairingState final {
   // Called to ready the state machine to start pairing again. Clears
   // |current_pairing_| and sets the state to kIdle.
   void Reset();
+
+  // Compute the expected pairing to occur after receiving the peer IO
+  // Capability and write it to |current_pairing_| (which must exist).
+  void WritePairingData();
 
   const PeerId peer_id_;
 

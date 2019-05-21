@@ -5,11 +5,13 @@
 #include "src/connectivity/bluetooth/core/bt-host/gap/pairing_state.h"
 
 #include "src/connectivity/bluetooth/core/bt-host/common/log.h"
+#include "src/connectivity/bluetooth/core/bt-host/sm/util.h"
 
 namespace bt {
 namespace gap {
 
 using hci::IOCapability;
+using sm::util::IOCapabilityForHci;
 
 PairingState::PairingState(PeerId peer_id, hci::Connection* link,
                            StatusCallback status_cb)
@@ -55,9 +57,14 @@ PairingState::InitiatorAction PairingState::InitiatePairing(
   return InitiatorAction::kDoNotSendAuthenticationRequest;
 }
 
-std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
+std::optional<IOCapability> PairingState::OnIoCapabilityRequest() {
   if (state() == State::kInitiatorPairingStarted) {
     ZX_ASSERT(initiator());
+    ZX_ASSERT(pairing_delegate());
+
+    current_pairing_->local_iocap =
+        sm::util::IOCapabilityForHci(pairing_delegate()->io_capability());
+
     state_ = State::kInitiatorWaitIoCapResponse;
   } else if (state() == State::kResponderWaitIoCapRequest) {
     ZX_ASSERT(is_pairing());
@@ -71,8 +78,11 @@ std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
       return std::nullopt;
     }
 
-    // TODO(xow): Compute pairing event to wait for.
-    state_ = State::kWaitPairingEvent;
+    current_pairing_->local_iocap =
+        sm::util::IOCapabilityForHci(pairing_delegate()->io_capability());
+    WritePairingData();
+
+    state_ = GetStateForPairingEvent(current_pairing_->expected_event);
   } else {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
@@ -81,34 +91,38 @@ std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
     return std::nullopt;
   }
 
-  // TODO(xow): Return local IO Capability.
-  ZX_ASSERT(pairing_delegate());
-  return hci::IOCapability::kNoInputNoOutput;
+  return current_pairing_->local_iocap;
 }
 
-void PairingState::OnIoCapabilityResponse(hci::IOCapability peer_iocap) {
-  // TODO(xow): Store peer IO Capability.
+void PairingState::OnIoCapabilityResponse(IOCapability peer_iocap) {
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
     current_pairing_ = Data();
     current_pairing_->initiator = false;
+    current_pairing_->peer_iocap = peer_iocap;
+
+    // Defer gathering local IO Capability until OnIoCapabilityRequest, where
+    // the pairing can be rejected if there's no pairing delegate.
     state_ = State::kResponderWaitIoCapRequest;
   } else if (state() == State::kInitiatorWaitIoCapResponse) {
     ZX_ASSERT(initiator());
-    state_ = State::kWaitPairingEvent;
 
-    // TODO(xow): Compute pairing event to wait for.
+    current_pairing_->peer_iocap = peer_iocap;
+    WritePairingData();
+
+    state_ = GetStateForPairingEvent(current_pairing_->expected_event);
   } else {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
            handle(), bt_str(peer_id()), __func__, ToString(state()));
     FailWithUnexpectedEvent();
+    return;
   }
 }
 
 void PairingState::OnUserConfirmationRequest(uint32_t numeric_value,
                                              UserConfirmationCallback cb) {
-  if (state() != State::kWaitPairingEvent) {
+  if (state() != State::kWaitUserConfirmationRequest) {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
            handle(), bt_str(peer_id()), __func__, ToString(state()));
@@ -124,7 +138,7 @@ void PairingState::OnUserConfirmationRequest(uint32_t numeric_value,
 }
 
 void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
-  if (state() != State::kWaitPairingEvent) {
+  if (state() != State::kWaitUserPasskeyRequest) {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
            handle(), bt_str(peer_id()), __func__, ToString(state()));
@@ -140,7 +154,7 @@ void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
 }
 
 void PairingState::OnUserPasskeyNotification(uint32_t numeric_value) {
-  if (state() != State::kWaitPairingEvent) {
+  if (state() != State::kWaitUserPasskeyNotification) {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
            handle(), bt_str(peer_id()), __func__, ToString(state()));
@@ -257,8 +271,12 @@ const char* PairingState::ToString(PairingState::State state) {
       return "InitiatorWaitIoCapResponse";
     case State::kResponderWaitIoCapRequest:
       return "ResponderWaitIoCapRequest";
-    case State::kWaitPairingEvent:
-      return "WaitPairingEvent";
+    case State::kWaitUserConfirmationRequest:
+      return "WaitUserConfirmationRequest";
+    case State::kWaitUserPasskeyRequest:
+      return "WaitUserPasskeyRequest";
+    case State::kWaitUserPasskeyNotification:
+      return "WaitUserPasskeyNotification";
     case State::kWaitPairingComplete:
       return "WaitPairingComplete";
     case State::kWaitLinkKey:
@@ -273,6 +291,21 @@ const char* PairingState::ToString(PairingState::State state) {
       break;
   }
   return "";
+}
+
+PairingState::State PairingState::GetStateForPairingEvent(
+    hci::EventCode event_code) {
+  switch (event_code) {
+    case hci::kUserConfirmationRequestEventCode:
+      return State::kWaitUserConfirmationRequest;
+    case hci::kUserPasskeyRequestEventCode:
+      return State::kWaitUserPasskeyRequest;
+    case hci::kUserPasskeyNotificationEventCode:
+      return State::kWaitUserPasskeyNotification;
+    default:
+      break;
+  }
+  return State::kFailed;
 }
 
 void PairingState::SignalStatus(hci::Status status) {
@@ -304,6 +337,14 @@ void PairingState::FailWithUnexpectedEvent() {
 void PairingState::Reset() {
   state_ = State::kIdle;
   current_pairing_ = std::nullopt;
+}
+
+void PairingState::WritePairingData() {
+  ZX_ASSERT(is_pairing());
+  current_pairing_->expected_event = GetExpectedEvent(
+      current_pairing_->local_iocap, current_pairing_->peer_iocap);
+  ZX_DEBUG_ASSERT(GetStateForPairingEvent(current_pairing_->expected_event) !=
+                  State::kFailed);
 }
 
 PairingAction GetInitiatorPairingAction(IOCapability initiator_cap,
