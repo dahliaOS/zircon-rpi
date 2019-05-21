@@ -209,16 +209,21 @@ zxlogf(LINFO, "HandleOutEpInterrupt stsphsercvd\n");
 
 
             if (doepint.setup()) {
-//zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
+zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
 zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
         cur_setup_.wLength);
+
+ep0_buffer_.CacheFlushInvalidate(0, /*sizeof(cur_setup_)*/ 64);
+//    DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+
+
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-//zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
+zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
@@ -296,9 +301,12 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
 printf("Call control empty\n");
         status = dci_intf_->Control(setup, buffer, length, nullptr, 0, nullptr);
     } else if (is_in) {
-printf("Call control length %u\n", length);
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-        ep0_buffer_.CacheFlush(0, *out_actual);
+printf("Call control length %u got actual %zu\n", length, *out_actual);
+uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
+printf("sending %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3]);
+
+        ep0_buffer_.CacheFlush(0, 64/**out_actual*/);
     } else {
         status = -1;
     }
@@ -335,7 +343,7 @@ void Dwc2::StartEp0() {
     doeptsize0.set_xfersize(8 * 3);
     doeptsize0.WriteTo(mmio);
 
-    ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
+    ep0_buffer_.CacheFlushInvalidate(0, /*sizeof(cur_setup_)*/ 64);
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
     DEPCTL::Get(DWC_EP0_OUT).FromValue(0).set_epena(1).WriteTo(mmio);
 }
@@ -382,8 +390,15 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     hw_wmb();
 
     /* EP enable */
-    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
+    if (ep_num == DWC_EP0_IN /*|| ep_num == DWC_EP0_OUT*/) {
+printf("StartTransfer set ep0 phys\n");
         DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+    }
+
+    if (ep_num == DWC_EP0_OUT && length > 0) {
+length = 64;
+printf("ep0_buffer_.CacheFlushInvalidate %u\n", length);
+        ep0_buffer_.CacheFlushInvalidate(0, length);
     }
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
@@ -528,6 +543,7 @@ void Dwc2::HandleEp0Setup() {
             ep0_state_ = Ep0State::DATA_OUT;
             endpoints_[DWC_EP0_OUT].req_offset = 0;
             endpoints_[DWC_EP0_OUT].req_length = letoh16(setup->wLength);
+printf("queue OUT data read for length %u\n", letoh16(setup->wLength));
             StartTransfer(DWC_EP0_OUT, letoh16(setup->wLength));
         }
     } else {
@@ -553,7 +569,11 @@ void Dwc2::HandleEp0TransferComplete() {
 printf("HandleEp0TransferComplete Ep0State::DATA_OUT length: %u req_offset %u req_length %u\n", length, ep->req_offset, ep->req_length);
         // FIXME larger than mps       
         // FIXME check status
-        dci_intf_->Control(&cur_setup_, ep0_buffer_.virt(), length, nullptr, 0, nullptr);
+        auto offset = DEPDMA::Get(DWC_EP0_OUT).ReadFrom(mmio).addr() - ep0_buffer_.phys();
+printf("phys offset: %zu\n", offset);
+        dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt() + offset, length, nullptr, 0, nullptr);
+uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
+printf("received %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
 
         HandleEp0Status(true);
         break;
