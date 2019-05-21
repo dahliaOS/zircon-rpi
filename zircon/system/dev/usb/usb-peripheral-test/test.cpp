@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <thread>
 
 #include <fbl/auto_call.h>
@@ -45,7 +46,7 @@ void randomize() {
 bool control_interrupt_test(size_t transfer_size) {
     BEGIN_TEST;
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 1; i++) {
         randomize();
 
         // Send data to device via OUT control request.
@@ -98,6 +99,8 @@ bool control_interrupt_test(size_t transfer_size) {
 
         usb_request_free(req);
 #endif
+
+usleep(1000 * 1000);
     }
 
     END_TEST;
@@ -128,9 +131,14 @@ bool control_interrupt_test_100() {
     return control_interrupt_test(100);
 }
 
+// Test control and interrupt requests with 128 byte transfer size.
+bool control_interrupt_test_128() {
+  return control_interrupt_test(128);
+}
+
 // Test control and interrupt requests with 256 byte transfer size.
 bool control_interrupt_test_256() {
-  return control_interrupt_test(128);
+  return control_interrupt_test(256);
 }
 
 // Test control and interrupt requests with 1000 byte transfer size.
@@ -265,9 +273,10 @@ RUN_TEST(control_interrupt_test_8);
 RUN_TEST(control_interrupt_test_63);
 RUN_TEST(control_interrupt_test_64);
 RUN_TEST(control_interrupt_test_65);
-//RUN_TEST(control_interrupt_test_100);
-//RUN_TEST(control_interrupt_test_256);
-//RUN_TEST(control_interrupt_test_1000);
+RUN_TEST(control_interrupt_test_100);
+RUN_TEST(control_interrupt_test_128);
+RUN_TEST(control_interrupt_test_256);
+RUN_TEST(control_interrupt_test_1000);
 //RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 

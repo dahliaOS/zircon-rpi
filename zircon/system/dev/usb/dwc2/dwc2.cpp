@@ -125,7 +125,7 @@ void Dwc2::HandleInEpInterrupt() {
             auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
             diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
 
-printf("XXXX HandleOutEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+printf("XXXX HandleInEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
 diepint.reg_value(),
 DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
 DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
@@ -213,8 +213,6 @@ DEPDMA::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).addr(),
 DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).xfersize());
 
 
-
-
 //zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
             if (doepint.sr()) {
@@ -223,7 +221,6 @@ zxlogf(LINFO, "XXXX HandleOutEpInterrupt sr\n");
             }
 
             if (doepint.stsphsercvd()) {
-zxlogf(LINFO, "XXXX HandleOutEpInterrupt stsphsercvd\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_stsphsercvd(1).WriteTo(mmio);
             }
 
@@ -239,14 +236,13 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
         cur_setup_.wLength);
 
-ep0_buffer_.CacheFlushInvalidate(0, /*sizeof(cur_setup_)*/ 64);
+ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
 //DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
 
 
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-zxlogf(LINFO, "XXXX HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
@@ -323,14 +319,9 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
     bool is_in = ((setup->bmRequestType & USB_DIR_MASK) == USB_DIR_IN);
     auto length = le16toh(setup->wLength);
     if (length == 0) {
-printf("Call control empty\n");
-        status = dci_intf_->Control(setup, buffer, length, nullptr, 0, nullptr);
+        status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
     } else if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-printf("Call control length %u got actual %zu\n", length, *out_actual);
-uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
-printf("sending %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3]);
-
         ep0_buffer_.CacheFlush(0, *out_actual);
     } else {
         status = -1;
@@ -368,7 +359,7 @@ void Dwc2::StartEp0() {
     doeptsize0.set_xfersize(8 * 3);
     doeptsize0.WriteTo(mmio);
 
-    ep0_buffer_.CacheFlushInvalidate(0, /*sizeof(cur_setup_)*/ 64);
+    ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
     DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
     DEPCTL::Get(DWC_EP0_OUT).FromValue(0).set_epena(1).WriteTo(mmio);
 }
@@ -397,17 +388,18 @@ printf("EpQueueNextLocked ep_num %u call StartTransfer usb_req %p length %u\n", 
 void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     auto* ep = &endpoints_[ep_num];
     auto* mmio = get_mmio();
+    uint32_t ep_mps = ep->max_packet_size;
     bool is_in = DWC_EP_IS_IN(ep_num);
 
-    uint32_t ep_mps = ep->max_packet_size;
 
+printf("StartTransfer %u length %u\n", ep_num, length);
 
     if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
-        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys() + ep->req_offset).WriteTo(get_mmio());
     }
 
     if (ep_num == DWC_EP0_OUT && length > 0) {
-        ep0_buffer_.CacheFlushInvalidate(0, length);
+        ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
     }
 
 //    auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
@@ -421,12 +413,12 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
         deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
         deptsiz.set_xfersize(length);
     }
-if (is_in && length) {
-printf("StartTransfer ep_num %u length %u ep_mps %u DEPTSIZ:\n", ep_num, length, ep_mps);
-deptsiz.Print();
-}
+    ep->req_xfersize = deptsiz.xfersize();
     deptsiz.WriteTo(mmio);
     hw_wmb();
+
+printf("DEPTSIZ WROTE\n");
+deptsiz.Print();
 
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
@@ -434,10 +426,6 @@ deptsiz.Print();
     depctl.set_epena(1);
     depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
-if (is_in && length) {
-    printf("DEPCTL:\n");
-    depctl.Print();
-}
     hw_wmb();
 }
 
@@ -551,17 +539,18 @@ void Dwc2::HandleEp0Setup() {
             auto* ep = &endpoints_[DWC_EP0_IN];
             ep->req_offset = 0;
             ep->req_length = static_cast<uint32_t>(actual);
-printf("queue IN data write ep->req_length %u\n", ep->req_length);
-            StartTransfer(DWC_EP0_IN, ep->req_length);
+            StartTransfer(DWC_EP0_IN, (ep->req_length > 127 ? ep->max_packet_size : ep->req_length));
+//            StartTransfer(DWC_EP0_IN, ep->req_length);
         } else {
             ep0_state_ = Ep0State::DATA_OUT;
             // queue a read for the data phase
             ep0_state_ = Ep0State::DATA_OUT;
             auto* ep = &endpoints_[DWC_EP0_OUT];
+printf("OUT set req_length %u\n", length);
             ep->req_offset = 0;
-            ep->req_length = letoh16(setup->wLength);
-printf("queue OUT data read for setup->wLength %u\n", ep->req_length);
-            StartTransfer(DWC_EP0_OUT, ep->req_length);
+            ep->req_length = length;
+            StartTransfer(DWC_EP0_OUT, (length > 127 ? ep->max_packet_size : length));
+//            StartTransfer(DWC_EP0_OUT, length);
         }
     } else {
         // no data phase
@@ -576,35 +565,58 @@ void Dwc2::HandleEp0TransferComplete() {
         StartEp0();
         break;
     }
-    case Ep0State::DATA_IN:
-printf("HandleEp0TransferComplete Ep0State::DATA_IN -> HandleEp0Status\n");
-        HandleEp0Status(false);
+    case Ep0State::DATA_IN: {
+        auto* ep = &endpoints_[DWC_EP0_IN];
+        auto* mmio = get_mmio();
+        auto transfered = ep->req_xfersize - DEPTSIZ::Get(DWC_EP0_IN).ReadFrom(mmio).xfersize();
+        ep->req_offset += transfered;
+printf("Ep0State::DATA_IN transfered %u ep->req_offset %u ep->req_length %u\n", transfered, ep->req_offset, ep->req_length);
+//printf("DEPTSIZ:\n");
+//DEPTSIZ::Get(DWC_EP0_IN).ReadFrom(mmio).Print();
+
+        if (ep->req_offset == ep->req_length) {
+            HandleEp0Status(false);
+        } else {
+            auto length = ep->req_length - ep->req_offset;
+            if (length > 64) {
+                length = 64;
+            }
+            StartTransfer(DWC_EP0_IN, length);
+        }
         break;
+    }
     case Ep0State::DATA_OUT: {
         auto* ep = &endpoints_[DWC_EP0_OUT];
         auto* mmio = get_mmio();
-        auto length = ep->req_length - DEPTSIZ0::Get(DWC_EP0_OUT).ReadFrom(mmio).xfersize();
-printf("HandleEp0TransferComplete Ep0State::DATA_OUT length: %u req_offset %u req_length %u\n", length, ep->req_offset, ep->req_length);
+        auto transfered = ep->req_xfersize - DEPTSIZ::Get(DWC_EP0_OUT).ReadFrom(mmio).xfersize();
+        ep->req_offset += transfered;
+printf("Ep0State::DATA_OUT transfered %u ep->req_offset %u ep->req_length %u\n", transfered, ep->req_offset, ep->req_length);
+//printf("DEPTSIZ:\n");
+//DEPTSIZ::Get(DWC_EP0_OUT).ReadFrom(mmio).Print();
+
         // FIXME larger than mps       
         // FIXME check status
 //        auto offset = DEPDMA::Get(DWC_EP0_OUT).ReadFrom(mmio).addr() - ep0_buffer_.phys();
 //printf("phys offset: %zu\n", offset);
-        dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), length, nullptr, 0, nullptr);
-uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
-printf("received %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
-bytes += 16;
-printf("         %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
 
-        HandleEp0Status(true);
+        if (ep->req_offset == ep->req_length) {
+printf("call Control %u\n", ep->req_length);
+            dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), ep->req_length, nullptr, 0, nullptr);
+            HandleEp0Status(true);
+        } else {
+            auto length = ep->req_length - ep->req_offset;
+            if (length > 127) {
+                length = 64;
+            }
+            StartTransfer(DWC_EP0_OUT, length);
+        }
         break;
     }
     case Ep0State::STATUS_OUT:
-printf("HandleEp0TransferComplete Ep0State::STATUS_OUT -> StartEp0\n");
         ep0_state_ = Ep0State::IDLE;
         StartEp0();
         break;
     case Ep0State::STATUS_IN:
-printf("HandleEp0TransferComplete Ep0State::STATUS_IN -> IDLE\n");
         ep0_state_ = Ep0State::IDLE;
         break;
     case Ep0State::STALL:

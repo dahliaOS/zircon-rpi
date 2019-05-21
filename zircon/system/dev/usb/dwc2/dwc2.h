@@ -81,6 +81,7 @@ private:
         usb_request_t* current_req __TA_GUARDED(lock) = nullptr;
 
         uint32_t req_offset;
+        uint32_t req_xfersize;
         uint32_t req_length;    
     
         // Used for synchronizing endpoint state
