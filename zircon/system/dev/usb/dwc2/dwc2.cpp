@@ -49,6 +49,7 @@ void Dwc2::HandleReset() {
     DOEPMSK::Get().FromValue(0).
         set_setup(1).
         set_stsphsercvd(1).
+        set_sr(1).
         set_xfercompl(1).
         set_ahberr(1).
         set_epdisabled(1).
@@ -197,19 +198,30 @@ void Dwc2::HandleOutEpInterrupt() {
         if (ep_bits & 1) {
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
+
+
+printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+doepint.reg_value(),
+DEPDMA::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).addr(),
+DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).xfersize());
+
+
+
+
 //zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
-
+            if (doepint.sr()) {
+zxlogf(LINFO, "XXXX HandleOutEpInterrupt sr\n");
+                DOEPINT::Get(ep_num).ReadFrom(mmio).set_sr(1).WriteTo(mmio);
+            }
 
             if (doepint.stsphsercvd()) {
-zxlogf(LINFO, "HandleOutEpInterrupt stsphsercvd\n");
+zxlogf(LINFO, "XXXX HandleOutEpInterrupt stsphsercvd\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_stsphsercvd(1).WriteTo(mmio);
             }
 
-
-
             if (doepint.setup()) {
-zxlogf(LINFO, "HandleOutEpInterrupt setup\n");
+//zxlogf(LINFO, "XXXX HandleOutEpInterrupt setup\n");
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
 zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
@@ -217,18 +229,20 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
         cur_setup_.wLength);
 
 ep0_buffer_.CacheFlushInvalidate(0, /*sizeof(cur_setup_)*/ 64);
-//    DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+//DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
 
 
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-zxlogf(LINFO, "HandleOutEpInterrupt xfercompl\n");
+zxlogf(LINFO, "XXXX HandleOutEpInterrupt xfercompl\n");
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
                 if (ep_num == 0) {
-                    HandleEp0TransferComplete();
+                    if (!doepint.setup()) {
+                        HandleEp0TransferComplete();
+                    }
                 } else {
                     auto* ep = &endpoints_[ep_num + 16];
                     if (ep->req_offset == ep->req_length) {
@@ -390,14 +404,14 @@ void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
     hw_wmb();
 
     /* EP enable */
-    if (ep_num == DWC_EP0_IN /*|| ep_num == DWC_EP0_OUT*/) {
+    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
 printf("StartTransfer set ep0 phys\n");
         DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
     }
 
     if (ep_num == DWC_EP0_OUT && length > 0) {
 length = 64;
-printf("ep0_buffer_.CacheFlushInvalidate %u\n", length);
+//printf("ep0_buffer_.CacheFlushInvalidate %u\n", length);
         ep0_buffer_.CacheFlushInvalidate(0, length);
     }
 
@@ -541,10 +555,11 @@ void Dwc2::HandleEp0Setup() {
             ep0_state_ = Ep0State::DATA_OUT;
             // queue a read for the data phase
             ep0_state_ = Ep0State::DATA_OUT;
-            endpoints_[DWC_EP0_OUT].req_offset = 0;
-            endpoints_[DWC_EP0_OUT].req_length = letoh16(setup->wLength);
-printf("queue OUT data read for length %u\n", letoh16(setup->wLength));
-            StartTransfer(DWC_EP0_OUT, letoh16(setup->wLength));
+            auto* ep = &endpoints_[DWC_EP0_OUT];
+            ep->req_offset = 0;
+            ep->req_length = letoh16(setup->wLength);
+printf("queue OUT data read for setup->wLength %u\n", ep->req_length);
+            StartTransfer(DWC_EP0_OUT, ep->req_length);
         }
     } else {
         // no data phase
@@ -563,17 +578,19 @@ void Dwc2::HandleEp0TransferComplete() {
         HandleEp0Status(false);
         break;
     case Ep0State::DATA_OUT: {
-        auto* mmio = get_mmio();
-        auto length = DEPTSIZ0::Get(DWC_EP0_OUT).ReadFrom(mmio).xfersize();
         auto* ep = &endpoints_[DWC_EP0_OUT];
+        auto* mmio = get_mmio();
+        auto length = ep->req_length - DEPTSIZ0::Get(DWC_EP0_OUT).ReadFrom(mmio).xfersize();
 printf("HandleEp0TransferComplete Ep0State::DATA_OUT length: %u req_offset %u req_length %u\n", length, ep->req_offset, ep->req_length);
         // FIXME larger than mps       
         // FIXME check status
-        auto offset = DEPDMA::Get(DWC_EP0_OUT).ReadFrom(mmio).addr() - ep0_buffer_.phys();
-printf("phys offset: %zu\n", offset);
-        dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt() + offset, length, nullptr, 0, nullptr);
+//        auto offset = DEPDMA::Get(DWC_EP0_OUT).ReadFrom(mmio).addr() - ep0_buffer_.phys();
+//printf("phys offset: %zu\n", offset);
+        dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), length, nullptr, 0, nullptr);
 uint8_t* bytes = (uint8_t*)ep0_buffer_.virt();
 printf("received %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+bytes += 16;
+printf("         %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
 
         HandleEp0Status(true);
         break;
