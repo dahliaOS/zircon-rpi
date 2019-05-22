@@ -120,15 +120,17 @@ void Dwc2::HandleInEpInterrupt() {
 
     DAINT::Get().FromValue(DWC_EP_IN_MASK).WriteTo(mmio);
 
+printf("HandleInEpInterrupt\n");
+
     while (ep_bits) {
         if (ep_bits & 1) {
             auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
             diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
 
-//printf("XXXX HandleInEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
-//diepint.reg_value(),
-//DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
-//DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
+printf("XXXX HandleInEpInterrupt ep_num %u diepint 0x%x DEPDMA 0x%x xfersize %u\n", ep_num,
+diepint.reg_value(),
+DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
+DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
 
 
             /* Transfer complete */
@@ -139,7 +141,7 @@ void Dwc2::HandleInEpInterrupt() {
                 } else {
                     HandleTransferComplete(ep_num);
                     if (diepint.nak()) {
-    printf("diepint.nak ep_num %u\n", ep_num);
+printf("diepint.nak ep_num %u\n", ep_num);
                         DIEPINT::Get(ep_num).ReadFrom(mmio).set_nak(1).WriteTo(mmio);
                     }
                 }
@@ -188,8 +190,6 @@ void Dwc2::HandleOutEpInterrupt() {
 
     uint8_t ep_num = DWC_EP0_OUT;
 
-printf("HandleOutEpInterrupt\n");
-
     /* Read in the device interrupt bits */
     auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
     auto ep_mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
@@ -206,13 +206,10 @@ printf("HandleOutEpInterrupt\n");
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
 
-printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+printf("XXXX HandleOutEpInterrupt ep_num %u doepint 0x%x DEPDMA 0x%x xfersize %u\n", ep_num,
 doepint.reg_value(),
 DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
 DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
-
-
-zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
             if (doepint.sr()) {
 zxlogf(LINFO, "XXXX HandleOutEpInterrupt sr\n");
@@ -272,7 +269,6 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
 
     auto* setup = &cur_setup_;
     auto* buffer = ep0_buffer_.virt();
-//    auto length = ep0_buffer_.size();
 
     if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)) {
         // handle some special setup requests in this driver
@@ -317,7 +313,6 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
     } else if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-// do in start transfer instead?        ep0_buffer_.CacheFlush(0, *out_actual);
     } else {
         status = -1;
     }
@@ -382,6 +377,12 @@ void Dwc2::EpQueueNextLocked(Endpoint* ep) {
         ep->req_offset = 0;
         ep->req_length = static_cast<uint32_t>(usb_req->header.length);
 printf("EpQueueNextLocked ep_num %u call StartTransfer usb_req %p length %u\n", ep->ep_num, usb_req, ep->req_length);
+
+//auto* mmio = get_mmio();
+//printf("DAINTMSK: %08x\n", DAINTMSK::Get().ReadFrom(mmio).reg_value());
+//printf("DEPCTL:\n");
+//DEPCTL::Get(ep->ep_num).ReadFrom(mmio).Print();
+
         StartTransfer(ep, ep->req_length);
     }
 }
@@ -412,7 +413,6 @@ printf("StartTransfer %u length %u\n", ep_num, length);
         }
     }
 
-//    auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
     auto deptsiz = DEPTSIZ::Get(ep_num).FromValue(0);
 
     /* Zero Length Packet? */
@@ -427,15 +427,35 @@ printf("StartTransfer %u length %u\n", ep_num, length);
     deptsiz.WriteTo(mmio);
     hw_wmb();
 
+if (ep_num != 0 && ep_num != 16) {
 printf("DEPTSIZ WROTE\n");
 deptsiz.Print();
+}
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
     depctl.set_cnak(1);
     depctl.set_epena(1);
     depctl.set_mps(ep->max_packet_size);
+
+    if (depctl.eptype() == USB_ENDPOINT_BULK) {
+        depctl.set_setd0pid(1);
+    }
+
+    if (DWC_EP_IS_IN(ep_num)) {
+        depctl.set_nextep(ep_num);
+    } else {
+        depctl.set_nextep(0);
+    }
+        
+
     depctl.WriteTo(mmio);
     hw_wmb();
+
+if (ep_num != 0 && ep_num != 16) {
+printf("DEPCTL WROTE\n");
+depctl.Print();
+}
+
 }
 
 // Do we need this?
@@ -615,7 +635,6 @@ printf("Ep0State::DATA_OUT transfered %u ep->req_offset %u ep->req_length %u\n",
 //printf("phys offset: %zu\n", offset);
 
         if (ep->req_offset == ep->req_length) {
-printf("call Control %u\n", ep->req_length);
             dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), ep->req_length, nullptr, 0, nullptr);
             HandleEp0Status(true);
         } else {
@@ -649,7 +668,7 @@ void Dwc2::HandleTransferComplete(uint8_t ep_num) {
 
     fbl::AutoLock al(&ep->lock);
 
-    auto transfered = ep->req_xfersize - DEPTSIZ::Get(DWC_EP0_IN).ReadFrom(mmio).xfersize();
+    auto transfered = ep->req_xfersize - DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize();
     ep->req_offset += transfered;
 printf("HandleTransferComplete offset %u\n", ep->req_offset);
     usb_request_t* req = ep->current_req;
@@ -1071,8 +1090,6 @@ zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddre
     depctl.set_setd0pid(1); // correct for interrupt?
     depctl.set_txfnum(0);   //Non-Periodic TxFIFO
     depctl.set_usbactep(1);
-printf("DEPCTL:\n");
-depctl.Print();
     depctl.WriteTo(mmio);
 
     EnableEp(ep_num, true);

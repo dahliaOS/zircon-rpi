@@ -22,7 +22,7 @@ struct usb_endpoint_descriptor* bulk_out_ep = nullptr;
 struct usb_endpoint_descriptor* bulk_in_ep = nullptr;
 struct usb_endpoint_descriptor* intr_ep = nullptr;
 
-constexpr size_t BUFFER_SIZE = 512;
+constexpr size_t BUFFER_SIZE = 511;
 
 // Data to send to the device
 uint8_t send_buf[BUFFER_SIZE] = {};
