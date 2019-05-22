@@ -83,6 +83,7 @@ private:
         uint32_t req_offset;
         uint32_t req_xfersize;
         uint32_t req_length;    
+        uint32_t phys;
     
         // Used for synchronizing endpoint state
         // and ep specific hardware registers

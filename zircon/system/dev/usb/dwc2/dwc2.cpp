@@ -91,11 +91,11 @@ void Dwc2::HandleEnumDone() {
 
     endpoints_[DWC_EP0_IN].max_packet_size = 64;
     endpoints_[DWC_EP0_OUT].max_packet_size = 64;
+    endpoints_[DWC_EP0_IN].phys = (uint32_t)ep0_buffer_.phys();
+    endpoints_[DWC_EP0_OUT].phys = (uint32_t)ep0_buffer_.phys();
 
-// why is this needed? StartEp0() should have done this already.
-    DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
-
-    DEPCTL::Get(0).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
+    DEPCTL::Get(DWC_EP0_IN).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
+    DEPCTL::Get(DWC_EP0_OUT).ReadFrom(mmio).set_mps(DWC_DEP0CTL_MPS_64).WriteTo(mmio);
 // Necessary? Should be done earlier?
     DEPCTL::Get(16).ReadFrom(mmio).set_epena(1).WriteTo(mmio);
 
@@ -126,10 +126,10 @@ void Dwc2::HandleInEpInterrupt() {
             auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
             diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
 
-printf("XXXX HandleInEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
-diepint.reg_value(),
-DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
-DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
+//printf("XXXX HandleInEpInterrupt diepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+//diepint.reg_value(),
+//DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
+//DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
 
 
             /* Transfer complete */
@@ -208,10 +208,10 @@ void Dwc2::HandleOutEpInterrupt() {
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
 
-printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
-doepint.reg_value(),
-DEPDMA::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).addr(),
-DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).xfersize());
+//printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+//doepint.reg_value(),
+//DEPDMA::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).addr(),
+//DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).xfersize());
 
 
 //zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
@@ -238,8 +238,6 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
         cur_setup_.wLength);
 
 ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
-//DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
-
 
                 HandleEp0Setup();
             }
@@ -375,8 +373,14 @@ void Dwc2::EpQueueNextLocked(Endpoint* ep) {
     if (req.has_value()) {
         auto* usb_req = req->take();
         ep->current_req = usb_req;
-        
-//        usb_request_mmap(usb_req, (void **)&ep->req_buffer);
+
+        phys_iter_t iter;
+        zx_paddr_t phys;
+        usb_request_physmap(usb_req, bti_.get());
+        usb_request_phys_iter_init(&iter, usb_req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+        ep->phys = (uint32_t)phys;
+
         ep->send_zlp = usb_req->header.send_zlp && (usb_req->header.length % ep->max_packet_size) == 0;
 
         ep->req_offset = 0;
@@ -395,18 +399,7 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
 
 printf("StartTransfer %u length %u\n", ep_num, length);
 
-    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
-        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys() + ep->req_offset).WriteTo(get_mmio());
-    } else {
-        phys_iter_t iter;
-        zx_paddr_t phys;
-        auto* req = ep->current_req;
-        usb_request_physmap(req, bti_.get());
-        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
-        usb_request_phys_iter_next(&iter, &phys);
-        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)phys).WriteTo(mmio);
-printf("StartTransfer set phys\n");
-    }
+    DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(get_mmio());
 
     if (ep_num == DWC_EP0_OUT && length > 0) {
         ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
@@ -851,8 +844,8 @@ zx_status_t Dwc2::Init() {
 //    endpoints_[DWC_EP0_IN].req_buffer = (uint8_t*)ep0_buffer_.virt();
 //    endpoints_[DWC_EP0_OUT].req_buffer = (uint8_t*)ep0_buffer_.virt();
 
-    DEPDMA::Get(DWC_EP0_IN).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
-    DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+//    DEPDMA::Get(DWC_EP0_IN).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
+//    DEPDMA::Get(DWC_EP0_OUT).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys()).WriteTo(get_mmio());
 
     if ((status = InitController()) != ZX_OK) {
         zxlogf(ERROR, "usb_dwc: failed to init controller.\n");
