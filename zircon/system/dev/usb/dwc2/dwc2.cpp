@@ -58,6 +58,7 @@ void Dwc2::HandleReset() {
         set_xfercompl(1).
         set_timeout(1).
         set_ahberr(1).
+        set_intktxfemp(1).
         set_epdisabled(1).
         WriteTo(mmio);
 
@@ -396,6 +397,15 @@ printf("StartTransfer %u length %u\n", ep_num, length);
 
     if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
         DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)ep0_buffer_.phys() + ep->req_offset).WriteTo(get_mmio());
+    } else {
+        phys_iter_t iter;
+        zx_paddr_t phys;
+        auto* req = ep->current_req;
+        usb_request_physmap(req, bti_.get());
+        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+        DEPDMA::Get(ep_num).FromValue(0).set_addr((uint32_t)phys).WriteTo(mmio);
+printf("StartTransfer set phys\n");
     }
 
     if (ep_num == DWC_EP0_OUT && length > 0) {
@@ -1046,8 +1056,8 @@ zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddre
 
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
 
-    depctl.set_mps(usb_ep_max_packet(ep_desc));
-    depctl.set_eptype(usb_ep_type(ep_desc));
+    depctl.set_mps(ep->max_packet_size);
+    depctl.set_eptype(ep_type);
     depctl.set_setd0pid(1); // correct for interrupt?
     depctl.set_txfnum(0);   //Non-Periodic TxFIFO
     depctl.set_usbactep(1);

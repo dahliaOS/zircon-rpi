@@ -115,7 +115,7 @@ private:
     zx_status_t SetStall(uint8_t ep_num, bool stall);
     void EnableEp(uint8_t ep_num, bool enable);
     void EpQueueNextLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
-    void StartTransfer(uint8_t ep_num, uint32_t length);
+    void StartTransfer(uint8_t ep_num, uint32_t length) __TA_REQUIRES(ep->lock);
 
     // Interrupts
     void HandleReset();

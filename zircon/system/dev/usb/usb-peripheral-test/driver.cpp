@@ -81,7 +81,7 @@ struct {
         .bDescriptorType = USB_DT_ENDPOINT,
         .bEndpointAddress = 0, // set later
         .bmAttributes = USB_ENDPOINT_INTERRUPT,
-        .wMaxPacketSize = htole16(INTR_REQ_SIZE),
+        .wMaxPacketSize = htole16(8),
         .bInterval = 8,
     },
     .bulk_out_ep = {
@@ -345,17 +345,17 @@ static zx_status_t usb_test_bind(void* ctx, zx_device_t* parent) {
         goto fail;
     }
 
+    status = usb_function_alloc_ep(&test->function, USB_DIR_IN, &test->intr_addr);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: usb_function_alloc_ep failed\n", __func__);
+        goto fail;
+    }
     status = usb_function_alloc_ep(&test->function, USB_DIR_OUT, &test->bulk_out_addr);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: usb_function_alloc_ep failed\n", __func__);
         goto fail;
     }
     status = usb_function_alloc_ep(&test->function, USB_DIR_IN, &test->bulk_in_addr);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s: usb_function_alloc_ep failed\n", __func__);
-        goto fail;
-    }
-    status = usb_function_alloc_ep(&test->function, USB_DIR_IN, &test->intr_addr);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: usb_function_alloc_ep failed\n", __func__);
         goto fail;
