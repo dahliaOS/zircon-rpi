@@ -137,10 +137,7 @@ void Dwc2::HandleInEpInterrupt() {
                 if (0 == ep_num) {
                     HandleEp0TransferComplete();
                 } else {
-                    auto* ep = &endpoints_[ep_num];
-                    if (ep->req_offset == ep->req_length) {
-                        HandleTransferComplete(ep_num);
-                    }
+                    HandleTransferComplete(ep_num);
                     if (diepint.nak()) {
     printf("diepint.nak ep_num %u\n", ep_num);
                         DIEPINT::Get(ep_num).ReadFrom(mmio).set_nak(1).WriteTo(mmio);
@@ -189,7 +186,9 @@ void Dwc2::HandleInEpInterrupt() {
 void Dwc2::HandleOutEpInterrupt() {
     auto* mmio = get_mmio();
 
-    uint8_t ep_num = 0;
+    uint8_t ep_num = DWC_EP0_OUT;
+
+printf("HandleOutEpInterrupt\n");
 
     /* Read in the device interrupt bits */
     auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
@@ -207,13 +206,13 @@ void Dwc2::HandleOutEpInterrupt() {
             doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
 
-//printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
-//doepint.reg_value(),
-//DEPDMA::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).addr(),
-//DEPTSIZ::Get(ep_num + DWC_EP_OUT_SHIFT).ReadFrom(mmio).xfersize());
+printf("XXXX HandleOutEpInterrupt doepint 0x%x DEPDMA 0x%x xfersize %u\n", 
+doepint.reg_value(),
+DEPDMA::Get(ep_num).ReadFrom(mmio).addr(),
+DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
 
 
-//zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
+zxlogf(LINFO, "HandleOutEpInterrupt doepint.val %08x\n", doepint.reg_value());
 
             if (doepint.sr()) {
 zxlogf(LINFO, "XXXX HandleOutEpInterrupt sr\n");
@@ -236,6 +235,7 @@ zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wL
         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
         cur_setup_.wLength);
 
+// do this somewhere else?
 ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
 
                 HandleEp0Setup();
@@ -244,15 +244,12 @@ ep0_buffer_.CacheFlushInvalidate(0, sizeof(cur_setup_));
                 /* Clear the bit in DOEPINTn for this interrupt */
                 DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
 
-                if (ep_num == 0) {
+                if (ep_num == DWC_EP0_OUT) {
                     if (!doepint.setup()) {
                         HandleEp0TransferComplete();
                     }
                 } else {
-                    auto* ep = &endpoints_[ep_num + 16];
-                    if (ep->req_offset == ep->req_length) {
-                        HandleTransferComplete((uint8_t)(ep_num + 16));
-                    }
+                    HandleTransferComplete(ep_num);
                 }
             }
             if (doepint.epdisabled()) {
@@ -645,21 +642,23 @@ printf("call Control %u\n", ep->req_length);
 }
 
 void Dwc2::HandleTransferComplete(uint8_t ep_num) {
-    if (ep_num != 0) {
-        auto* ep = &endpoints_[ep_num];
-        fbl::AutoLock al(&ep->lock);
+    ZX_DEBUG_ASSERT(ep_num != DWC_EP0_IN && ep_num != DWC_EP0_OUT);
+    auto* ep = &endpoints_[ep_num];
+    auto* mmio = get_mmio();
 
-        usb_request_t* req = ep->current_req;
+    fbl::AutoLock al(&ep->lock);
 
+    auto transfered = ep->req_xfersize - DEPTSIZ::Get(DWC_EP0_IN).ReadFrom(mmio).xfersize();
+    ep->req_offset += transfered;
+printf("HandleTransferComplete offset %u\n", ep->req_offset);
+    usb_request_t* req = ep->current_req;
+    if (req) {
+        ep->current_req = nullptr;
+        // Is This Safe??
+        Request request(req, sizeof(usb_request_t));
+        request.Complete(ZX_OK, ep->req_offset);
 
-        if (req) {
-            ep->current_req = NULL;
-            // Is This Safe??
-            Request request(req, sizeof(usb_request_t));
-            request.Complete(ZX_OK, ep->req_offset);
-
-            EpQueueNextLocked(ep);
-        }
+        EpQueueNextLocked(ep);
     }
 }
 
@@ -929,7 +928,7 @@ for (unsigned i = 0; i < 15; i++) {
             continue;
         }
 
-#if 1
+#if 0
         zxlogf(LINFO, "IRQ IRQ IRQ IRQ IRQ IRQ 0x%08X 0x%08X:", gintsts.reg_value(), gintmsk.reg_value());
 
         if (gintsts.modemismatch()) zxlogf(LINFO, " modemismatch");

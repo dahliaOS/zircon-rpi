@@ -478,7 +478,7 @@ public:
     DEF_BIT(13, nak);
     DEF_BIT(14, nyet);
     DEF_BIT(15, sr);
-    static auto Get(unsigned i) { return hwreg::RegisterAddr<DOEPINT>(0xB08 + 0x20 * i); }
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DOEPINT>(0x908 + 0x20 * i); }
 };
 
 class DEPTSIZ : public hwreg::RegisterBase<DEPTSIZ, uint32_t, hwreg::EnablePrinter> {
