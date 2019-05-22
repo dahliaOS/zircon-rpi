@@ -26,6 +26,14 @@ PairingState::PairingState(PeerId peer_id, hci::Connection* link,
 
 PairingState::InitiatorAction PairingState::InitiatePairing(
     StatusCallback status_cb) {
+  if (!pairing_delegate()) {
+    bt_log(TRACE, "gap-bredr",
+           "No pairing delegate for link %#.04x (id: %s); not pairing",
+           handle(), bt_str(peer_id()));
+    status_cb(handle(), hci::Status(HostError::kNotReady));
+    return InitiatorAction::kDoNotSendAuthenticationRequest;
+  }
+
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
     current_pairing_ = Data();
@@ -54,9 +62,17 @@ std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
   } else if (state() == State::kResponderWaitIoCapRequest) {
     ZX_ASSERT(is_pairing());
     ZX_ASSERT(!initiator());
-    state_ = State::kWaitPairingEvent;
+
+    if (!pairing_delegate()) {
+      bt_log(TRACE, "gap-bredr",
+             "No pairing delegate for link %#.04x (id: %s); not pairing",
+             handle(), bt_str(peer_id()));
+      Reset();
+      return std::nullopt;
+    }
 
     // TODO(xow): Compute pairing event to wait for.
+    state_ = State::kWaitPairingEvent;
   } else {
     bt_log(ERROR, "gap-bredr",
            "%#.04x (id: %s): Unexpected event %s while in state \"%s\"",
@@ -66,7 +82,8 @@ std::optional<hci::IOCapability> PairingState::OnIoCapabilityRequest() {
   }
 
   // TODO(xow): Return local IO Capability.
-  return std::nullopt;
+  ZX_ASSERT(pairing_delegate());
+  return hci::IOCapability::kNoInputNoOutput;
 }
 
 void PairingState::OnIoCapabilityResponse(hci::IOCapability peer_iocap) {
@@ -224,12 +241,10 @@ void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
 
   // Perform state transition.
   if (status) {
-    // Reset state for another pairing.
-    state_ = State::kIdle;
+    Reset();
   } else {
     state_ = State::kFailed;
   }
-  current_pairing_ = std::nullopt;
 }
 
 const char* PairingState::ToString(PairingState::State state) {
@@ -284,6 +299,11 @@ void PairingState::FailWithUnexpectedEvent() {
   SignalStatus(hci::Status(HostError::kNotSupported));
   current_pairing_ = std::nullopt;
   state_ = State::kFailed;
+}
+
+void PairingState::Reset() {
+  state_ = State::kIdle;
+  current_pairing_ = std::nullopt;
 }
 
 PairingAction GetInitiatorPairingAction(IOCapability initiator_cap,

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "src/connectivity/bluetooth/core/bt-host/common/identifier.h"
+#include "src/connectivity/bluetooth/core/bt-host/gap/pairing_delegate.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/connection.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/hci.h"
 #include "src/connectivity/bluetooth/core/bt-host/sm/smp.h"
@@ -82,10 +83,21 @@ class PairingState final {
   // Peer for this pairing.
   PeerId peer_id() const { return peer_id_; }
 
+  // Set a handler for user-interactive authentication challenges. If not set or
+  // set to nullptr, all pairing requests will be rejected, but this does not
+  // cause a fatal error and should not result in link disconnection.
+  void SetPairingDelegate(fxl::WeakPtr<PairingDelegate> pairing_delegate) {
+    pairing_delegate_ = std::move(pairing_delegate);
+  }
+
   // Starts pairing against the peer, if pairing is not already in progress.
   // If not, this device becomes the pairing initiator, and returns
   // |kSendAuthenticationRequest| to indicate that the caller shall send an
   // Authentication Request for this peer.
+  //
+  // If no PairingDelegate is available, |status_cb| is immediately called with
+  // HostError::kNotReady, but the PairingState status callback (provided in the
+  // ctor) is not called.
   //
   // When pairing completes or errors out, the |status_cb| of each call to this
   // function will be invoked with the result.
@@ -187,6 +199,9 @@ class PairingState final {
 
   hci::ConnectionHandle handle() const { return link_->handle(); }
 
+  // Returns nullptr if the delegate is not set or no longer alive.
+  PairingDelegate* pairing_delegate() { return pairing_delegate_.get(); }
+
   // Call the permanent status callback this object was created with as well as
   // any callbacks from local initiators.
   void SignalStatus(hci::Status status);
@@ -200,10 +215,16 @@ class PairingState final {
   // |state_| to kFailed.
   void FailWithUnexpectedEvent();
 
+  // Called to ready the state machine to start pairing again. Clears
+  // |current_pairing_| and sets the state to kIdle.
+  void Reset();
+
   const PeerId peer_id_;
 
   // The BR/EDR link whose pairing is being driven by this object.
   hci::Connection* const link_;
+
+  fxl::WeakPtr<PairingDelegate> pairing_delegate_;
 
   // State machine representation.
   State state_;

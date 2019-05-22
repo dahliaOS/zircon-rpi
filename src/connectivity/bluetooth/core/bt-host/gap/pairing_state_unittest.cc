@@ -8,6 +8,7 @@
 #include "src/connectivity/bluetooth/core/bt-host/common/random.h"
 #include "src/connectivity/bluetooth/core/bt-host/common/test_helpers.h"
 #include "src/connectivity/bluetooth/core/bt-host/hci/fake_connection.h"
+#include "src/connectivity/bluetooth/core/bt-host/sm/types.h"
 
 namespace bt {
 namespace gap {
@@ -25,7 +26,8 @@ const DeviceAddress kLocalAddress(DeviceAddress::Type::kBREDR,
                                   "AA:BB:CC:00:11:22");
 const DeviceAddress kPeerAddress(DeviceAddress::Type::kBREDR,
                                  "DD:EE:FF:77:88:99");
-const auto kTestPeerIoCap = IOCapability::kDisplayYesNo;
+const auto kTestLocalIoCap = sm::IOCapability::kDisplayYesNo;
+const auto kTestPeerIoCap = IOCapability::kDisplayOnly;
 const uint32_t kTestPasskey = 123456;
 const auto kTestLinkKeyValue = Random<UInt128>();
 const auto kTestAuthenticatedLinkKeyType =
@@ -34,6 +36,30 @@ const auto kTestAuthenticatedLinkKeyType =
 void NoOpStatusCallback(hci::ConnectionHandle, hci::Status){};
 void NoOpUserConfirmationCallback(bool){};
 void NoOpUserPasskeyCallback(std::optional<uint32_t>){};
+
+class NoOpPairingDelegate final : public PairingDelegate {
+ public:
+  NoOpPairingDelegate(sm::IOCapability io_capability)
+      : io_capability_(io_capability), weak_ptr_factory_(this) {}
+
+  fxl::WeakPtr<NoOpPairingDelegate> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+  // PairingDelegate overrides that do nothing.
+  ~NoOpPairingDelegate() override = default;
+  sm::IOCapability io_capability() const override { return io_capability_; }
+  void CompletePairing(PeerId peer_id, sm::Status status) override {}
+  void ConfirmPairing(PeerId peer_id, ConfirmCallback confirm) override {}
+  void DisplayPasskey(PeerId peer_id, uint32_t passkey, bool local_consent,
+                      ConfirmCallback confirm) override {}
+  void RequestPasskey(PeerId peer_id,
+                      PasskeyResponseCallback respond) override {}
+
+ private:
+  const sm::IOCapability io_capability_;
+  fxl::WeakPtrFactory<NoOpPairingDelegate> weak_ptr_factory_;
+};
 
 FakeConnection MakeFakeConnection() {
   return FakeConnection(kTestHandle, hci::Connection::LinkType::kACL,
@@ -47,6 +73,39 @@ TEST(GAP_PairingStateTest, PairingStateStartsAsResponder) {
   EXPECT_FALSE(pairing_state.initiator());
 }
 
+TEST(GAP_PairingStateTest,
+     PairingStateRejectsPairingInitiationWithoutPairingDelegate) {
+  auto connection = MakeFakeConnection();
+  bool owner_cb_called = false;
+  auto owner_status_cb = [&owner_cb_called](auto, hci::Status status) {
+    owner_cb_called = true;
+  };
+  PairingState pairing_state(kTestPeerId, &connection,
+                             std::move(owner_status_cb));
+
+  bool initiator_cb_called = false;
+  auto initiator_status_cb = [&initiator_cb_called](auto, hci::Status status) {
+    initiator_cb_called = true;
+  };
+  EXPECT_EQ(PairingState::InitiatorAction::kDoNotSendAuthenticationRequest,
+            pairing_state.InitiatePairing(std::move(initiator_status_cb)));
+  EXPECT_FALSE(pairing_state.initiator());
+  EXPECT_FALSE(owner_cb_called);
+  EXPECT_TRUE(initiator_cb_called);
+}
+
+TEST(GAP_PairingStateTest,
+     PairingStateRejectsPairingResponseWithoutPairingDelegate) {
+  auto connection = MakeFakeConnection();
+  bool cb_called = false;
+  auto status_cb = [&cb_called](auto, hci::Status status) { cb_called = true; };
+  PairingState pairing_state(kTestPeerId, &connection, std::move(status_cb));
+  pairing_state.OnIoCapabilityResponse(kTestPeerIoCap);
+  EXPECT_FALSE(pairing_state.OnIoCapabilityRequest());
+  EXPECT_FALSE(pairing_state.initiator());
+  EXPECT_FALSE(cb_called);
+}
+
 TEST(GAP_PairingStateTest, PairingStateRemainsResponderAfterPeerIoCapResponse) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
@@ -58,6 +117,8 @@ TEST(GAP_PairingStateTest,
      PairingStateBecomesInitiatorAfterLocalPairingInitiated) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
   EXPECT_EQ(PairingState::InitiatorAction::kSendAuthenticationRequest,
             pairing_state.InitiatePairing(NoOpStatusCallback));
   EXPECT_TRUE(pairing_state.initiator());
@@ -66,6 +127,8 @@ TEST(GAP_PairingStateTest,
 TEST(GAP_PairingStateTest, PairingStateSendsAuthenticationRequestExactlyOnce) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
   EXPECT_EQ(PairingState::InitiatorAction::kSendAuthenticationRequest,
             pairing_state.InitiatePairing(NoOpStatusCallback));
   EXPECT_TRUE(pairing_state.initiator());
@@ -137,6 +200,8 @@ TEST(GAP_PairingStateTest,
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection,
                              status_handler.MakeStatusCallback());
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -155,6 +220,8 @@ TEST(GAP_PairingStateTest, SuccessfulEncryptionChangeTriggersStatusCallback) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection,
                              status_handler.MakeStatusCallback());
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -184,6 +251,8 @@ TEST(GAP_PairingStateTest,
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection,
                              status_handler.MakeStatusCallback());
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -215,6 +284,8 @@ TEST(GAP_PairingStateTest,
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection,
                              status_handler.MakeStatusCallback());
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   static_cast<void>(pairing_state.InitiatePairing(NoOpStatusCallback));
@@ -241,6 +312,8 @@ TEST(GAP_PairingStateTest,
 TEST(GAP_PairingStateTest, EncryptionChangeToEnableCallsInitiatorCallbacks) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   TestStatusHandler status_handler_0;
@@ -287,6 +360,8 @@ TEST(GAP_PairingStateTest,
      InitiatingPairingOnResponderWaitsForPairingToFinish) {
   auto connection = MakeFakeConnection();
   PairingState pairing_state(kTestPeerId, &connection, NoOpStatusCallback);
+  NoOpPairingDelegate pairing_delegate(kTestLocalIoCap);
+  pairing_state.SetPairingDelegate(pairing_delegate.GetWeakPtr());
 
   // Advance state machine.
   pairing_state.OnIoCapabilityResponse(kTestPeerIoCap);
@@ -366,8 +441,12 @@ class HandlesEvent : public ::testing::TestWithParam<void (*)(PairingState*)> {
  protected:
   HandlesEvent()
       : connection_(MakeFakeConnection()),
+        pairing_delegate_(kTestLocalIoCap),
         pairing_state_(kTestPeerId, &connection_,
-                       status_handler_.MakeStatusCallback()) {}
+                       status_handler_.MakeStatusCallback()) {
+    // TODO(xow): Ignore PairingDelegate method matches for these tests.
+    pairing_state().SetPairingDelegate(pairing_delegate_.GetWeakPtr());
+  }
   ~HandlesEvent() = default;
 
   const FakeConnection& connection() const { return connection_; }
@@ -382,6 +461,7 @@ class HandlesEvent : public ::testing::TestWithParam<void (*)(PairingState*)> {
  private:
   FakeConnection connection_;
   TestStatusHandler status_handler_;
+  NoOpPairingDelegate pairing_delegate_;
   PairingState pairing_state_;
 };
 
@@ -444,6 +524,25 @@ TEST_P(HandlesEvent, InResponderWaitIoCapRequestState) {
 
   RETURN_IF_FATAL(InjectEvent());
   if (event() == IoCapabilityRequest) {
+    EXPECT_EQ(0, status_handler().call_count());
+  } else {
+    EXPECT_EQ(1, status_handler().call_count());
+    ASSERT_TRUE(status_handler().status());
+    EXPECT_EQ(hci::Status(HostError::kNotSupported), status_handler().status());
+  }
+}
+
+TEST_P(HandlesEvent,
+       InIdleStateAfterIoCapRequestRejectedWithoutPairingDelegate) {
+  // Clear the default pairing delegate set by the fixture.
+  pairing_state().SetPairingDelegate(fxl::WeakPtr<PairingDelegate>());
+
+  // Advance state machine.
+  pairing_state().OnIoCapabilityResponse(kTestPeerIoCap);
+  EXPECT_FALSE(pairing_state().OnIoCapabilityRequest());
+
+  RETURN_IF_FATAL(InjectEvent());
+  if (event() == IoCapabilityResponse) {
     EXPECT_EQ(0, status_handler().call_count());
   } else {
     EXPECT_EQ(1, status_handler().call_count());
