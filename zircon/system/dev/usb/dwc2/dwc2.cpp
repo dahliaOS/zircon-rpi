@@ -317,7 +317,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
     } else if (is_in) {
         status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
-        ep0_buffer_.CacheFlush(0, *out_actual);
+// do in start transfer instead?        ep0_buffer_.CacheFlush(0, *out_actual);
     } else {
         status = -1;
     }
@@ -396,11 +396,19 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
 printf("StartTransfer %u length %u\n", ep_num, length);
     DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(mmio);
 
-    if (!is_in && length > 0) {
-        if (ep_num == DWC_EP0_OUT) {
-            ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
+    if (length > 0) {
+        if (is_in) {
+            if (ep_num == DWC_EP0_IN) {
+                ep0_buffer_.CacheFlush(ep->req_offset, length);
+            } else {
+                usb_request_cache_flush(ep->current_req, ep->req_offset, length);
+            }
         } else {
-            usb_request_cache_flush_invalidate(ep->current_req, ep->req_offset, length);
+            if (ep_num == DWC_EP0_OUT) {
+                ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
+            } else {
+                usb_request_cache_flush_invalidate(ep->current_req, ep->req_offset, length);
+            }
         }
     }
 
