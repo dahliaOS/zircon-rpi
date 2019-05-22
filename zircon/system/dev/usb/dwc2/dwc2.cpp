@@ -63,7 +63,7 @@ void Dwc2::HandleReset() {
         WriteTo(mmio);
 
     /* Reset Device Address */
-    DCFG::Get().ReadFrom(mmio).set_devaddr(0).WriteTo(mmio);
+    DCFG::Get().ReadFrom(mmio).set_devaddr(0).set_epmscnt(2).WriteTo(mmio);
 
     StartEp0();
 
@@ -800,6 +800,7 @@ GNPTXFSIZ::Get().ReadFrom(mmio).Print();
     gintmsk.set_inepintr(1);
     gintmsk.set_outepintr(1);
     gintmsk.set_usbsuspend(1);
+    gintmsk.set_modemismatch(1);
 
 // ???
 gintmsk.set_rxstsqlvl(1);
@@ -999,6 +1000,9 @@ for (unsigned i = 0; i < 15; i++) {
         }
         if (gintsts.outepintr()) {
             HandleOutEpInterrupt();
+        }
+        if (gintsts.modemismatch()) {
+printf("IRQ modemismatch\n");
         }
     }
 
