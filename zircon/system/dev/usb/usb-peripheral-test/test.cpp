@@ -269,7 +269,7 @@ int usb_discovery_done(void *client_data) {
 } // anonymous namespace
 
 BEGIN_TEST_CASE(usb_peripheral_tests)
-//RUN_TEST(control_interrupt_test_8);
+RUN_TEST(control_interrupt_test_8);
 //RUN_TEST(control_interrupt_test_63);
 //RUN_TEST(control_interrupt_test_64);
 //RUN_TEST(control_interrupt_test_65);

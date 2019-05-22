@@ -134,7 +134,7 @@ void Dwc2::HandleInEpInterrupt() {
             /* Transfer complete */
             if (diepint.xfercompl()) {
                 DIEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
-                if (0 == ep_num) {
+                if (ep_num == DWC_EP0_IN) {
                     HandleEp0TransferComplete();
                 } else {
                     HandleTransferComplete(ep_num);
@@ -394,8 +394,7 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
 
 
 printf("StartTransfer %u length %u\n", ep_num, length);
-printf("DEPDMA:\n");
-    DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(mmio).Print();
+    DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(mmio);
 
     if (!is_in && length > 0) {
         if (ep_num == DWC_EP0_OUT) {
@@ -426,11 +425,8 @@ deptsiz.Print();
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
     depctl.set_cnak(1);
     depctl.set_epena(1);
+    depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
-
-printf("DEPCTL:\n");
-depctl.Print();
-
     hw_wmb();
 }
 
@@ -469,7 +465,6 @@ void Dwc2::FlushFifo(uint32_t fifo_num) {
 }
 
 void Dwc2::StartEndpoints() {
-/* Do we need this? is it correct for ep0 out?
     for (uint8_t ep_num = 1; ep_num < fbl::count_of(endpoints_); ep_num++) {
         auto* ep = &endpoints_[ep_num];
         if (ep->enabled) {
@@ -479,7 +474,6 @@ void Dwc2::StartEndpoints() {
             EpQueueNextLocked(ep);
         }
     }
-*/
 }
 
 void Dwc2::StopEndpoints() {
@@ -513,8 +507,7 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
     } else {
         mask &= ~bit;
     }
-printf("DAINTMSK:\n");
-    DAINTMSK::Get().FromValue(mask).WriteTo(mmio).Print();
+    DAINTMSK::Get().FromValue(mask).WriteTo(mmio);
 }
 
 void Dwc2::HandleEp0Status(bool is_in) {
