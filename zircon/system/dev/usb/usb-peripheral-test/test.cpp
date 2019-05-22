@@ -22,7 +22,7 @@ struct usb_endpoint_descriptor* bulk_out_ep = nullptr;
 struct usb_endpoint_descriptor* bulk_in_ep = nullptr;
 struct usb_endpoint_descriptor* intr_ep = nullptr;
 
-constexpr size_t BUFFER_SIZE = 4096;
+constexpr size_t BUFFER_SIZE = 512;
 
 // Data to send to the device
 uint8_t send_buf[BUFFER_SIZE] = {};
@@ -66,7 +66,7 @@ bool control_interrupt_test(size_t transfer_size) {
         // Sent and received data should match.
         EXPECT_EQ(memcmp(send_buf, receive_buf, transfer_size), 0);
 
-#if 1
+#if 0
         // Create a thread to wait for interrupt request.
         auto thread_func = [](struct usb_request** req) -> void {
             *req = usb_request_wait(dev, TIMEOUT);
@@ -269,7 +269,7 @@ int usb_discovery_done(void *client_data) {
 } // anonymous namespace
 
 BEGIN_TEST_CASE(usb_peripheral_tests)
-RUN_TEST(control_interrupt_test_8);
+//RUN_TEST(control_interrupt_test_8);
 //RUN_TEST(control_interrupt_test_63);
 //RUN_TEST(control_interrupt_test_64);
 //RUN_TEST(control_interrupt_test_65);
@@ -277,7 +277,7 @@ RUN_TEST(control_interrupt_test_8);
 //RUN_TEST(control_interrupt_test_128);
 //RUN_TEST(control_interrupt_test_256);
 //RUN_TEST(control_interrupt_test_1000);
-//RUN_TEST(bulk_test);
+RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 
 int main(int argc, char** argv) {

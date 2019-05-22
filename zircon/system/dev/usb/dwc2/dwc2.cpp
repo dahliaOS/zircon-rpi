@@ -58,7 +58,7 @@ void Dwc2::HandleReset() {
         set_xfercompl(1).
         set_timeout(1).
         set_ahberr(1).
-        set_intktxfemp(1).
+//        set_intktxfemp(1).
         set_epdisabled(1).
         WriteTo(mmio);
 
@@ -103,7 +103,6 @@ void Dwc2::HandleEnumDone() {
 
 #if 0 // astro
     GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(9).WriteTo(mmio);
-    regs->gusbcfg.usbtrdtim = 9;
 #else
     GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(5).WriteTo(mmio);
 #endif
@@ -398,11 +397,15 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
 
 
 printf("StartTransfer %u length %u\n", ep_num, length);
+printf("DEPDMA:\n");
+    DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(mmio).Print();
 
-    DEPDMA::Get(ep_num).FromValue(0).set_addr(ep->phys + ep->req_offset).WriteTo(get_mmio());
-
-    if (ep_num == DWC_EP0_OUT && length > 0) {
-        ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
+    if (!is_in && length > 0) {
+        if (ep_num == DWC_EP0_OUT) {
+            ep0_buffer_.CacheFlushInvalidate(ep->req_offset, length);
+        } else {
+            usb_request_cache_flush_invalidate(ep->current_req, ep->req_offset, length);
+        }
     }
 
 //    auto deptsiz = DEPTSIZ::Get(ep_num).ReadFrom(mmio);
@@ -423,15 +426,18 @@ printf("StartTransfer %u length %u\n", ep_num, length);
 printf("DEPTSIZ WROTE\n");
 deptsiz.Print();
 
-
     auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
     depctl.set_cnak(1);
     depctl.set_epena(1);
-    depctl.set_mps(ep->max_packet_size);
     depctl.WriteTo(mmio);
+
+printf("DEPCTL:\n");
+depctl.Print();
+
     hw_wmb();
 }
 
+// Do we need this?
 void Dwc2::FlushFifo(uint32_t fifo_num) {
     auto* mmio = get_mmio();
     auto grstctl = GRSTCTL::Get().FromValue(0);
@@ -466,6 +472,7 @@ void Dwc2::FlushFifo(uint32_t fifo_num) {
 }
 
 void Dwc2::StartEndpoints() {
+/* Do we need this? is it correct for ep0 out?
     for (uint8_t ep_num = 1; ep_num < fbl::count_of(endpoints_); ep_num++) {
         auto* ep = &endpoints_[ep_num];
         if (ep->enabled) {
@@ -475,6 +482,7 @@ void Dwc2::StartEndpoints() {
             EpQueueNextLocked(ep);
         }
     }
+*/
 }
 
 void Dwc2::StopEndpoints() {
@@ -508,7 +516,8 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
     } else {
         mask &= ~bit;
     }
-    DAINTMSK::Get().FromValue(mask).WriteTo(mmio);
+printf("DAINTMSK:\n");
+    DAINTMSK::Get().FromValue(mask).WriteTo(mmio).Print();
 }
 
 void Dwc2::HandleEp0Status(bool is_in) {
@@ -722,12 +731,12 @@ zx_status_t Dwc2::InitController() {
     usleep(10 * 1000);
 
     GUSBCFG::Get().ReadFrom(mmio).set_force_dev_mode(1).WriteTo(mmio);
-    GAHBCFG::Get().FromValue(0).set_dmaenable(1).WriteTo(mmio);
+    GAHBCFG::Get().FromValue(0).set_dmaenable(1).set_hburstlen(DWC_GAHBCFG_INT_DMA_BURST_INCR4).WriteTo(mmio);
 
 #if 0 // astro
     GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(9).WriteTo(mmio);
 #else
-//    GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(5).WriteTo(mmio);
+    GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(5).WriteTo(mmio);
 #endif
 
     // ???
@@ -767,12 +776,15 @@ GNPTXFSIZ::Get().ReadFrom(mmio).Print();
 
     auto gintmsk = GINTMSK::Get().FromValue(0);
 
-//    gintmsk.set_rxstsqlvl(1);
     gintmsk.set_usbreset(1);
     gintmsk.set_enumdone(1);
     gintmsk.set_inepintr(1);
     gintmsk.set_outepintr(1);
     gintmsk.set_usbsuspend(1);
+
+// ???
+gintmsk.set_rxstsqlvl(1);
+gintmsk.set_otgintr(1);
 
     gintmsk.set_resetdet(1);
 
@@ -781,7 +793,8 @@ GNPTXFSIZ::Get().ReadFrom(mmio).Print();
 
     gintmsk.WriteTo(mmio);
 
-    GAHBCFG::Get().ReadFrom(mmio).set_glblintrmsk(1).WriteTo(mmio);
+printf("GAHBCFG:\n");
+    GAHBCFG::Get().ReadFrom(mmio).set_glblintrmsk(1).WriteTo(mmio).Print();
 
     return ZX_OK;
 }
@@ -916,7 +929,7 @@ for (unsigned i = 0; i < 15; i++) {
             continue;
         }
 
-/*
+#if 1
         zxlogf(LINFO, "IRQ IRQ IRQ IRQ IRQ IRQ 0x%08X 0x%08X:", gintsts.reg_value(), gintmsk.reg_value());
 
         if (gintsts.modemismatch()) zxlogf(LINFO, " modemismatch");
@@ -951,7 +964,7 @@ for (unsigned i = 0; i < 15; i++) {
         if (gintsts.sessreqintr()) zxlogf(LINFO, " sessreqintr");
         if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
         zxlogf(LINFO, "\n");
-*/
+#endif
 
         if (gintsts.usbreset() || gintsts.resetdet()) {
             HandleReset();
@@ -1029,17 +1042,15 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
                                    const usb_ss_ep_comp_descriptor_t* ss_comp_desc) {
     auto* mmio = get_mmio();
 
-    // convert address to index in range 0 - 31
-    // low bit is IN/OUT
     uint8_t ep_num = DWC_ADDR_TO_INDEX(ep_desc->bEndpointAddress);
 zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddress, ep_num);
-    if (ep_num == 0) {
+    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
         return ZX_ERR_INVALID_ARGS;
     }
 
     uint8_t ep_type = usb_ep_type(ep_desc);
     if (ep_type == USB_ENDPOINT_ISOCHRONOUS) {
-        zxlogf(ERROR, "dwc_ep_config: isochronous endpoints are not supported\n");
+        zxlogf(ERROR, "UsbDciConfigEp: isochronous endpoints are not supported\n");
         return ZX_ERR_NOT_SUPPORTED;
     }
 
@@ -1053,14 +1064,15 @@ zxlogf(LINFO, "UsbDciConfigEp address %02x ep_num %d\n", ep_desc->bEndpointAddre
     ep->interval = ep_desc->bInterval;
     ep->enabled = true;
 
-    auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
+    auto depctl = DEPCTL::Get(ep_num).FromValue(0);
 
     depctl.set_mps(ep->max_packet_size);
     depctl.set_eptype(ep_type);
     depctl.set_setd0pid(1); // correct for interrupt?
     depctl.set_txfnum(0);   //Non-Periodic TxFIFO
     depctl.set_usbactep(1);
-
+printf("DEPCTL:\n");
+depctl.Print();
     depctl.WriteTo(mmio);
 
     EnableEp(ep_num, true);

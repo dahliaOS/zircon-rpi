@@ -64,13 +64,26 @@ public:
 class GAHBCFG : public hwreg::RegisterBase<GAHBCFG, uint32_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(0, glblintrmsk);
+
+#define DWC_GAHBCFG_INT_DMA_BURST_SINGLE	0
+#define DWC_GAHBCFG_INT_DMA_BURST_INCR		1
+#define DWC_GAHBCFG_INT_DMA_BURST_INCR4		3
+#define DWC_GAHBCFG_INT_DMA_BURST_INCR8		5
+#define DWC_GAHBCFG_INT_DMA_BURST_INCR16	7
     DEF_FIELD(4, 1, hburstlen);
+
+#define DWC_GAHBCFG_DMAENABLE			1
     DEF_BIT(5, dmaenable);
+
     DEF_BIT(7, nptxfemplvl_txfemplvl);
+
+#define DWC_GAHBCFG_TXFEMPTYLVL_EMPTY		1
+#define DWC_GAHBCFG_TXFEMPTYLVL_HALFEMPTY	0
     DEF_BIT(8, ptxfemplvl);
+
     DEF_BIT(21, remmemsupp);
     DEF_BIT(22, notialldmawrit);
-    DEF_BIT(23, AHBSingle);
+    DEF_BIT(23, ahbsingle);
     static auto Get() { return hwreg::RegisterAddr<GAHBCFG>(0x8); }
 };
 
