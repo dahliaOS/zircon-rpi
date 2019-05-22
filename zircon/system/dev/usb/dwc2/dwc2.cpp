@@ -382,12 +382,12 @@ void Dwc2::EpQueueNextLocked(Endpoint* ep) {
         ep->req_offset = 0;
         ep->req_length = static_cast<uint32_t>(usb_req->header.length);
 printf("EpQueueNextLocked ep_num %u call StartTransfer usb_req %p length %u\n", ep->ep_num, usb_req, ep->req_length);
-        StartTransfer(ep->ep_num, ep->req_length);
+        StartTransfer(ep, ep->req_length);
     }
 }
 
-void Dwc2::StartTransfer(uint8_t ep_num, uint32_t length) {
-    auto* ep = &endpoints_[ep_num];
+void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
+    auto ep_num = ep->ep_num;
     auto* mmio = get_mmio();
     uint32_t ep_mps = ep->max_packet_size;
     bool is_in = DWC_EP_IS_IN(ep_num);
@@ -521,7 +521,9 @@ void Dwc2::EnableEp(uint8_t ep_num, bool enable) {
 void Dwc2::HandleEp0Status(bool is_in) {
     ep0_state_ = (is_in ? Ep0State::STATUS_IN : Ep0State::STATUS_OUT);
     uint8_t ep_num = (is_in ? DWC_EP0_IN : DWC_EP0_OUT);
-    StartTransfer(ep_num, 0);
+    auto* ep = &endpoints_[ep_num];
+    fbl::AutoLock al(&ep->lock);
+    StartTransfer(ep, 0);
 
     /* Prepare for more SETUP Packets */
     if (is_in) {
@@ -549,7 +551,8 @@ void Dwc2::HandleEp0Setup() {
             auto* ep = &endpoints_[DWC_EP0_IN];
             ep->req_offset = 0;
             ep->req_length = static_cast<uint32_t>(actual);
-            StartTransfer(DWC_EP0_IN, (ep->req_length > 127 ? ep->max_packet_size : ep->req_length));
+            fbl::AutoLock al(&ep->lock);
+            StartTransfer(ep, (ep->req_length > 127 ? ep->max_packet_size : ep->req_length));
 //            StartTransfer(DWC_EP0_IN, ep->req_length);
         } else {
             ep0_state_ = Ep0State::DATA_OUT;
@@ -559,7 +562,8 @@ void Dwc2::HandleEp0Setup() {
 printf("OUT set req_length %u\n", length);
             ep->req_offset = 0;
             ep->req_length = length;
-            StartTransfer(DWC_EP0_OUT, (length > 127 ? ep->max_packet_size : length));
+            fbl::AutoLock al(&ep->lock);
+            StartTransfer(ep, (length > 127 ? ep->max_packet_size : length));
 //            StartTransfer(DWC_EP0_OUT, length);
         }
     } else {
@@ -591,7 +595,8 @@ printf("Ep0State::DATA_IN transfered %u ep->req_offset %u ep->req_length %u\n", 
             if (length > 64) {
                 length = 64;
             }
-            StartTransfer(DWC_EP0_IN, length);
+            fbl::AutoLock al(&ep->lock);
+            StartTransfer(ep, length);
         }
         break;
     }
@@ -618,7 +623,8 @@ printf("call Control %u\n", ep->req_length);
             if (length > 127) {
                 length = 64;
             }
-            StartTransfer(DWC_EP0_OUT, length);
+            fbl::AutoLock al(&ep->lock);
+            StartTransfer(ep, length);
         }
         break;
     }
