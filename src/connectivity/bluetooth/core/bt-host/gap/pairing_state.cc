@@ -195,7 +195,42 @@ void PairingState::OnLinkKeyNotification(const UInt128& link_key,
   }
   ZX_ASSERT(is_pairing());
 
-  // TODO(xow): Store link key.
+  sm::SecurityProperties sec_props;
+  if (key_type == hci::LinkKeyType::kChangedCombination) {
+    if (!link_->ltk()) {
+      bt_log(WARN, "gap-bredr",
+             "Got Changed Combination key but link %#.04x (id: %s) has no "
+             "current key",
+             handle(), bt_str(peer_id()));
+      SignalStatus(hci::Status(HostError::kInsufficientSecurity));
+      state_ = State::kFailed;
+      return;
+    }
+  } else {
+    sec_props = sm::SecurityProperties(key_type);
+    current_pairing_->security_properties = sec_props;
+  }
+
+  if (sec_props.level() == sm::SecurityLevel::kNoSecurity) {
+    bt_log(WARN, "gap-bredr",
+           "Link key (type %hhu) for %#.04x (id: %s) has insufficient security",
+           key_type, handle(), bt_str(peer_id()));
+    SignalStatus(hci::Status(HostError::kInsufficientSecurity));
+    state_ = State::kFailed;
+    return;
+  }
+
+  if (sec_props.authenticated() != current_pairing_->authenticated) {
+    bt_log(WARN, "gap-bredr",
+           "Expected %sauthenticated link key for %#.04x (id: %s), got %hhu",
+           current_pairing_->authenticated ? "" : "un", handle(),
+           bt_str(peer_id()), key_type);
+    SignalStatus(hci::Status(HostError::kInsufficientSecurity));
+    state_ = State::kFailed;
+    return;
+  }
+
+  link_->set_link_key(hci::LinkKey(link_key, 0, 0));
   if (initiator()) {
     state_ = State::kInitiatorWaitAuthComplete;
   } else {
@@ -245,8 +280,7 @@ void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
     status = hci::Status(HostError::kFailed);
   }
 
-  // TODO(xow): Write link key to Connection::ltk to register new security
-  //            properties.
+  // TODO(xow): Signal new new security properties.
   SignalStatus(status);
 
   // Perform state transition.
@@ -357,6 +391,8 @@ void PairingState::WritePairingData() {
       current_pairing_->local_iocap, current_pairing_->peer_iocap);
   ZX_DEBUG_ASSERT(GetStateForPairingEvent(current_pairing_->expected_event) !=
                   State::kFailed);
+  current_pairing_->authenticated = IsPairingAuthenticated(
+      current_pairing_->local_iocap, current_pairing_->peer_iocap);
 }
 
 PairingAction GetInitiatorPairingAction(IOCapability initiator_cap,
