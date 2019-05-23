@@ -125,6 +125,15 @@ protocol Host {
     // error Status will be returned and neither transport will be connected.
     Connect(string device_id) -> (fuchsia.bluetooth.Status status);
 
+    /// Terminate all connections - BR/EDR or LE - to the named remote peer with identifier
+    /// |peer_id|.
+    ///
+    /// - The result will be communicated via |status|. If either BR/EDR or LE disconnects fail with
+    ///   an error, then any errors shall be returned; If both succeed, success is returned.
+    ///
+    /// - If the named peer is not currently connected to the system, returns success
+    Disconnect(string peer_id) -> (fuchsia.bluetooth.Status status);
+
     /// Deletes a peer from the Bluetooth host. If the peer is connected, it will be disconnected,
     /// then OnDeviceUpdated will be sent. OnDeviceRemoved will be sent. |device_id| will no longer
     /// refer to any peer, even if a device with the same address(es) is discovered again.

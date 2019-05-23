@@ -13,7 +13,9 @@ use {
     futures::TryFutureExt,
 };
 
-use crate::harness::host_driver::{expect_eq, expect_remote_device, HostDriverHarness};
+use crate::harness::host_driver::{
+    expect_eq, expect_host_peer, expect_remote_device, HostDriverHarness,
+};
 
 // TODO(armansito|xow): Add tests for BR/EDR and dual mode bond data.
 
@@ -55,7 +57,7 @@ async fn add_bonds(
     state: &HostDriverHarness,
     mut bonds: Vec<BondingData>,
 ) -> Result<(Status), Error> {
-    await!(state.host_proxy().add_bonded_devices(&mut bonds.iter_mut()).err_into())
+    await!(state.aux().0.add_bonded_devices(&mut bonds.iter_mut()).err_into())
 }
 
 const TEST_ID1: &str = "1234";
@@ -68,7 +70,7 @@ const TEST_NAME2: &str = "Name2";
 // Tests initializing bonded LE devices.
 pub async fn test_add_bonded_devices_success(test_state: HostDriverHarness) -> Result<(), Error> {
     // Devices should be initially empty.
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(vec![], devices)?;
 
     let bond_data1 = new_le_bond_data(TEST_ID1, TEST_ADDR1, TEST_NAME1, true /* has LTK */);
@@ -85,10 +87,10 @@ pub async fn test_add_bonded_devices_success(test_state: HostDriverHarness) -> R
         .and(expectation::peer::technology(TechnologyType::LowEnergy))
         .and(expectation::peer::bonded(true));
 
-    await!(test_state.expect_peer(None, expected1))?;
-    await!(test_state.expect_peer(None, expected2))?;
+    await!(expect_host_peer(&test_state, expected1))?;
+    await!(expect_host_peer(&test_state, expected2))?;
 
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(2, devices.len())?;
     expect_true!(devices.iter().any(|dev| dev.address == TEST_ADDR1))?;
     expect_true!(devices.iter().any(|dev| dev.address == TEST_ADDR2))?;
@@ -103,7 +105,7 @@ pub async fn test_add_bonded_devices_no_ltk_fails(
     test_state: HostDriverHarness,
 ) -> Result<(), Error> {
     // Devices should be initially empty.
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(vec![], devices)?;
 
     // Inserting a bonded device without a LTK should fail.
@@ -111,7 +113,7 @@ pub async fn test_add_bonded_devices_no_ltk_fails(
     let status = await!(add_bonds(&test_state, vec![bond_data]))?;
     expect_true!(status.error.is_some())?;
 
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(vec![], devices)?;
 
     Ok(())
@@ -121,7 +123,7 @@ pub async fn test_add_bonded_devices_duplicate_entry(
     test_state: HostDriverHarness,
 ) -> Result<(), Error> {
     // Devices should be initially empty.
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(vec![], devices)?;
 
     // Initialize one entry.
@@ -134,8 +136,8 @@ pub async fn test_add_bonded_devices_duplicate_entry(
         .and(expectation::peer::technology(TechnologyType::LowEnergy))
         .and(expectation::peer::bonded(true));
 
-    await!(test_state.expect_peer(None, expected.clone()))?;
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    await!(expect_host_peer(&test_state, expected.clone()))?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(1, devices.len())?;
 
     // Adding an entry with the existing id should fail.
@@ -157,7 +159,7 @@ pub async fn test_add_bonded_devices_invalid_entry(
     test_state: HostDriverHarness,
 ) -> Result<(), Error> {
     // Devices should be initially empty.
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(vec![], devices)?;
 
     // Add one entry with no LTK (invalid) and one with (valid). This should create an entry for the
@@ -171,8 +173,8 @@ pub async fn test_add_bonded_devices_invalid_entry(
         .and(expectation::peer::technology(TechnologyType::LowEnergy))
         .and(expectation::peer::bonded(true));
 
-    await!(test_state.expect_peer(None, expected.clone()))?;
-    let devices = await!(test_state.host_proxy().list_devices())?;
+    await!(expect_host_peer(&test_state, expected.clone()))?;
+    let devices = await!(test_state.aux().0.list_devices())?;
     expect_eq!(1, devices.len())?;
     expect_remote_device(&test_state, TEST_ADDR2, &expected)?;
 
