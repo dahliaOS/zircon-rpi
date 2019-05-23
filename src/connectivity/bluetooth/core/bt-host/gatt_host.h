@@ -45,7 +45,10 @@ class GattHost final : public fbl::RefCounted<GattHost>,
 
   static fbl::RefPtr<GattHost> Create(std::string thread_name);
 
-  void Initialize();
+  // Initialize GATT. |callback| will be called after the GATT profile
+  // is initialized.
+  using InitializeCallback = fit::function<void()>;
+  void Initialize(InitializeCallback callback);
 
   // This MUST be called to cleanly destroy this object. This method is
   // thread-safe.
