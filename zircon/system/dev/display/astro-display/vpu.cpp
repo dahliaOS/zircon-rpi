@@ -348,4 +348,171 @@ void Vpu::PowerOff() {
     SET_BIT32(HHI, HHI_VAPBCLK_CNTL, 0, 8, 1);
     SET_BIT32(HHI, HHI_VPU_CLK_CNTL, 0, 8, 1);
 }
+
+void Vpu::PrintCaptureRegisters() {
+    DISP_INFO("** Display Loopback Register Dump **\n\n");
+    DISP_INFO("VdInIfMuxCtrlReg = 0x%x\n",
+              VdInIfMuxCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInComCtrl0Reg = 0x%x\n",
+              VdInComCtrl0Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInComStatus0Reg = 0x%x\n",
+              VdInComStatus0Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInAFifoCtrl3Reg = 0x%x\n",
+              VdInAFifoCtrl3Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInMatrixCtrlReg = 0x%x\n",
+              VdInMatrixCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrCtrlReg = 0x%x\n",
+              VdInWrCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrHStartEndReg = 0x%x\n",
+              VdInWrHStartEndReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrVStartEndReg = 0x%x\n",
+              VdInWrVStartEndReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef00_01Reg = 0x%x\n",
+              VdinCoef00_01Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef02_10Reg = 0x%x\n",
+              VdinCoef02_10Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef11_12Reg = 0x%x\n",
+              VdinCoef11_12Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef20_21Reg = 0x%x\n",
+              VdinCoef20_21Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef22Reg = 0x%x\n",
+              VdinCoef22Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinOffset0_1Reg = 0x%x\n",
+              VdinOffset0_1Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinOffset2Reg = 0x%x\n",
+              VdinOffset2Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinPreOffset0_1Reg = 0x%x\n",
+              VdinPreOffset0_1Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinPreOffset2Reg = 0x%x\n",
+              VdinPreOffset2Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+}
+
+zx_status_t Vpu::Capture(uint8_t canvas_idx, uint32_t height, uint32_t stride) {
+    ZX_DEBUG_ASSERT(initialized_);
+
+    // Step1: select input
+
+    //TODO(payamm): Assume MIPI since only DSI is supported
+    VdInIfMuxCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_async_fifo_data(4)
+        .set_async_fifo_clock(4)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Set Async Fifo as input data
+    VdInComCtrl0Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_use_async_fifo_6(7)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Setup Async Fifo
+    VdInAFifoCtrl3Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_data_valid_en(1)
+        .set_go_field_en(1)
+        .set_go_line_en(1)
+        // .set_vsync_sync_reset_en(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Vdin memory format is YUV422. Setup conversion matrix
+
+    // enable matrix
+    VdInMatrixCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_enable(1)
+        .WriteTo(&(*vpu_mmio_));
+    // select input matrix
+    VdInMatrixCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_select(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    VdinPreOffset0_1Reg::Get().FromValue(0).WriteTo(&(*vpu_mmio_));
+    VdinPreOffset2Reg::Get().FromValue(0).WriteTo(&(*vpu_mmio_));
+
+    VdinCoef00_01Reg::Get()
+        .FromValue(0)
+        .set_coef00(0x107)
+        .set_coef01(0x204)
+        .WriteTo(&(*vpu_mmio_));
+    VdinCoef02_10Reg::Get()
+        .FromValue(0)
+        .set_coef02(0x64)
+        .set_coef10(0x1f68)
+        .WriteTo(&(*vpu_mmio_));
+    VdinCoef11_12Reg::Get()
+        .FromValue(0)
+        .set_coef11(0x1ed6)
+        .set_coef12(0x1c2)
+        .WriteTo(&(*vpu_mmio_));
+    VdinCoef20_21Reg::Get()
+        .FromValue(0)
+        .set_coef20(0x1c2)
+        .set_coef21(0x1e87)
+        .WriteTo(&(*vpu_mmio_));
+    VdinCoef22Reg::Get()
+        .FromValue(0)
+        .set_coef22(0x1fb7)
+        .WriteTo(&(*vpu_mmio_));
+
+    VdinOffset0_1Reg::Get()
+        .FromValue(0)
+        .set_offset0(0x40)
+        .set_offset1(0x0200)
+        .WriteTo(&(*vpu_mmio_));
+    VdinOffset2Reg::Get()
+        .FromValue(0)
+        .set_offset2(0x0200)
+        .WriteTo(&(*vpu_mmio_));
+
+
+
+    // Configure VDIn Memory interface
+    // Configure memory size
+    VdInWrHStartEndReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_start(0)
+        .set_end(stride - 1)
+        .WriteTo(&(*vpu_mmio_));
+    VdInWrVStartEndReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_start(0)
+        .set_end(height - 1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Clear status bit
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_done_status_clear_bit(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    PrintCaptureRegisters();
+    // Write output canvas index
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_canvas_idx(canvas_idx)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Enable loopback
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_write_mem_enable(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Wait for done
+    int timeout = 1000;
+    while (VdInComStatus0Reg::Get().ReadFrom(&(*vpu_mmio_)).done() == 0 && timeout--) {
+        zx_nanosleep(zx_deadline_after(ZX_MSEC(8)));
+    }
+
+    if (timeout <= 0) {
+        DISP_ERROR("Time out! Loopback did not succeed\n");
+        PrintCaptureRegisters();
+        return ZX_ERR_TIMED_OUT;
+
+    }
+
+    return ZX_OK;
+}
+
 } // namespace astro_display

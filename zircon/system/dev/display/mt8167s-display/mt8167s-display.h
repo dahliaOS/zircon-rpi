@@ -84,6 +84,10 @@ public:
                                                                 uint32_t* out_stride) {
         return ZX_ERR_NOT_SUPPORTED;
     }
+    zx_status_t DisplayControllerImplCaptureDisplayOutput(zx::vmo* out_vmo) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
     int VSyncThread();
 
     // Required functions for DeviceType

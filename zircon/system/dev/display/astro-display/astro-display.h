@@ -39,6 +39,8 @@ namespace astro_display {
 
 struct ImageInfo : public fbl::DoublyLinkedListable<std::unique_ptr<ImageInfo>> {
     uint8_t canvas_idx;
+    uint32_t image_height;
+    uint32_t image_stride;
 };
 
 class AstroDisplay;
@@ -77,6 +79,7 @@ public:
                                                                 uint32_t* out_stride) {
         return ZX_ERR_NOT_SUPPORTED;
     }
+    zx_status_t DisplayControllerImplCaptureDisplayOutput(zx::vmo* out_vmo);
 
     // Required functions for DeviceType
     void DdkUnbind();

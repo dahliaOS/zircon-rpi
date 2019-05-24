@@ -21,6 +21,7 @@
 #include <lib/fidl/cpp/string_view.h>
 #include <lib/fidl/cpp/vector_view.h>
 #include <lib/fzl/fdio.h>
+#include <lib/zx/vmo.h>
 
 #include <zircon/pixelformat.h>
 #include <zircon/status.h>
@@ -310,6 +311,37 @@ zx_status_t wait_for_vsync(const fbl::Vector<fbl::unique_ptr<VirtualLayer>>& lay
     return ZX_OK;
 }
 
+static bool capture_display() {
+    zx_status_t status;
+    zx::vmo local_vmo;
+    fuchsia_hardware_display_ControllerCaptureDisplayOutputRequest msg;
+    msg.hdr.ordinal = fuchsia_hardware_display_ControllerCaptureDisplayOutputOrdinal;
+
+    fuchsia_hardware_display_ControllerCaptureDisplayOutputResponse rsp;
+    zx_channel_call_args_t calls_args = {};
+    calls_args.wr_bytes = &msg;
+    calls_args.rd_bytes = &rsp;
+    calls_args.rd_handles = local_vmo.reset_and_get_address();
+    calls_args.wr_num_bytes = sizeof(msg);
+    calls_args.rd_num_bytes = sizeof(rsp);
+    calls_args.rd_num_handles = 1;
+    uint32_t actual_bytes, actual_handles;
+    if ((status = zx_channel_call(dc_handle, 0, ZX_TIME_INFINITE, &calls_args,
+                                  &actual_bytes, &actual_handles)) != ZX_OK) {
+        printf("%s: channel call failed %d\n", __FUNCTION__, status);
+        return false;
+    }
+
+    if (rsp.res != ZX_OK) {
+        printf("%s: capture failed %d\n",__FUNCTION__, rsp.res);
+        return false;
+    }
+
+    size_t size = 0;
+    status = local_vmo.get_size(&size);
+    printf("local_vmo size = %zu\n", size);
+    return true;
+}
 int main(int argc, const char* argv[]) {
     printf("Running display test\n");
 
@@ -317,6 +349,7 @@ int main(int argc, const char* argv[]) {
     fbl::Vector<fbl::Vector<uint64_t>> display_layers;
     fbl::Vector<fbl::unique_ptr<VirtualLayer>> layers;
     int32_t num_frames = 120; // default to 120 frames
+    bool capture = false;
     enum Platform {
         SIMPLE,
         INTEL,
@@ -387,6 +420,10 @@ int main(int argc, const char* argv[]) {
             argc -= 1;
         } else if (strcmp(argv[0], "--simple") == 0) {
             platform = SIMPLE;
+            argv += 1;
+            argc -= 1;
+        } else if (strcmp(argv[0], "--capture") == 0) {
+            capture = true;
             argv += 1;
             argc -= 1;
         } else {
@@ -572,6 +609,14 @@ int main(int argc, const char* argv[]) {
         zx_status_t status;
         while ((status = wait_for_vsync(layers)) == ZX_ERR_NEXT) {
             // wait again
+        }
+
+        if (capture) {
+            if (!capture_display()) {
+                break;
+            } else {
+                break;
+            }
         }
         ZX_ASSERT(status == ZX_OK);
     }

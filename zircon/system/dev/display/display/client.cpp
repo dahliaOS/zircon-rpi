@@ -61,6 +61,7 @@ zx_status_t decode_message(fidl::Message* msg) {
         SELECT_TABLE_CASE(fuchsia_hardware_display_ControllerSetBufferCollectionConstraints);
         SELECT_TABLE_CASE(fuchsia_hardware_display_ControllerReleaseBufferCollection);
         SELECT_TABLE_CASE(fuchsia_hardware_display_ControllerGetSingleBufferFramebuffer);
+        SELECT_TABLE_CASE(fuchsia_hardware_display_ControllerCaptureDisplayOutput);
     }
     if (table != nullptr) {
         const char* err;
@@ -204,6 +205,13 @@ void Client::HandleControllerApi(async_dispatcher_t* dispatcher, async::WaitBase
             const fuchsia_hardware_display_ControllerGetSingleBufferFramebufferRequest*>(
             msg.bytes().data());
         HandleGetSingleBufferFramebuffer(r, &builder, &out_handle, &has_out_handle, &out_type);
+        break;
+    }
+    case fuchsia_hardware_display_ControllerCaptureDisplayOutputOrdinal: {
+        auto r = reinterpret_cast<
+            const fuchsia_hardware_display_ControllerCaptureDisplayOutputRequest*>(
+            msg.bytes().data());
+        HandleCaptureDisplayOutput(r, &builder, &out_handle, &has_out_handle, &out_type);
         break;
     }
     default:
@@ -1152,6 +1160,20 @@ void Client::HandleGetSingleBufferFramebuffer(
     *handle_out = vmo.release();
     resp->vmo = *has_handle_out ? FIDL_HANDLE_PRESENT : FIDL_HANDLE_ABSENT;
     resp->stride = stride;
+}
+
+void Client::HandleCaptureDisplayOutput(
+    const fuchsia_hardware_display_ControllerCaptureDisplayOutputRequest* req,
+    fidl::Builder* resp_builder, zx_handle_t* handle_out, bool* has_handle_out,
+    const fidl_type_t** resp_table) {
+    auto resp = resp_builder->New<fuchsia_hardware_display_ControllerCaptureDisplayOutputResponse>();
+    *resp_table = &fuchsia_hardware_display_ControllerCaptureDisplayOutputResponseTable;
+
+    zx::vmo vmo;
+    resp->res = controller_->dc()->CaptureDisplayOutput(&vmo);
+    *has_handle_out = resp->res == ZX_OK;
+    *handle_out = vmo.release();
+    resp->vmo = *has_handle_out ? FIDL_HANDLE_PRESENT : FIDL_HANDLE_ABSENT;
 }
 
 bool Client::CheckConfig(fidl::Builder* resp_builder) {
