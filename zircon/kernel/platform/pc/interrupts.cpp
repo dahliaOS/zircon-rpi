@@ -160,11 +160,14 @@ public:
             x86_vector = 0;
         }
 
+        if (x86_vector == 0 && handler == nullptr) {
+            return ZX_OK;
+        }
+
         if (x86_vector && !handler) {
             /* If the x86 vector is valid, and we are unregistering the handler,
              * return the x86 vector to the pool. */
             p2ra_free_range(&state_.x86_irq_vector_allocator, x86_vector, 1);
-            x86_vector = 0;
         } else if (!x86_vector && handler) {
             /* If the x86 vector is invalid, and we are registering a handler,
              * attempt to get a new x86 vector from the pool. */
@@ -190,7 +193,7 @@ public:
         }
 
         // Update the handler table and register the x86 vector with the io_apic.
-        DEBUG_ASSERT(!!x86_vector == !!handler);
+        DEBUG_ASSERT(x86_vector != 0);
 
         {
             auto entry = &state_.handler_table[x86_vector];
