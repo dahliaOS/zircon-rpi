@@ -348,4 +348,180 @@ void Vpu::PowerOff() {
     SET_BIT32(HHI, HHI_VAPBCLK_CNTL, 0, 8, 1);
     SET_BIT32(HHI, HHI_VPU_CLK_CNTL, 0, 8, 1);
 }
+
+void Vpu::PrintCaptureRegisters() {
+    DISP_INFO("** Display Loopback Register Dump **\n\n");
+    DISP_INFO("VdInIfMuxCtrlReg = 0x%x\n",
+              VdInIfMuxCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInComCtrl0Reg = 0x%x\n",
+              VdInComCtrl0Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInComStatus0Reg = 0x%x\n",
+              VdInComStatus0Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInAFifoCtrl3Reg = 0x%x\n",
+              VdInAFifoCtrl3Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInMatrixCtrlReg = 0x%x\n",
+              VdInMatrixCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrCtrlReg = 0x%x\n",
+              VdInWrCtrlReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrHStartEndReg = 0x%x\n",
+              VdInWrHStartEndReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdInWrVStartEndReg = 0x%x\n",
+              VdInWrVStartEndReg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef00_01Reg = 0x%x\n",
+              VdinCoef00_01Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef02_10Reg = 0x%x\n",
+              VdinCoef02_10Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef11_12Reg = 0x%x\n",
+              VdinCoef11_12Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef20_21Reg = 0x%x\n",
+              VdinCoef20_21Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinCoef22Reg = 0x%x\n",
+              VdinCoef22Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinOffset0_1Reg = 0x%x\n",
+              VdinOffset0_1Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinOffset2Reg = 0x%x\n",
+              VdinOffset2Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinPreOffset0_1Reg = 0x%x\n",
+              VdinPreOffset0_1Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+    DISP_INFO("VdinPreOffset2Reg = 0x%x\n",
+              VdinPreOffset2Reg::Get().ReadFrom(&(*vpu_mmio_)).reg_value());
+}
+
+zx_status_t Vpu::Capture(uint8_t canvas_idx, uint32_t height, uint32_t stride) {
+    ZX_DEBUG_ASSERT(initialized_);
+
+    // setup VPU path
+    VdInIfMuxCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_vpu_path_1(4)
+        .set_vpu_path_0(4)
+        .WriteTo(&(*vpu_mmio_));
+
+    // setup hold lines and vdin selection to internal loopback
+    VdInComCtrl0Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_hold_lines(0)
+        .set_vdin_selection(7)
+        .WriteTo(&(*vpu_mmio_));
+
+    VdinLFifoCtrlReg::Get()
+        .FromValue(0)
+        .set_fifo_buf_size(0xf00)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Setup Async Fifo
+    VdInAFifoCtrl3Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_data_valid_en(1)
+        .set_go_field_en(1)
+        .set_go_line_en(1)
+        .set_vsync_pol_set(1)
+        .set_hsync_pol_set(0)
+        .set_vsync_sync_reset_en(1)
+        .set_fifo_overflow_clr(0)
+        .set_soft_reset_en(0)
+        .WriteTo(&(*vpu_mmio_));
+
+    // setup vdin input dimensions
+    VdinIntfWidthM1Reg::Get()
+        .FromValue(stride - 1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Configure memory size
+    VdInWrHStartEndReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_start(0)
+        .set_end(stride - 1)
+        .WriteTo(&(*vpu_mmio_));
+    VdInWrVStartEndReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_start(0)
+        .set_end(height - 1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Write output canvas index, 128 bit endian, eol with width, enable 4:4:4 RGB888 mode
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_eol_sel(0)
+        .set_word_swap(1)
+        .set_memory_format(1)
+        .set_canvas_idx(canvas_idx)
+        .WriteTo(&(*vpu_mmio_));
+
+    // enable vdin memory power
+    SET_BIT32(HHI, HHI_VPU_MEM_PD_REG0, 0, 18, 2);
+
+    // Now that loopback mode is configured, start capture
+    // pause write output
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_write_ctrl(0)
+        .WriteTo(&(*vpu_mmio_));
+
+    // disable vdin path
+    VdInComCtrl0Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_enable_vdin(0)
+        .WriteTo(&(*vpu_mmio_));
+
+    // reset mif
+    VdInMiscCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_mif_reset(1)
+        .WriteTo(&(*vpu_mmio_));
+    zx_nanosleep(zx_deadline_after(ZX_USEC(1)));
+    VdInMiscCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_mif_reset(0)
+        .WriteTo(&(*vpu_mmio_));
+
+    // resume write output
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_write_ctrl(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // wait until resets finishes
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(20)));
+
+    // Clear status bit
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_done_status_clear_bit(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Set as urgent
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_write_req_urgent(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Enable loopback
+    VdInWrCtrlReg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_write_mem_enable(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // enable vdin path
+    VdInComCtrl0Reg::Get()
+        .ReadFrom(&(*vpu_mmio_))
+        .set_enable_vdin(1)
+        .WriteTo(&(*vpu_mmio_));
+
+    // Wait for done
+    int timeout = 1000;
+    while (VdInComStatus0Reg::Get().ReadFrom(&(*vpu_mmio_)).done() == 0 && timeout--) {
+        zx_nanosleep(zx_deadline_after(ZX_MSEC(8)));
+    }
+
+    if (timeout <= 0) {
+        DISP_ERROR("Time out! Loopback did not succeed\n");
+        PrintCaptureRegisters();
+        return ZX_ERR_TIMED_OUT;
+
+    }
+
+    return ZX_OK;
+}
+
 } // namespace astro_display

@@ -18,7 +18,7 @@
 #define WAIT_ON_MS(COND, N) WAIT_ON(COND, N, M)
 
 #define LOG_ERROR(fmt, ...) zxlogf(ERROR, "i915: " fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...) zxlogf(WARN, "i915: " fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...) zxlogf(INFO, "i915: " fmt, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...) zxlogf(INFO, "i915: " fmt, ##__VA_ARGS__)
-#define LOG_TRACE(fmt, ...) zxlogf(TRACE, "i915: " fmt, ##__VA_ARGS__)
-#define LOG_SPEW(fmt, ...) zxlogf(SPEW, "i915: " fmt, ##__VA_ARGS__)
+#define LOG_TRACE(fmt, ...) zxlogf(INFO, "i915: " fmt, ##__VA_ARGS__)
+#define LOG_SPEW(fmt, ...) zxlogf(INFO, "i915: " fmt, ##__VA_ARGS__)

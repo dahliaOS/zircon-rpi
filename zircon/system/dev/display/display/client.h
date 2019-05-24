@@ -221,6 +221,11 @@ private:
         const fuchsia_hardware_display_ControllerReleaseBufferCollectionRequest* req,
         fidl::Builder* resp_builder, const fidl_type_t** resp_table);
 
+    void HandleCaptureDisplayOutput(
+    const fuchsia_hardware_display_ControllerCaptureDisplayOutputRequest* req,
+    fidl::Builder* resp_builder, zx_handle_t* handle_out, bool* has_handle_out,
+    const fidl_type_t** resp_table);
+
     // Cleans up layer state associated with an image. If image == nullptr, then
     // cleans up all image state. Return true if a current layer was modified.
     bool CleanUpImage(Image* image);

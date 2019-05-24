@@ -549,6 +549,10 @@ static zx_status_t get_single_buffer_framebuffer(void* ctx, zx_handle_t* out_vmo
     return ZX_ERR_NOT_SUPPORTED;
 }
 
+static zx_status_t capture_display_output(void* ctx, zx_handle_t* out_vmo) {
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
 static display_controller_impl_protocol_ops_t display_controller_ops = {
     .set_display_controller_interface = vim_set_display_controller_interface,
     .import_vmo_image = vim_import_vmo_image,
@@ -561,6 +565,7 @@ static display_controller_impl_protocol_ops_t display_controller_ops = {
     .get_sysmem_connection = get_sysmem_connection,
     .set_buffer_collection_constraints = set_buffer_collection_constraints,
     .get_single_buffer_framebuffer = get_single_buffer_framebuffer,
+    .capture_display_output = capture_display_output
 };
 
 static uint32_t get_bus_count(void* ctx) {

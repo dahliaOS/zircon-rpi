@@ -56,6 +56,10 @@ public:
     zx_status_t DisplayControllerImplGetSingleBufferFramebuffer(zx::vmo* out_vmo,
                                                                 uint32_t* out_stride);
 
+    zx_status_t DisplayControllerImplCaptureDisplayOutput(zx::vmo* out_vmo) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
 private:
     ddk::MmioBuffer framebuffer_mmio_;
     zx_koid_t framebuffer_koid_;

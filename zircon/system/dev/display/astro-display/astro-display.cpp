@@ -14,7 +14,6 @@
 namespace astro_display {
 
 namespace {
-
 // List of supported pixel formats
 zx_pixel_format_t kSupportedPixelFormats[] = { ZX_PIXEL_FORMAT_RGB_x888 };
 
@@ -291,6 +290,10 @@ zx_status_t AstroDisplay::DisplayControllerImplImportVmoImage(image_t* image, zx
     }
 
     import_info->canvas_idx = local_canvas_idx;
+    import_info->image_height = image->height;
+    import_info->image_width = image->width;
+    import_info->image_stride = stride * ZX_PIXEL_FORMAT_BYTES(image->pixel_format);
+
     image->handle = reinterpret_cast<uint64_t>(import_info.get());
     imported_images_.push_back(std::move(import_info));
     return status;
@@ -362,6 +365,8 @@ zx_status_t AstroDisplay::DisplayControllerImplImportImage(image_t* image,
     }
     fbl::AutoLock lock(&image_lock_);
     import_info->canvas_idx = local_canvas_idx;
+    import_info->image_height = image->height;
+    import_info->image_stride = minimum_row_bytes;
     image->handle = reinterpret_cast<uint64_t>(import_info.get());
     imported_images_.push_back(std::move(import_info));
     return status;
@@ -381,7 +386,6 @@ void AstroDisplay::DisplayControllerImplReleaseImage(image_t* image) {
 uint32_t AstroDisplay::DisplayControllerImplCheckConfiguration(
     const display_config_t** display_configs, size_t display_count, uint32_t** layer_cfg_results,
     size_t* layer_cfg_result_count) {
-
     if (display_count != 1) {
         ZX_DEBUG_ASSERT(display_count == 0);
         return CONFIG_DISPLAY_OK;
@@ -440,7 +444,6 @@ uint32_t AstroDisplay::DisplayControllerImplCheckConfiguration(
 void AstroDisplay::DisplayControllerImplApplyConfiguration(const display_config_t** display_configs,
                                                         size_t display_count) {
     ZX_DEBUG_ASSERT(display_configs);
-
     fbl::AutoLock lock(&display_lock_);
 
     if (display_count == 1 && display_configs[0]->layer_count) {
@@ -607,6 +610,66 @@ zx_status_t AstroDisplay::DisplayControllerImplSetBufferCollectionConstraints(
 
     return ZX_OK;
 }
+
+zx_status_t AstroDisplay::DisplayControllerImplCaptureDisplayOutput(zx::vmo* out_vmo) {
+    // Make sure this lock is enough to ensure images are not discarded during capture
+    fbl::AutoLock lock(&display_lock_);
+
+    // First obtain the information regarding the current image being display
+    if (!current_image_valid_) {
+        DISP_ERROR("Not valid image being displayed\n");
+        return ZX_ERR_UNAVAILABLE;
+    }
+
+    auto image_info = reinterpret_cast<ImageInfo*>(current_image_);
+
+    //FIXME: make sure it's valid
+
+    //Create VMO
+    uint64_t size = image_info->image_height * image_info->image_stride;
+    zx_status_t status = zx::vmo::create_contiguous(bti_, size, 0, out_vmo);
+    if (status != ZX_OK) {
+        DISP_ERROR("Could not allocate vmo %d\n", status);
+        return status;
+    }
+
+    // duplicate the vmo. One for the canvas driver. the other goes back to client
+    zx_handle_t vmo_dup;
+    if ((status = zx_handle_duplicate(out_vmo->get(), ZX_RIGHT_SAME_RIGHTS, &vmo_dup)) != ZX_OK) {
+        DISP_ERROR("Couldn't duplicate vmo %d\n", status);
+        return status;
+    }
+
+    canvas_info_t canvas_info;
+    canvas_info.height = image_info->image_height;
+    // canvas_info.stride_bytes = image_info->image_stride;
+    canvas_info.stride_bytes = (ALIGN(600 * 3, 64));  //image_info->image_stride;
+    canvas_info.wrap = 0;
+    canvas_info.blkmode = 0;
+    canvas_info.endianness = 7; // little endian 64bit
+    canvas_info.flags = CANVAS_FLAGS_READ | CANVAS_FLAGS_WRITE;
+
+    uint8_t canvas_idx;
+    status = amlogic_canvas_config(&canvas_, vmo_dup, 0, &canvas_info, &canvas_idx);
+    if (status != ZX_OK) {
+        DISP_ERROR("Could not configure canvas %d\n", status);
+        status = ZX_ERR_NO_RESOURCES;
+        return status;
+    }
+
+    // At this point, we have a canvas configured with the same settings as the canvas used by
+    // the currently displayed image. Now, we can start to capture a frame of image
+    DISP_INFO("canvas: index = %d, height = %d, stride = %d, width = %d\n",
+              canvas_idx,
+              image_info->image_height,
+              image_info->image_stride,
+              image_info->image_width);
+
+
+    // Start the capture
+    return vpu_->Capture(canvas_idx, image_info->image_height, 600);
+}
+
 
 int AstroDisplay::VSyncThread() {
     zx_status_t status;

@@ -107,7 +107,7 @@ bool PrimaryLayer::Init(zx_handle_t dc_handle) {
         return false;
     }
     uint32_t fg_color = get_fg_color();
-    uint32_t bg_color = alpha_enable_ ? 0x3fffffff : 0xffffffff;
+    uint32_t bg_color = alpha_enable_ ? 0x3f00ff00 : 0xff00ff00;
 
     images_[0] = Image::Create(
         dc_handle, image_width_, image_height_, image_format_, fg_color, bg_color,

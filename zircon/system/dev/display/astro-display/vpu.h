@@ -29,6 +29,9 @@ public:
     // This function sets up default video post processing unit. It contains undocumented
     // registers and/or initialization sequences
     void VppInit();
+
+    zx_status_t Capture(uint8_t canvas_idx, uint32_t height, uint32_t stride);
+    void PrintCaptureRegisters();
 private:
     // This function configures the VPU-related clocks. It contains undocumented registers
     // and/or clock initialization sequences
