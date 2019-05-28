@@ -20,6 +20,7 @@ group("usb") {
     "usb-peripheral-test",
     "usb-test",
     "usb-virtual-bus",
+    "vim2-usb-phy",
     "xhci",
   ]
 }
