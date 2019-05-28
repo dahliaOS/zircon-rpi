@@ -2,22 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <lib/mmio/mmio.h>
 #include <lib/zx/resource.h>
+#include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
+#include <ddk/usb-peripheral-config.h>
 #include <hw/reg.h>
+#include <usb/dwc2/metadata.h>
+#include <zircon/device/usb-peripheral.h>
+#include <zircon/hw/usb.h>
+#include <zircon/hw/usb/cdc.h>
 
 #include <soc/aml-common/aml-usb-phy.h>
 #include <soc/aml-s912/s912-hw.h>
 
+#include <limits.h>
+#include <unistd.h>
+
 #include "vim.h"
 
 namespace vim {
-#define BIT_MASK(start, count) (((1 << (count)) - 1) << (start))
-#define SET_BITS(dest, start, count, value) \
-    ((dest & ~BIT_MASK(start, count)) | (((value) << (start)) & BIT_MASK(start, count)))
 
+/*
 static const pbus_mmio_t xhci_mmios[] = {
     {
         .base = S912_USB0_BASE,
@@ -35,14 +43,110 @@ static const pbus_irq_t xhci_irqs[] = {
 static const pbus_bti_t xhci_btis[] = {
     {
         .iommu_index = 0,
-        .bti_id = BTI_USB_XHCI,
+        .bti_id = BTI_USB,
+    },
+};
+*/
+
+static const pbus_mmio_t dwc2_mmios[] = {
+    {
+        .base = S912_USB1_BASE,
+        .length = S912_USB1_LENGTH,
     },
 };
 
-zx_status_t Vim::UsbInit() {
-    zx_status_t status;
-    pbus_dev_t xhci_dev = {};
+static const pbus_irq_t dwc2_irqs[] = {
+    {
+        .irq = S912_USBD_IRQ,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
+    },
+};
 
+static const pbus_bti_t usb_btis[] = {
+    {
+        .iommu_index = 0,
+        .bti_id = BTI_USB,
+    },
+};
+
+constexpr char kManufacturer[] = "Zircon";
+constexpr char kProduct[] = "CDC-Ethernet";
+constexpr char kSerial[] = "0123456789ABCDEF";
+
+// Metadata for DWC2 driver.
+constexpr dwc2_metadata_t dwc2_metadata = {
+    .dma_burst_len = DWC2_DMA_BURST_INCR8,
+    .usb_turnaround_time = 5,
+    .rx_fifo_size = 256,
+    .nptx_fifo_size = 256,
+};
+
+using FunctionDescriptor = fuchsia_hardware_usb_peripheral_FunctionDescriptor;
+
+static pbus_metadata_t usb_metadata[] = {
+    {
+        .type = DEVICE_METADATA_USB_CONFIG,
+        .data_buffer = nullptr,
+        .data_size = 0,
+    },
+    {
+        .type = DEVICE_METADATA_PRIVATE,
+        .data_buffer = &dwc2_metadata,
+        .data_size = sizeof(dwc2_metadata),
+    },
+};
+
+static const zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+/*
+static const zx_bind_inst_t xhci_phy_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_USB_PHY),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_USB_XHCI_COMPOSITE),
+};
+static const device_component_part_t xhci_phy_component[] = {
+    { countof(root_match), root_match },
+    { countof(xhci_phy_match), xhci_phy_match },
+};
+static const device_component_t xhci_components[] = {
+    { countof(xhci_phy_component), xhci_phy_component },
+};
+*/
+static const zx_bind_inst_t dwc2_phy_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_USB_PHY),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
+    BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_USB_DWC2),
+};
+static const device_component_part_t dwc2_phy_component[] = {
+    { countof(root_match), root_match },
+    { countof(dwc2_phy_match), dwc2_phy_match },
+};
+static const device_component_t dwc2_components[] = {
+    { countof(dwc2_phy_component), dwc2_phy_component },
+};
+
+static const pbus_dev_t usb_phy_dev = [](){
+    pbus_dev_t dev;
+    dev.name = "aml-usb-phy-v2";
+    dev.vid = PDEV_VID_KHADAS;
+    dev.pid = PDEV_PID_VIM2;
+    dev.did = PDEV_DID_VIM_USB_PHY;
+//    dev.mmio_list = usb_phy_mmios;
+//    dev.mmio_count = countof(usb_phy_mmios);
+//    dev.irq_list = usb_phy_irqs;
+//    dev.irq_count = countof(usb_phy_irqs);
+    dev.bti_list = usb_btis;
+    dev.bti_count = countof(usb_btis);
+    return dev;
+}();
+
+zx_status_t Vim::UsbInit() {
+//    zx_status_t status;
+/*
+    pbus_dev_t xhci_dev = {};
     xhci_dev.name = "xhci";
     xhci_dev.vid = PDEV_VID_GENERIC;
     xhci_dev.pid = PDEV_PID_GENERIC;
@@ -53,57 +157,76 @@ zx_status_t Vim::UsbInit() {
     xhci_dev.irq_count = countof(xhci_irqs);
     xhci_dev.bti_list = xhci_btis;
     xhci_dev.bti_count = countof(xhci_btis);
+*/
 
-    zx::bti bti;
+#if 1
+    constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
+                                     ? alignof(UsbConfig)
+                                     : __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+    UsbConfig* config = reinterpret_cast<UsbConfig*>(
+        aligned_alloc(alignment, ROUNDUP(sizeof(UsbConfig) + sizeof(FunctionDescriptor), alignment)));
+    if (!config) {
+        return ZX_ERR_NO_MEMORY;
+    }
+    config->vid = GOOGLE_USB_VID;
+    config->pid = GOOGLE_USB_FUNCTION_TEST_PID;
+    strcpy(config->manufacturer, kManufacturer);
+    strcpy(config->serial, kSerial);
+    strcpy(config->product, kProduct);
+    config->functions[0].interface_class = USB_CLASS_VENDOR;
+    config->functions[0].interface_subclass = 0;
+    config->functions[0].interface_protocol = 0;
+    usb_metadata[0].data_size = sizeof(UsbConfig) + sizeof(FunctionDescriptor);
+    usb_metadata[0].data_buffer = config;
+#else
+    constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
+                                     ? alignof(UsbConfig)
+                                     : __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+    constexpr size_t config_size = sizeof(UsbConfig) + 2 * sizeof(FunctionDescriptor);
+    UsbConfig* config = reinterpret_cast<UsbConfig*>(
+        aligned_alloc(alignment, ROUNDUP(config_size, alignment)));
+    if (!config) {
+        return ZX_ERR_NO_MEMORY;
+    }
+    config->vid = GOOGLE_USB_VID;
+    config->pid = GOOGLE_USB_CDC_AND_FUNCTION_TEST_PID;
+    strcpy(config->manufacturer, kManufacturer);
+    strcpy(config->serial, kSerial);
+    strcpy(config->product, kProduct);
+    config->functions[0].interface_class = USB_CLASS_COMM;
+    config->functions[0].interface_subclass = USB_CDC_SUBCLASS_ETHERNET;
+    config->functions[0].interface_protocol = 0;
+    config->functions[1].interface_class = USB_CLASS_VENDOR;
+    config->functions[1].interface_subclass = 0;
+    config->functions[1].interface_protocol = 0;
+    usb_metadata[0].data_size = config_size;
+    usb_metadata[0].data_buffer = config;
+#endif
+// TODO: delete usb_config later
+//    usb_config_ = config;
 
-    std::optional<ddk::MmioBuffer> usb_phy;
-    // Please do not use get_root_resource() in new code. See ZX-1467.
-    zx::unowned_resource resource(get_root_resource());
-    status = ddk::MmioBuffer::Create(S912_USB_PHY_BASE, S912_USB_PHY_LENGTH, *resource,
-                                     ZX_CACHE_POLICY_UNCACHED_DEVICE,  &usb_phy);
+printf("XXXXXXXXXXXXXX UsbInit add usb phy\n");
+    auto status = pbus_.DeviceAdd(&usb_phy_dev);
     if (status != ZX_OK) {
-        zxlogf(ERROR, "UsbInit io_buffer_init_physical failed %d\n", status);
+        zxlogf(ERROR, "%s: DeviceAdd failed %d\n", __func__, status);
         return status;
     }
 
-    volatile uint8_t* regs = static_cast<uint8_t*>(usb_phy->get());
+    pbus_dev_t dwc2_dev = {};
+    dwc2_dev.name = "dwc2";
+    dwc2_dev.vid = PDEV_VID_GENERIC;
+    dwc2_dev.pid = PDEV_PID_GENERIC;
+    dwc2_dev.did = PDEV_DID_USB_DWC2;
+    dwc2_dev.mmio_list = dwc2_mmios;
+    dwc2_dev.mmio_count = countof(dwc2_mmios);
+    dwc2_dev.irq_list = dwc2_irqs;
+    dwc2_dev.irq_count = countof(dwc2_irqs);
+    dwc2_dev.bti_list = usb_btis;
+    dwc2_dev.bti_count = countof(usb_btis);
+    dwc2_dev.metadata_list = usb_metadata;
+    dwc2_dev.metadata_count = countof(usb_metadata);
 
-    // amlogic_new_usb2_init
-    for (int i = 0; i < 4; i++) {
-        volatile uint8_t* addr = regs + (i * PHY_REGISTER_SIZE) + U2P_R0_OFFSET;
-
-        uint32_t temp = readl(addr);
-        temp |= U2P_R0_POR;
-        temp |= U2P_R0_DMPULLDOWN;
-        temp |= U2P_R0_DPPULLDOWN;
-        if (i == 1) {
-            temp |= U2P_R0_IDPULLUP;
-        }
-        writel(temp, addr);
-        zx_nanosleep(zx_deadline_after(ZX_USEC(500)));
-        temp = readl(addr);
-        temp &= ~U2P_R0_POR;
-        writel(temp, addr);
-    }
-
-    // amlogic_new_usb3_init
-    volatile uint8_t* addr = regs + (4 * PHY_REGISTER_SIZE);
-
-    uint32_t temp = readl(addr + USB_R1_OFFSET);
-    temp = SET_BITS(temp, USB_R1_U3H_FLADJ_30MHZ_REG_START, USB_R1_U3H_FLADJ_30MHZ_REG_BITS, 0x20);
-    writel(temp, addr + USB_R1_OFFSET);
-
-    temp = readl(addr + USB_R5_OFFSET);
-    temp |= USB_R5_IDDIG_EN0;
-    temp |= USB_R5_IDDIG_EN1;
-    temp = SET_BITS(temp, USB_R5_IDDIG_TH_START, USB_R5_IDDIG_TH_BITS, 255);
-    writel(temp, addr + USB_R5_OFFSET);
-
-    if ((status = pbus_.DeviceAdd(&xhci_dev)) != ZX_OK) {
-        zxlogf(ERROR, "UsbInit could not add xhci_dev: %d\n", status);
-        return status;
-    }
-
-    return ZX_OK;
+printf("XXXXXXXXXXXXXX UsbInit add dwc2\n");
+    return pbus_.CompositeDeviceAdd(&dwc2_dev, dwc2_components, countof(dwc2_components), 1);
 }
 } //namespace vim

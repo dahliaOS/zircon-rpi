@@ -81,6 +81,7 @@ __BEGIN_CDECLS
 #define PDEV_PID_VIM2_MACHINA       1002
 
 #define PDEV_DID_VIM_DISPLAY        1
+#define PDEV_DID_VIM_USB_PHY        2
 
 // Amlogic
 #define PDEV_VID_AMLOGIC            5
