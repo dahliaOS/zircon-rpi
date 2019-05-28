@@ -44,7 +44,7 @@
 #define S912_USB0_BASE                  0xc9000000
 #define S912_USB0_LENGTH                0x100000
 #define S912_USB1_BASE                  0xc9100000
-#define S912_USB1_LENGTH                0x100000
+#define S912_USB1_LENGTH                0x40000
 
 #define S912_USB_PHY_BASE               0xd0078000
 #define S912_USB_PHY_LENGTH             0x1000
