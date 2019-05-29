@@ -38,7 +38,7 @@ PairingState::InitiatorAction PairingState::InitiatePairing(
 
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
-    current_pairing_ = Data::MakeInitiator(std::move(status_cb));
+    current_pairing_ = std::make_unique<Data>(std::move(status_cb));
     bt_log(TRACE, "gap-bredr", "Initiating pairing on %#.04x (id %s)", handle(),
            bt_str(peer_id()));
     state_ = State::kInitiatorPairingStarted;
@@ -95,7 +95,7 @@ std::optional<IOCapability> PairingState::OnIoCapabilityRequest() {
 void PairingState::OnIoCapabilityResponse(IOCapability peer_iocap) {
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
-    current_pairing_ = Data::MakeResponder(peer_iocap);
+    current_pairing_ = std::make_unique<Data>(peer_iocap);
 
     // Defer gathering local IO Capability until OnIoCapabilityRequest, where
     // the pairing can be rejected if there's no pairing delegate.
@@ -128,9 +128,59 @@ void PairingState::OnUserConfirmationRequest(uint32_t numeric_value,
   }
   ZX_ASSERT(is_pairing());
 
-  // TODO(xow): Return actual user response.
+  // TODO(BT-374): Reject pairing if pairing delegate went away.
+  ZX_ASSERT(pairing_delegate());
   state_ = State::kWaitPairingComplete;
-  cb(true);
+
+  if (current_pairing_->action == PairingAction::kDisplayPasskey) {
+    auto pairing = current_pairing_->GetWeakPtr();
+    auto confirm_cb = [this, pairing](bool confirm) {
+      if (!pairing) {
+        return;
+      }
+      bt_log(TRACE, "gap-bredr",
+             "%#.04x (id: %s): Already confirmed User Confirmation Request, "
+             "ignoring user %s",
+             handle(), bt_str(peer_id()), confirm ? "confirm" : "cancel");
+    };
+    pairing_delegate()->DisplayPasskey(peer_id(), numeric_value,
+                                       false /* local_consent */,
+                                       std::move(confirm_cb));
+    cb(true);
+  } else if (current_pairing_->action == PairingAction::kComparePasskey) {
+    auto pairing = current_pairing_->GetWeakPtr();
+    auto confirm_cb = [this, cb = std::move(cb),
+                       pairing](bool confirm) mutable {
+      if (!pairing) {
+        return;
+      }
+      bt_log(TRACE, "gap-bredr",
+             "%#.04x (id: %s): %sing User Confirmation Request", handle(),
+             bt_str(peer_id()), confirm ? "Confirm" : "Cancel");
+      cb(confirm);
+    };
+    pairing_delegate()->DisplayPasskey(peer_id(), numeric_value,
+                                       true /* local_consent */,
+                                       std::move(confirm_cb));
+  } else if (current_pairing_->action == PairingAction::kGetConsent) {
+    auto pairing = current_pairing_->GetWeakPtr();
+    auto confirm_cb = [this, cb = std::move(cb),
+                       pairing](bool confirm) mutable {
+      if (!pairing) {
+        return;
+      }
+      bt_log(TRACE, "gap-bredr",
+             "%#.04x (id: %s): %sing User Confirmation Request", handle(),
+             bt_str(peer_id()), confirm ? "Confirm" : "Cancel");
+      cb(confirm);
+    };
+    pairing_delegate()->ConfirmPairing(peer_id(), std::move(confirm_cb));
+  } else {
+    ZX_ASSERT_MSG(current_pairing_->action == PairingAction::kAutomatic,
+                  "%#.04x (id: %s): unexpected action %d", handle(),
+                  bt_str(peer_id()), current_pairing_->action);
+    cb(true);
+  }
 }
 
 void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
@@ -144,9 +194,29 @@ void PairingState::OnUserPasskeyRequest(UserPasskeyCallback cb) {
   }
   ZX_ASSERT(is_pairing());
 
-  // TODO(xow): Return actual user response.
+  // TODO(BT-374): Reject pairing if pairing delegate went away.
+  ZX_ASSERT(pairing_delegate());
   state_ = State::kWaitPairingComplete;
-  cb(0);
+
+  ZX_ASSERT_MSG(current_pairing_->action == PairingAction::kRequestPasskey,
+                "%#.04x (id: %s): unexpected action %d", handle(),
+                bt_str(peer_id()), current_pairing_->action);
+  auto pairing = current_pairing_->GetWeakPtr();
+  auto passkey_cb = [this, cb = std::move(cb),
+                     pairing](int64_t passkey) mutable {
+    if (!pairing) {
+      return;
+    }
+    bt_log(TRACE, "gap-bredr",
+           "%#.04x (id: %s): Replying %" PRIu64 " to User Passkey Request",
+           handle(), bt_str(peer_id()), passkey);
+    if (passkey >= 0) {
+      cb(static_cast<uint32_t>(passkey));
+    } else {
+      cb(std::nullopt);
+    }
+  };
+  pairing_delegate()->RequestPasskey(peer_id(), std::move(passkey_cb));
 }
 
 void PairingState::OnUserPasskeyNotification(uint32_t numeric_value) {
@@ -158,8 +228,20 @@ void PairingState::OnUserPasskeyNotification(uint32_t numeric_value) {
     return;
   }
   ZX_ASSERT(is_pairing());
+  ZX_ASSERT(pairing_delegate());
 
-  // TODO(xow): Display passkey to user.
+  auto pairing = current_pairing_->GetWeakPtr();
+  auto confirm_cb = [this, pairing](bool confirm) {
+    if (!pairing) {
+      return;
+    }
+    bt_log(TRACE, "gap-bredr",
+           "%#.04x (id: %s): Can't %s pairing from Passkey Notification side",
+           handle(), bt_str(peer_id()), confirm ? "confirm" : "cancel");
+  };
+  pairing_delegate()->DisplayPasskey(peer_id(), numeric_value,
+                                     false /* local_consent */,
+                                     std::move(confirm_cb));
   state_ = State::kWaitPairingComplete;
 }
 
@@ -172,13 +254,18 @@ void PairingState::OnSimplePairingComplete(hci::StatusCode status_code) {
     return;
   }
   ZX_ASSERT(is_pairing());
+  ZX_ASSERT(pairing_delegate());
 
   if (const hci::Status status(status_code); bt_is_error(
           status, INFO, "gap-bredr", "Pairing failed on link %#.04x (id: %s)",
           handle(), bt_str(peer_id()))) {
+    pairing_delegate()->CompletePairing(peer_id(),
+                                        sm::Status(HostError::kFailed));
     SignalStatus(status);
     state_ = State::kFailed;
     return;
+  } else {
+    pairing_delegate()->CompletePairing(peer_id(), sm::Status());
   }
 
   state_ = State::kWaitLinkKey;
@@ -291,21 +378,13 @@ void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
   }
 }
 
-PairingState::Data PairingState::Data::MakeInitiator(
-    StatusCallback status_callback) {
-  Data data;
-  data.initiator = true;
-  data.initiator_callbacks.push_back(std::move(status_callback));
-  return data;
+PairingState::Data::Data(StatusCallback status_callback)
+    : initiator(true), weak_ptr_factory_(this) {
+  initiator_callbacks.push_back(std::move(status_callback));
 }
 
-PairingState::Data PairingState::Data::MakeResponder(
-    hci::IOCapability peer_iocap) {
-  Data data;
-  data.initiator = false;
-  data.peer_iocap = peer_iocap;
-  return data;
-}
+PairingState::Data::Data(hci::IOCapability peer_iocap)
+    : initiator(false), peer_iocap(peer_iocap), weak_ptr_factory_(this) {}
 
 const char* PairingState::ToString(PairingState::State state) {
   switch (state) {
@@ -376,23 +455,37 @@ void PairingState::EnableEncryption() {
 
 void PairingState::FailWithUnexpectedEvent() {
   SignalStatus(hci::Status(HostError::kNotSupported));
-  current_pairing_ = std::nullopt;
+  current_pairing_ = nullptr;
   state_ = State::kFailed;
 }
 
 void PairingState::Reset() {
   state_ = State::kIdle;
-  current_pairing_ = std::nullopt;
+  current_pairing_ = nullptr;
 }
 
 void PairingState::WritePairingData() {
   ZX_ASSERT(is_pairing());
+  if (initiator()) {
+    current_pairing_->action = GetInitiatorPairingAction(
+        current_pairing_->local_iocap, current_pairing_->peer_iocap);
+  } else {
+    current_pairing_->action = GetResponderPairingAction(
+        current_pairing_->peer_iocap, current_pairing_->local_iocap);
+  }
   current_pairing_->expected_event = GetExpectedEvent(
       current_pairing_->local_iocap, current_pairing_->peer_iocap);
   ZX_DEBUG_ASSERT(GetStateForPairingEvent(current_pairing_->expected_event) !=
                   State::kFailed);
   current_pairing_->authenticated = IsPairingAuthenticated(
       current_pairing_->local_iocap, current_pairing_->peer_iocap);
+  bt_log(TRACE, "gap-bredr",
+         "As %s with local %hhu/peer %hhu capabilities, expecting an "
+         "%sauthenticated %u pairing using %#x",
+         current_pairing_->initiator ? "initiator" : "responder",
+         current_pairing_->local_iocap, current_pairing_->peer_iocap,
+         current_pairing_->authenticated ? "" : "un", current_pairing_->action,
+         current_pairing_->expected_event);
 }
 
 PairingAction GetInitiatorPairingAction(IOCapability initiator_cap,

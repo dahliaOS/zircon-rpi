@@ -187,8 +187,8 @@ class PairingState final {
   // Extra information for pairing constructed when pairing begins and destroyed
   // when pairing is reset or errors out.
   struct Data final {
-    static Data MakeInitiator(StatusCallback status_callback);
-    static Data MakeResponder(hci::IOCapability peer_iocap);
+    explicit Data(StatusCallback status_callback);
+    explicit Data(hci::IOCapability peer_iocap);
 
     // True if the local device initiated pairing.
     bool initiator;
@@ -202,6 +202,9 @@ class PairingState final {
     // IO Capability from peer through IO Capability Response.
     hci::IOCapability peer_iocap;
 
+    // User interaction to perform after receiving HCI user event.
+    PairingAction action;
+
     // HCI event to respond to in order to complete or reject pairing.
     hci::EventCode expected_event;
 
@@ -210,6 +213,11 @@ class PairingState final {
 
     // Security properties of the link key received from the controller.
     std::optional<sm::SecurityProperties> security_properties;
+
+    fxl::WeakPtr<Data> GetWeakPtr() { return weak_ptr_factory_.GetWeakPtr(); }
+
+   private:
+    fxl::WeakPtrFactory<Data> weak_ptr_factory_;
   };
 
   static const char* ToString(State state);
@@ -219,7 +227,7 @@ class PairingState final {
 
   State state() const { return state_; }
 
-  bool is_pairing() const { return current_pairing_.has_value(); }
+  bool is_pairing() const { return current_pairing_ != nullptr; }
 
   hci::ConnectionHandle handle() const { return link_->handle(); }
 
@@ -258,7 +266,7 @@ class PairingState final {
   State state_;
 
   // Represents an ongoing pairing procedure.
-  std::optional<Data> current_pairing_;
+  std::unique_ptr<Data> current_pairing_;
 
   // Holds the callback that this object was constructed with.
   StatusCallback status_callback_;
