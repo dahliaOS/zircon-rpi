@@ -12,6 +12,7 @@
 #include <arch/x86/interrupts.h>
 #include <dev/interrupt.h>
 #include <err.h>
+#include <fbl/auto_call.h>
 #include <lib/pow2_range_allocator.h>
 #include <kernel/lockdep.h>
 #include <kernel/spinlock.h>
@@ -107,59 +108,68 @@ public:
             return ZX_ERR_INVALID_ARGS;
         }
 
-        Guard<SpinLock, IrqSave> guard{&lock_};
-        zx_status_t result = ZX_OK;
-
-        /* Fetch the x86 vector currently configured for this global irq.  Force
-         * its value to zero if it is currently invalid */
-        uint8_t x86_vector = IoApic::FetchIrqVector(vector);
-        if (x86_vector < X86_INT_PLATFORM_BASE || x86_vector > X86_INT_PLATFORM_MAX) {
-            x86_vector = 0;
+        // Pre-emptively allocate an IRQ vector if we think we need it.
+        uint range_start = UINT_MAX;
+        if (handler) {
+            zx_status_t status = p2ra_allocate_range(&x86_irq_vector_allocator_, 1, &range_start);
+            if (status != ZX_OK) {
+                range_start = UINT_MAX;
+            }
         }
+        auto release_allocated_vector = fbl::MakeAutoCall([this, range_start]() {
+            if (range_start != UINT_MAX) {
+                p2ra_free_range(&x86_irq_vector_allocator_, range_start, 1);
+            }
+        });
 
-        if (x86_vector == 0 && handler == nullptr) {
-            return ZX_OK;
+        uint8_t x86_vector;
+        {
+            Guard<SpinLock, IrqSave> guard{&lock_};
+
+            /* Fetch the x86 vector currently configured for this global irq.  Force
+             * it's value to zero if it is currently invalid */
+            x86_vector = IoApic::FetchIrqVector(vector);
+            if (x86_vector < X86_INT_PLATFORM_BASE || x86_vector > X86_INT_PLATFORM_MAX) {
+                x86_vector = 0;
+            }
+
+            if (x86_vector == 0 && handler == nullptr) {
+                return ZX_OK;
+            }
+
+            if (!x86_vector && handler) {
+                if (range_start == UINT_MAX) {
+                    TRACEF("Failed to allocate x86 IRQ vector for global IRQ (%u) when "
+                           "registering new handler (%p, %p)\n",
+                           vector, handler, arg);
+                    return ZX_ERR_NO_RESOURCES;
+                }
+
+                DEBUG_ASSERT((range_start >= X86_INT_PLATFORM_BASE) &&
+                             (range_start <= X86_INT_PLATFORM_MAX));
+                x86_vector = (uint8_t)range_start;
+                release_allocated_vector.cancel();
+            }
+
+            DEBUG_ASSERT(x86_vector != 0);
+
+            // Update the handler table and register the x86 vector with the io_apic.
+            bool set = handler_table_[x86_vector].SetHandler(handler, arg);
+            if (!set) {
+                // If we're here, then RegisterInterruptHandler() was called on the
+                // same vector twice to set the handler without clearing the handler
+                // in-between.
+                return ZX_ERR_ALREADY_BOUND;
+            }
+
+            IoApic::ConfigureIrqVector(vector, handler != nullptr ? x86_vector : 0);
         }
 
         if (x86_vector && !handler) {
-            /* If the x86 vector is valid, and we are unregistering the handler,
-             * return the x86 vector to the pool. */
+            // If the x86 vector is valid, and we are unregistering the handler,
+            // return the x86 vector to the pool. */
             p2ra_free_range(&x86_irq_vector_allocator_, x86_vector, 1);
-        } else if (!x86_vector && handler) {
-            /* If the x86 vector is invalid, and we are registering a handler,
-             * attempt to get a new x86 vector from the pool. */
-            uint range_start;
-
-            /* Right now, there is not much we can do if the allocation fails.  In
-             * debug builds, we ASSERT that everything went well.  In release
-             * builds, we log a message and then silently ignore the request to
-             * register a new handler. */
-            result = p2ra_allocate_range(&x86_irq_vector_allocator_, 1, &range_start);
-
-            if (result != ZX_OK) {
-                TRACEF("Failed to allocate x86 IRQ vector for global IRQ (%u) when "
-                       "registering new handler (%p, %p)\n",
-                       vector, handler, arg);
-                return result;
-            }
-
-            DEBUG_ASSERT((range_start >= X86_INT_PLATFORM_BASE) &&
-                         (range_start <= X86_INT_PLATFORM_MAX));
-            x86_vector = (uint8_t)range_start;
         }
-
-        DEBUG_ASSERT(x86_vector != 0);
-
-        // Update the handler table and register the x86 vector with the io_apic.
-        bool set = handler_table_[x86_vector].SetHandler(handler, arg);
-        if (!set) {
-            // If we're here, then RegisterInterruptHandler() was called on the
-            // same vector twice to set the handler without clearing the handler
-            // in-between.
-            return ZX_ERR_ALREADY_BOUND;
-        }
-
-        IoApic::ConfigureIrqVector(vector, handler != nullptr ? x86_vector : 0);
 
         return ZX_OK;
     }
