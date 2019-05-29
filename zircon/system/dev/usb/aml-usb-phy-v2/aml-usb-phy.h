@@ -7,11 +7,16 @@
 #include <ddktl/pdev.h>
 #include <ddktl/device.h>
 #include <lib/mmio/mmio.h>
+#include <lib/zx/interrupt.h>
+
+#include <threads.h>
+
+#include "child-device.h"
 
 namespace aml_usb_phy {
 
 class AmlUsbPhy;
-using AmlUsbPhyType = ddk::Device<AmlUsbPhy>;
+using AmlUsbPhyType = ddk::Device<AmlUsbPhy, ddk::Unbindable>;
 
 // This is the main class for the platform bus driver.
 class AmlUsbPhy : public AmlUsbPhyType {
@@ -22,14 +27,30 @@ public:
     static zx_status_t Create(void* ctx, zx_device_t* parent);
 
     // Device protocol implementation.
+    void DdkUnbind();
     void DdkRelease();
 
 private:
+    enum class UsbMode {
+        UNKNOWN,
+        HOST,
+        PERIPHERAL,
+    };
+
     DISALLOW_COPY_ASSIGN_AND_MOVE(AmlUsbPhy);
 
     void SetupPLL(ddk::MmioBuffer* mmio);
     zx_status_t InitPhy();
+    zx_status_t InitOtg();
+    void SetMode(UsbMode mode);
+
+    zx_status_t AddXhciDevice();
+    zx_status_t RemoveXhciDevice();
+    zx_status_t AddDwc2Device();
+    zx_status_t RemoveDwc2Device();
+
     zx_status_t Init();
+    int IrqThread();
 
     ddk::PDev pdev_;
     std::optional<ddk::MmioBuffer> reset_mmio_;
@@ -37,8 +58,17 @@ private:
     std::optional<ddk::MmioBuffer> usbphy20_mmio_;
     std::optional<ddk::MmioBuffer> usbphy30_mmio_;
 
+    zx::interrupt irq_;
+    thrd_t irq_thread_;
+
     // Magic numbers for PLL from metadata
     uint32_t pll_settings_[8];
+
+    // Device node for binding XHCI driver.
+    std::unique_ptr<ChildDevice> xhci_device_;
+    std::unique_ptr<ChildDevice> dwc2_device_;
+
+    UsbMode mode_ = UsbMode::UNKNOWN;
 };
 
 } // namespace aml_usb_phy
