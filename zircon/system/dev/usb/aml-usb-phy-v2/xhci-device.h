@@ -8,15 +8,14 @@
 
 namespace aml_usb_phy {
 
-// Stub device for binding USB controller drivers.
-class ChildDevice;
-using ChildDeviceType = ddk::Device<ChildDevice>;
+class XhciDevice;
+using XhciDeviceType = ddk::Device<XhciDevice>;
 
-// This is the main class for the platform bus driver.
-class ChildDevice : public ChildDeviceType {
+// Device for binding the XHCI driver.
+class XhciDevice : public XhciDeviceType {
 public:
-    explicit ChildDevice(zx_device_t* parent)
-        : ChildDeviceType(parent) {}
+    explicit XhciDevice(zx_device_t* parent)
+        : XhciDeviceType(parent) {}
 
     // Device protocol implementation.
     void DdkRelease() {
@@ -24,7 +23,7 @@ public:
     }
 
 private:
-    DISALLOW_COPY_ASSIGN_AND_MOVE(ChildDevice);
+    DISALLOW_COPY_ASSIGN_AND_MOVE(XhciDevice);
 };
 
 } // namespace aml_usb_phy

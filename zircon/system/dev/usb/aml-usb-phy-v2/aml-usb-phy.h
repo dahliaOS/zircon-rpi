@@ -6,12 +6,14 @@
 
 #include <ddktl/pdev.h>
 #include <ddktl/device.h>
+#include <ddktl/protocol/usb/phy.h>
 #include <lib/mmio/mmio.h>
 #include <lib/zx/interrupt.h>
 
 #include <threads.h>
 
-#include "child-device.h"
+#include "dwc2-device.h"
+#include "xhci-device.h"
 
 namespace aml_usb_phy {
 
@@ -19,13 +21,16 @@ class AmlUsbPhy;
 using AmlUsbPhyType = ddk::Device<AmlUsbPhy, ddk::Unbindable>;
 
 // This is the main class for the platform bus driver.
-class AmlUsbPhy : public AmlUsbPhyType {
+class AmlUsbPhy : public AmlUsbPhyType, public ddk::UsbPhyProtocol<AmlUsbPhy, ddk::base_protocol> {
 public:
     explicit AmlUsbPhy(zx_device_t* parent)
         : AmlUsbPhyType(parent), pdev_(parent) {}
 
     static zx_status_t Create(void* ctx, zx_device_t* parent);
 
+    // USB PHY protocol implementation.
+     void UsbPhyConnectStatusChanged(bool connected);
+    
     // Device protocol implementation.
     void DdkUnbind();
     void DdkRelease();
@@ -65,8 +70,8 @@ private:
     uint32_t pll_settings_[8];
 
     // Device node for binding XHCI driver.
-    std::unique_ptr<ChildDevice> xhci_device_;
-    std::unique_ptr<ChildDevice> dwc2_device_;
+    std::unique_ptr<XhciDevice> xhci_device_;
+    std::unique_ptr<Dwc2Device> dwc2_device_;
 
     UsbMode mode_ = UsbMode::UNKNOWN;
 };

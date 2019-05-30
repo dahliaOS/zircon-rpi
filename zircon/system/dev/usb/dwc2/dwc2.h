@@ -19,8 +19,9 @@
 #include <ddktl/pdev.h>
 #include <ddktl/device.h>
 #include <ddktl/protocol/platform/device.h>
-#include <ddktl/protocol/usb/dci.h>
 #include <ddktl/protocol/usb.h>
+#include <ddktl/protocol/usb/dci.h>
+#include <ddktl/protocol/usb/phy.h>
 #include <fbl/mutex.h>
 #include <lib/mmio/mmio.h>
 #include <usb/request-cpp.h>
@@ -36,8 +37,8 @@ using Dwc2Type = ddk::Device<Dwc2, ddk::Unbindable>;
 
 class Dwc2 : public Dwc2Type, public ddk::UsbDciProtocol<Dwc2, ddk::base_protocol> {
 public:
-    explicit Dwc2(zx_device_t* parent, ddk::PDev&& pdev)
-        : Dwc2Type(parent), pdev_(pdev) {}
+    explicit Dwc2(zx_device_t* parent)
+        : Dwc2Type(parent) {}
 
     static zx_status_t Create(void* ctx, zx_device_t* parent);
     zx_status_t Init();
@@ -150,6 +151,7 @@ private:
 
     ddk::PDev pdev_;
     std::optional<ddk::UsbDciInterfaceProtocolClient> dci_intf_;
+    std::optional<ddk::UsbPhyProtocolClient> usb_phy_;
 
     std::optional<ddk::MmioBuffer> mmio_;
 

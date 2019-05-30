@@ -17,8 +17,6 @@
 #include <ddk/driver.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
-#include <ddk/protocol/gpio.h>
-#include <ddk/protocol/platform/device.h>
 #include <fbl/algorithm.h>
 #include <fbl/unique_ptr.h>
 #include <hw/reg.h>
@@ -297,7 +295,7 @@ printf("XXXX %s\n", __func__);
     }
 
     fbl::AllocChecker ac;
-    xhci_device_ = fbl::make_unique_checked<ChildDevice>(&ac, zxdev());
+    xhci_device_ = fbl::make_unique_checked<XhciDevice>(&ac, zxdev());
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
@@ -333,7 +331,7 @@ printf("XXXX %s\n", __func__);
     }
 
     fbl::AllocChecker ac;
-    dwc2_device_ = fbl::make_unique_checked<ChildDevice>(&ac, zxdev());
+    dwc2_device_ = fbl::make_unique_checked<Dwc2Device>(&ac, zxdev());
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
@@ -422,6 +420,10 @@ zx_status_t AmlUsbPhy::Init() {
     }
 
     return ZX_OK;
+}
+
+void AmlUsbPhy::UsbPhyConnectStatusChanged(bool connected) {
+printf("AmlUsbPhy::UsbPhyConnectStatusChanged %d\n", connected);
 }
 
 void AmlUsbPhy::DdkUnbind() {

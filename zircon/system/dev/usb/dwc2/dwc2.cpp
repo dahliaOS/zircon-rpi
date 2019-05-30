@@ -77,6 +77,13 @@ void Dwc2::HandleReset() {
 
 void Dwc2::HandleSuspend() {
     zxlogf(INFO, "Dwc2::HandleSuspend\n");
+
+    if (dci_intf_.has_value()) {
+        dci_intf_->SetConnected(false);
+    }
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(false);
+    }
 }
 
 void Dwc2::HandleEnumDone() {
@@ -84,11 +91,6 @@ void Dwc2::HandleEnumDone() {
 
     zxlogf(INFO, "HandleEnumDone\n");
 
-/*
-    if (dwc->astro_usb.ops) {
-        astro_usb_do_usb_tuning(&dwc->astro_usb, false, false);
-    }
-*/
     
     // ???
     ep0_state_ = Ep0State::IDLE;
@@ -105,6 +107,9 @@ void Dwc2::HandleEnumDone() {
 
     GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(metadata_.usb_turnaround_time).WriteTo(mmio);
 
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(true);
+    }
     if (dci_intf_.has_value()) {
         dci_intf_->SetSpeed(USB_SPEED_HIGH);
     }
@@ -802,29 +807,8 @@ gintmsk.set_otgintr(1);
 }
 
 zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
-    ddk::CompositeProtocolClient composite(parent);
-    if (!composite.is_valid()) {
-        zxlogf(ERROR, "Dwc2::Create could not get composite protocol\n");
-        return ZX_ERR_NOT_SUPPORTED;
-    }
-
-    zx_device_t* pdev_device;
-    size_t actual;
-
-    // Retrieve platform device protocol from our first component.
-    composite.GetComponents(&pdev_device, 1, &actual);
-    if (actual != 1) {
-        return ZX_ERR_NOT_SUPPORTED;
-    }
-
-    ddk::PDev pdev(pdev_device);
-    if (!pdev.is_valid()) {
-        zxlogf(ERROR, "Dwc2::Create: could not get platform device protocol\n");
-        return ZX_ERR_NOT_SUPPORTED;
-    }
-
     fbl::AllocChecker ac;
-    auto dev = fbl::make_unique_checked<Dwc2>(&ac, parent, std::move(pdev));
+    auto dev = fbl::make_unique_checked<Dwc2>(&ac, parent);
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
@@ -840,12 +824,37 @@ zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
 }
 
 zx_status_t Dwc2::Init() {
+    ddk::CompositeProtocolClient composite(parent());
+    if (!composite.is_valid()) {
+        zxlogf(ERROR, "Dwc2::Create could not get composite protocol\n");
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    zx_device_t* components[2];
+    size_t actual;
+
+    // Retrieve platform device protocol from our first component.
+    composite.GetComponents(components, fbl::count_of(components), &actual);
+    if (actual < 1) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    pdev_ = components[0];
+    if (!pdev_.is_valid()) {
+        zxlogf(ERROR, "Dwc2::Create: could not get platform device protocol\n");
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    // USB PHY protocol is optional.
+    if (actual > 1) {
+        usb_phy_ = components[1];
+    }
+
     for (uint8_t i = 0; i < fbl::count_of(endpoints_); i++) {
         auto* ep = &endpoints_[i];
         ep->ep_num = i;
     }
 
-    size_t actual;
     auto status = DdkGetMetadata(DEVICE_METADATA_PRIVATE, &metadata_, sizeof(metadata_), &actual);
     if (status != ZX_OK || actual != sizeof(metadata_)) {
         zxlogf(ERROR, "Dwc2::Init can't get driver metadata\n");
