@@ -28,7 +28,6 @@ namespace aml_usb_phy {
 
 // Based on set_usb_pll() in phy-aml-new-usb2-v2.c
 void AmlUsbPhy::SetupPLL(ddk::MmioBuffer* mmio) {
-printf("SetupPLL 1\n");
     PLL_REGISTER::Get(0x40)
         .FromValue(0x30000000 | pll_settings_[0])
         .WriteTo(mmio);
@@ -43,7 +42,6 @@ printf("SetupPLL 1\n");
 
     usleep(100);
 
-printf("SetupPLL 2\n");
     PLL_REGISTER::Get(0x40)
         .FromValue(0x10000000 | pll_settings_[0])
         .WriteTo(mmio);
@@ -52,7 +50,6 @@ printf("SetupPLL 2\n");
 
     usleep(100);
 
-printf("SetupPLL 3\n");
     PLL_REGISTER::Get(0x50)
         .FromValue(pll_settings_[3])
         .WriteTo(mmio);
@@ -79,8 +76,6 @@ printf("SetupPLL 3\n");
 
     usleep(100);
 
-printf("SetupPLL 4\n");
-
     PLL_REGISTER::Get(0x38)
 //        .FromValue(pll_settings_[host_mode_ ? 6 : 7])
         .FromValue(pll_settings_[6])
@@ -90,7 +85,6 @@ printf("SetupPLL 4\n");
         .FromValue(pll_settings_[5])
         .WriteTo(mmio);
 
-printf("SetupPLL 5\n");
     usleep(100);
 }
 
@@ -146,10 +140,6 @@ zx_status_t AmlUsbPhy::InitPhy() {
             usleep(5);
         }
     }
-
-    // set up PLLs
-    SetupPLL(&*usbphy20_mmio_);
-    SetupPLL(&*usbphy30_mmio_);
 
     return ZX_OK;
 }
@@ -227,7 +217,14 @@ void AmlUsbPhy::SetMode(UsbMode mode) {
     }
 */
 
+    auto old_mode = mode_;
     mode_ = mode;
+
+    if (old_mode == UsbMode::UNKNOWN) {
+        // One time PLL initialization
+        SetupPLL(&*usbphy20_mmio_);
+        SetupPLL(&*usbphy30_mmio_);
+    }
 
     if (mode == UsbMode::HOST) {
         AddXhciDevice();
