@@ -239,7 +239,21 @@ void AmlUsbPhy::SetMode(UsbMode mode) {
 int AmlUsbPhy::IrqThread() {
     auto* mmio = &*usbctrl_mmio_;
 
+    // Wait for PHY to stabilize before reading initial mode.
+    sleep(1);
+
     while (true) {
+        auto r5 = USB_R5_V2::Get().ReadFrom(mmio);
+
+        // Read current host/device role.
+        if (r5.iddig_curr() == 0) {
+printf("XXXXXXXXXXX AmlUsbPhy::IrqThread HOST!\n");
+            SetMode(UsbMode::HOST);
+        } else {
+printf("XXXXXXXXXXX AmlUsbPhy::IrqThread PERIPHERAL!\n");
+            SetMode(UsbMode::PERIPHERAL);
+        }
+
         auto status = irq_.wait(nullptr);
         if (status == ZX_ERR_CANCELED) {
             return 0;
@@ -249,20 +263,7 @@ int AmlUsbPhy::IrqThread() {
         }
 
         // Acknowledge interrupt
-        auto r5 = USB_R5_V2::Get()
-            .ReadFrom(mmio)
-            .set_usb_iddig_irq(0)
-            .WriteTo(mmio);
-
-        // Read current host/device role.
-
-        if (r5.iddig_curr() == 0) {
-printf("XXXXXXXXXXX AmlUsbPhy::IrqThread HOST!\n");
-            SetMode(UsbMode::HOST);
-        } else {
-printf("XXXXXXXXXXX AmlUsbPhy::IrqThread PERIPHERAL!\n");
-            SetMode(UsbMode::PERIPHERAL);
-        }
+        r5.ReadFrom(mmio).set_usb_iddig_irq(0).WriteTo(mmio);
     }
     return 0;
 }
