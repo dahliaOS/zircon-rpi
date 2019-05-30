@@ -251,7 +251,9 @@ RUN_TEST(control_interrupt_test_8);
 RUN_TEST(control_interrupt_test_64);
 RUN_TEST(control_interrupt_test_100);
 RUN_TEST(control_interrupt_test_256);
-RUN_TEST(control_interrupt_test_1000);
+// Disabled because this exceeds the hardware FIFO size for some Amlogic platforms.
+// TODO(voydanoff) investigate if it is possible to get this working.
+// RUN_TEST(control_interrupt_test_1000);
 RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 
