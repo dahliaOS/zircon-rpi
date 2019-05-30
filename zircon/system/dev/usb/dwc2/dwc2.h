@@ -36,7 +36,7 @@ using Dwc2Type = ddk::Device<Dwc2, ddk::Unbindable>;
 
 class Dwc2 : public Dwc2Type, public ddk::UsbDciProtocol<Dwc2, ddk::base_protocol> {
 public:
-    explicit Dwc2(zx_device_t* parent, pdev_protocol_t* pdev)
+    explicit Dwc2(zx_device_t* parent, ddk::PDev&& pdev)
         : Dwc2Type(parent), pdev_(pdev) {}
 
     static zx_status_t Create(void* ctx, zx_device_t* parent);

@@ -9,6 +9,7 @@
 #include <ddk/platform-defs.h>
 #include <ddk/protocol/platform-device-lib.h>
 #include <ddktl/pdev.h>
+#include <ddktl/protocol/composite.h>
 #include <ddktl/protocol/platform/device.h>
 #include <fbl/algorithm.h>
 #include <usb/usb-request.h>
@@ -801,21 +802,34 @@ gintmsk.set_otgintr(1);
 }
 
 zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
-    pdev_protocol_t pdev;
+    ddk::CompositeProtocolClient composite(parent);
+    if (!composite.is_valid()) {
+        zxlogf(ERROR, "Dwc2::Create could not get composite protocol\n");
+        return ZX_ERR_NOT_SUPPORTED;
+    }
 
-    auto status = device_get_protocol(parent, ZX_PROTOCOL_PDEV, &pdev);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "Dwc2::Create could not get ZX_PROTOCOL_PDEV\n");
-        return status;
+    zx_device_t* pdev_device;
+    size_t actual;
+
+    // Retrieve platform device protocol from our first component.
+    composite.GetComponents(&pdev_device, 1, &actual);
+    if (actual != 1) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    ddk::PDev pdev(pdev_device);
+    if (!pdev.is_valid()) {
+        zxlogf(ERROR, "Dwc2::Create: could not get platform device protocol\n");
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     fbl::AllocChecker ac;
-    auto dev = fbl::make_unique_checked<Dwc2>(&ac, parent, &pdev);
+    auto dev = fbl::make_unique_checked<Dwc2>(&ac, parent, std::move(pdev));
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    status = dev->Init();
+    auto status = dev->Init();
     if (status != ZX_OK) {
         return status;
     }
@@ -1130,7 +1144,8 @@ static zx_driver_ops_t driver_ops = [](){
 
 // The formatter does not play nice with these macros.
 // clang-format off
-ZIRCON_DRIVER_BEGIN(dwc2, dwc2::driver_ops, "zircon", "0.1", 3)
+ZIRCON_DRIVER_BEGIN(dwc2, dwc2::driver_ops, "zircon", "0.1", 4)
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_COMPOSITE),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_USB_DWC2),
