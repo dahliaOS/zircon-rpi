@@ -44,7 +44,7 @@ private:
 
     DISALLOW_COPY_ASSIGN_AND_MOVE(AmlUsbPhy);
 
-    void SetupPLL(ddk::MmioBuffer* mmio);
+    void InitPll(ddk::MmioBuffer* mmio);
     zx_status_t InitPhy();
     zx_status_t InitOtg();
     void SetMode(UsbMode mode);
@@ -61,7 +61,7 @@ private:
     std::optional<ddk::MmioBuffer> reset_mmio_;
     std::optional<ddk::MmioBuffer> usbctrl_mmio_;
     std::optional<ddk::MmioBuffer> usbphy20_mmio_;
-    std::optional<ddk::MmioBuffer> usbphy30_mmio_;
+    std::optional<ddk::MmioBuffer> usbphy21_mmio_;
 
     zx::interrupt irq_;
     thrd_t irq_thread_;
@@ -74,6 +74,7 @@ private:
     std::unique_ptr<Dwc2Device> dwc2_device_;
 
     UsbMode mode_ = UsbMode::UNKNOWN;
+    bool dwc2_connected_ = false;
 };
 
 } // namespace aml_usb_phy

@@ -27,7 +27,7 @@
 namespace aml_usb_phy {
 
 // Based on set_usb_pll() in phy-aml-new-usb2-v2.c
-void AmlUsbPhy::SetupPLL(ddk::MmioBuffer* mmio) {
+void AmlUsbPhy::InitPll(ddk::MmioBuffer* mmio) {
     PLL_REGISTER::Get(0x40)
         .FromValue(0x30000000 | pll_settings_[0])
         .WriteTo(mmio);
@@ -77,7 +77,7 @@ void AmlUsbPhy::SetupPLL(ddk::MmioBuffer* mmio) {
     usleep(100);
 
     PLL_REGISTER::Get(0x38)
-//        .FromValue(pll_settings_[host_mode_ ? 6 : 7])
+//        .FromValue(mode_ == UsbMode::HOST ? pll_settings_[6] : 0)
         .FromValue(pll_settings_[6])
         .WriteTo(mmio);
 
@@ -169,7 +169,6 @@ void AmlUsbPhy::SetMode(UsbMode mode) {
     if (mode == mode_) return;
 
     auto* usbctrl_mmio = &*usbctrl_mmio_;
-//    auto* phy_mmio = &*usbphy30_mmio_;
 
     auto r0 = USB_R0_V2::Get().ReadFrom(usbctrl_mmio);
     if (mode == UsbMode::HOST) {
@@ -193,37 +192,22 @@ void AmlUsbPhy::SetMode(UsbMode mode) {
 
 	usleep(500);
 
-/*
-// Why does this hang?
-    const int default_val = 0;
-
-    if (default_val) {
-         PLL_REGISTER::Get(0x38)
-            .FromValue(0)
-            .WriteTo(phy_mmio);
-         PLL_REGISTER::Get(0x34)
-            .FromValue(pll_settings_[5])
-            .WriteTo(phy_mmio);
-    } else {
-         PLL_REGISTER::Get(0x50)
-            .FromValue(pll_settings_[3])
-            .WriteTo(phy_mmio);
-         PLL_REGISTER::Get(0x10)
-            .FromValue(pll_settings_[4])
-            .WriteTo(phy_mmio);
-         PLL_REGISTER::Get(0x38)
-            .FromValue(pll_settings_[host ? 6 : 7])
-            .WriteTo(phy_mmio);
-    }
-*/
-
     auto old_mode = mode_;
     mode_ = mode;
 
     if (old_mode == UsbMode::UNKNOWN) {
         // One time PLL initialization
-        SetupPLL(&*usbphy20_mmio_);
-        SetupPLL(&*usbphy30_mmio_);
+        InitPll(&*usbphy20_mmio_);
+        InitPll(&*usbphy21_mmio_);
+    } else {
+         auto* phy_mmio = &*usbphy21_mmio_;
+
+         PLL_REGISTER::Get(0x38)
+            .FromValue(mode == UsbMode::HOST ? pll_settings_[6] : 0) // ???
+            .WriteTo(phy_mmio);
+         PLL_REGISTER::Get(0x34)
+            .FromValue(pll_settings_[5])
+            .WriteTo(phy_mmio);
     }
 
     if (mode == UsbMode::HOST) {
@@ -383,7 +367,7 @@ zx_status_t AmlUsbPhy::Init() {
     if (status != ZX_OK) {
         return status;
     }
-    status = pdev_.MapMmio(3, &usbphy30_mmio_);
+    status = pdev_.MapMmio(3, &usbphy21_mmio_);
     if (status != ZX_OK) {
         return status;
     }
@@ -422,6 +406,19 @@ zx_status_t AmlUsbPhy::Init() {
 
 void AmlUsbPhy::UsbPhyConnectStatusChanged(bool connected) {
 printf("AmlUsbPhy::UsbPhyConnectStatusChanged %d\n", connected);
+
+    if (dwc2_connected_ == connected) return;
+
+    auto* mmio = &*usbphy21_mmio_;
+
+     PLL_REGISTER::Get(0x38)
+        .FromValue(connected ? pll_settings_[7] : 0)
+        .WriteTo(mmio);
+     PLL_REGISTER::Get(0x34)
+        .FromValue(pll_settings_[5])
+        .WriteTo(mmio);
+
+    dwc2_connected_ = connected;
 }
 
 void AmlUsbPhy::DdkUnbind() {
