@@ -70,20 +70,22 @@ static pbus_metadata_t usb_metadata[] = {
     },
 };
 
-constexpr pbus_dev_t dwc2_dev = {
-    .name = "dwc2",
-    .vid = PDEV_VID_GENERIC,
-    .pid = PDEV_PID_GENERIC,
-    .did = PDEV_DID_USB_DWC2,
-    .mmio_list = dwc2_mmios,
-    .mmio_count = countof(dwc2_mmios),
-    .irq_list = dwc2_irqs,
-    .irq_count = countof(dwc2_irqs),
-    .bti_list = dwc2_btis,
-    .bti_count = countof(dwc2_btis),
-    .metadata_list = usb_metadata,
-    .metadata_count = countof(usb_metadata),
-};
+constexpr pbus_dev_t dwc2_dev = [](){
+    pbus_dev_t dev = {};
+    dev.name = "dwc2";
+    dev.vid = PDEV_VID_GENERIC;
+    dev.pid = PDEV_PID_GENERIC;
+    dev.did = PDEV_DID_USB_DWC2;
+    dev.mmio_list = dwc2_mmios;
+    dev.mmio_count = countof(dwc2_mmios);
+    dev.irq_list = dwc2_irqs;
+    dev.irq_count = countof(dwc2_irqs);
+    dev.bti_list = dwc2_btis;
+    dev.bti_count = countof(dwc2_btis);
+    dev.metadata_list = usb_metadata;
+    dev.metadata_count = countof(usb_metadata);
+    return dev;
+}();
 
 constexpr pbus_mmio_t xhci_mmios[] = {
     {
@@ -132,8 +134,8 @@ constexpr pbus_bti_t usb_btis[] = {
     },
 };
 
-static pbus_dev_t xhci_dev = [](){
-    pbus_dev_t dev;
+constexpr pbus_dev_t xhci_dev = [](){
+    pbus_dev_t dev = {};
     dev.name = "xhci";
     dev.vid = PDEV_VID_GENERIC;
     dev.pid = PDEV_PID_GENERIC;
