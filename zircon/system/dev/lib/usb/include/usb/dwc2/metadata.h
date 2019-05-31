@@ -11,8 +11,6 @@ typedef struct {
     uint32_t usb_turnaround_time;
     uint32_t rx_fifo_size;
     uint32_t nptx_fifo_size;
-    uint32_t in_ep_count;
-    uint32_t in_ep_fifo_size[15];
 } dwc2_metadata_t;
 
 // Values for dma_burst_len

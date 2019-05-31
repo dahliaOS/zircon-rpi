@@ -752,19 +752,14 @@ zx_status_t Dwc2::InitController() {
     // TX fifo size
     GNPTXFSIZ::Get().FromValue(0).set_depth(metadata_.nptx_fifo_size).set_startaddr(metadata_.rx_fifo_size).WriteTo(mmio);
 
-    auto addr = metadata_.rx_fifo_size + metadata_.nptx_fifo_size;
 
-    for (unsigned i = 1; i <= metadata_.in_ep_count; i++) {
-        auto fifo_size = metadata_.in_ep_fifo_size[i - 1];
-        if (fifo_size > 0) {
-            printf("DTXFSIZ[%u]:\n", i);
-            DTXFSIZ::Get(i).FromValue(0).set_startaddr(addr).set_depth(fifo_size).WriteTo(mmio).Print();
-            addr += fifo_size;
-        }
-    }
+    // TODO reset this when endpoints are removed
+    next_dfifo_ = 1;
+    dfifo_base_ = metadata_.rx_fifo_size + metadata_.nptx_fifo_size;
+    dfifo_end_ = GHWCFG3::Get().ReadFrom(mmio).dfifo_depth();
+printf("InitController: dfifo_base_: %u dfifo_end_ %u\n", dfifo_base_, dfifo_end_);
 
-    auto dfifo_depth = GHWCFG3::Get().ReadFrom(mmio).dfifo_depth();
-    GDFIFOCFG::Get().FromValue(0).set_gdfifocfg(dfifo_depth).set_epinfobase(addr).WriteTo(mmio).Print();
+    GDFIFOCFG::Get().FromValue(0).set_gdfifocfg(dfifo_end_).set_epinfobase(dfifo_base_).WriteTo(mmio).Print();
 
     FlushFifo(0x10);
 
@@ -1059,36 +1054,51 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
 
     uint8_t ep_num = DWC_ADDR_TO_INDEX(ep_desc->bEndpointAddress);
     bool is_in = (ep_desc->bEndpointAddress & USB_DIR_MASK) == USB_DIR_IN;
+    uint8_t ep_type = usb_ep_type(ep_desc);
+    uint16_t max_packet_size = usb_ep_max_packet(ep_desc);
 
     if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
         return ZX_ERR_INVALID_ARGS;
     }
 
-    uint8_t ep_type = usb_ep_type(ep_desc);
     if (ep_type == USB_ENDPOINT_ISOCHRONOUS) {
         zxlogf(ERROR, "UsbDciConfigEp: isochronous endpoints are not supported\n");
         return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    // TODO synchronize
+    uint32_t txfnum = 0;
+    if (is_in && ep_type != USB_ENDPOINT_BULK) {
+        // FIFO is in 4 byte word units
+        uint32_t fifo_size = max_packet_size / 4;
+        if (fifo_size > dfifo_end_ - dfifo_base_) {
+            return ZX_ERR_NO_RESOURCES;
+        }
+
+printf("max_packet_size %u fifo_size %u\n", max_packet_size, fifo_size);
+printf("BEFORE: dfifo_base_ %u dfifo_end_ %u\n", dfifo_base_, dfifo_end_);
+
+        txfnum = next_dfifo_++;
+
+        DTXFSIZ::Get(txfnum).FromValue(0).set_startaddr(dfifo_base_).set_depth(fifo_size).WriteTo(mmio).Print();
+        dfifo_base_ += fifo_size;
+        GDFIFOCFG::Get().FromValue(0).set_gdfifocfg(dfifo_end_).set_epinfobase(dfifo_base_).WriteTo(mmio).Print();
+printf("AFTER: dfifo_base_ %u dfifo_end_ %u\n", dfifo_base_, dfifo_end_);
     }
 
     auto* ep = &endpoints_[ep_num];
 
     fbl::AutoLock lock(&ep->lock);
 
-    ep->max_packet_size = usb_ep_max_packet(ep_desc);
     ep->type = ep_type;
+    ep->max_packet_size = max_packet_size;
     ep->enabled = true;
 
     auto depctl = DEPCTL::Get(ep_num).FromValue(0);
     depctl.set_mps(ep->max_packet_size);
     depctl.set_eptype(ep_type);
     depctl.set_setd0pid(1); // correct for interrupt and bulk
-
-    if (is_in) {
-        depctl.set_txfnum(ep_num);
-    } else {
-        depctl.set_txfnum(0);
-    }
-
+    depctl.set_txfnum(txfnum);
     depctl.set_usbactep(1);
     depctl.WriteTo(mmio);
 

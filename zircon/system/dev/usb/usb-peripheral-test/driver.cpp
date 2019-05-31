@@ -33,7 +33,7 @@ static constexpr size_t INTR_COUNT = 8;
 static constexpr size_t BULK_MAX_PACKET = 512;  // FIXME(voydanoff) USB 3.0 support.
 static constexpr size_t BULK_REQ_SIZE = 4096;   // FIXME(voydanoff) Increase this when DCI drivers support
                                                 //                  non-contiguous DMA buffers.
-static constexpr size_t INTR_REQ_SIZE = 1024;
+static constexpr size_t INTR_REQ_SIZE = 512;
 
 struct usb_test_t {
     zx_device_t* zxdev;

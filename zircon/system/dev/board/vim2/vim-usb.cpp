@@ -77,11 +77,8 @@ constexpr char kSerial[] = "0123456789ABCDEF";
 constexpr dwc2_metadata_t dwc2_metadata = {
     .dma_burst_len = DWC2_DMA_BURST_INCR8,
     .usb_turnaround_time = 5,
-    // Total fifo size is 712 words.
     .rx_fifo_size = 256,
     .nptx_fifo_size = 256,
-    .in_ep_count = 2,
-    .in_ep_fifo_size = { 128, 64 },
 };
 
 using FunctionDescriptor = fuchsia_hardware_usb_peripheral_FunctionDescriptor;
@@ -162,7 +159,7 @@ zx_status_t Vim::UsbInit() {
     xhci_dev.bti_count = countof(xhci_btis);
 */
 
-#if 1
+#if 0
     constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
                                      ? alignof(UsbConfig)
                                      : __STDCPP_DEFAULT_NEW_ALIGNMENT__;

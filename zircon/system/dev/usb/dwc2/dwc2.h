@@ -157,6 +157,11 @@ private:
 
     zx::interrupt irq_;
     thrd_t irq_thread_;
+
+    uint32_t next_dfifo_;
+    uint32_t dfifo_base_;
+    uint32_t dfifo_end_;
+    
 };
 
 } // namespace dwc2

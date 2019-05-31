@@ -119,9 +119,9 @@ bool control_interrupt_test_256() {
     return control_interrupt_test(256);
 }
 
-// Test control and interrupt requests with 1000 byte transfer size.
-bool control_interrupt_test_1000() {
-    return control_interrupt_test(1000);
+// Test control and interrupt requests with 512 byte transfer size.
+bool control_interrupt_test_512() {
+    return control_interrupt_test(512);
 }
 
 // Tests bulk OUT and IN transfers.
@@ -253,7 +253,7 @@ RUN_TEST(control_interrupt_test_100);
 RUN_TEST(control_interrupt_test_256);
 // Disabled because this exceeds the hardware FIFO size for some Amlogic platforms.
 // TODO(voydanoff) investigate if it is possible to get this working.
-// RUN_TEST(control_interrupt_test_1000);
+RUN_TEST(control_interrupt_test_512);
 RUN_TEST(bulk_test);
 END_TEST_CASE(usb_peripheral_tests)
 
