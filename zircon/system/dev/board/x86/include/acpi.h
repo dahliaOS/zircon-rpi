@@ -10,7 +10,7 @@
 
 __BEGIN_CDECLS
 
-zx_status_t acpi_init(bool use_iommu);
+zx_status_t acpi_init(bool use_hardware_iommu, const char* board_name, size_t board_name_size);
 zx_status_t publish_acpi_devices(zx_device_t* parent, zx_device_t* sys_root, zx_device_t* acpi_root);
 zx_status_t acpi_suspend(uint32_t flags);
 

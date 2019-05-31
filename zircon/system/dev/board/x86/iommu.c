@@ -423,7 +423,39 @@ cleanup:
     return status;
 }
 
-zx_status_t iommu_manager_init(bool use_hardware_iommu) {
+bool iommu_use_hardware_if_present(bool use_hardware_iommu, const char* board_name,
+                                   size_t board_name_size) {
+    const char* const kKnownBuggyDevices[] = {
+        // Intel NUC6i3SYB.  The GPU hangs when the IOMMU is enabled.
+        "NUC6i3SYB",
+        // Acer Switch Alpha 12 has a buggy RMRR entries for the XHCI controller
+        "Switch SA5-271",
+        NULL,
+    };
+
+    // Check if we're running on a device that is known to have an IOMMU that
+    // interacts with us poorly.
+    bool known_buggy = false;
+    for (const char* const* buggy_board = kKnownBuggyDevices; *buggy_board != NULL; ++buggy_board) {
+        // Note that board_name_size includes the trailing null
+        if (!strncmp(board_name, *buggy_board, board_name_size)) {
+            known_buggy = true;
+            break;
+        }
+    }
+
+    const char* value = getenv("iommu.enable");
+    if (value == NULL) {
+        return use_iommu; // Default to whatever we detected
+    } else if (!strcmp(value, "0") || !strcmp(value, "false") || !strcmp(value, "off")) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+zx_status_t iommu_manager_init(bool use_hardware_iommu, const char* board_name,
+                               size_t board_name_size) {
     int err = mtx_init(&iommu_mgr.lock, mtx_plain);
     if (err != thrd_success) {
         return ZX_ERR_INTERNAL;
@@ -441,8 +473,8 @@ zx_status_t iommu_manager_init(bool use_hardware_iommu) {
         return status;
     }
 
-    if (!use_hardware_iommu) {
-        zxlogf(INFO, "acpi-bus: not using IOMMU\n");
+    if (!iommu_use_hardware_if_present(use_hardware_iommu, board_name, board_name_size)) {
+        zxlogf(INFO, "acpi-bus: not using IOMMU (if present)\n");
         return ZX_OK;
     }
 

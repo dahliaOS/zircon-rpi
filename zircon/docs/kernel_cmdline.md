@@ -128,8 +128,8 @@ only "9x16" (the default) and "18x32" (a double-size font) are supported.
 
 ## iommu.enable=\<bool>
 
-This option (disabled by default) allows the system to use a hardware IOMMU
-if present.
+This option allows the system to use a hardware IOMMU if present.  By default,
+the IOMMU is used if it is both present and not known to be buggy.
 
 ## kernel.bypass-debuglog=\<bool>
 

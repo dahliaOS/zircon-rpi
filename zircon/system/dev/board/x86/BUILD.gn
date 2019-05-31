@@ -27,6 +27,22 @@ config("config") {
   cflags_c = [ "-fno-strict-aliasing" ]
 }
 
+source_set("iommu") {
+  visibility = [ ":*" ]
+
+  sources = [
+    "iommu.c",
+  ]
+
+  configs += [ ":config" ]
+
+  deps = [
+    "$zx/system/ulib/ddk",
+    "$zx/system/ulib/zircon",
+    "$zx/third_party/lib/acpica",
+  ]
+}
+
 source_set("smbios") {
   visibility = [ ":*" ]
 
@@ -61,7 +77,6 @@ driver("platform-bus-x86") {
     "acpi-nswalk.c",
     "debug.c",
     "init.c",
-    "iommu.c",
     "methods.cc",
     "nhlt.c",
     "pciroot.cc",
@@ -82,6 +97,7 @@ driver("platform-bus-x86") {
   }
   configs += [ ":config" ]
   deps = [
+    ":iommu",
     ":smbios",
     "$zx/system/banjo/ddk.protocol.acpi",
     "$zx/system/banjo/ddk.protocol.hidbus",
@@ -168,10 +184,12 @@ test("x86-lid-test") {
 test("x86-board-test") {
   test_group = "ddk"
   sources = [
+    "iommu-test.cc",
     "smbios-test.cc",
   ]
   configs += [ ":config" ]
   deps = [
+    ":iommu",
     ":smbios",
     "$zx/system/ulib/fdio",
     "$zx/system/ulib/zxtest",

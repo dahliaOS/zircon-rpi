@@ -6,4 +6,5 @@
 
 #include <acpica/acpi.h>
 
-ACPI_STATUS init(bool use_hardware_iommu);
+ACPI_STATUS acpi_internal_init(bool use_hardware_iommu, const char* board_name,
+                               size_t board_name_size);

@@ -68,6 +68,21 @@ static zx_status_t x86_bind(void* ctx, zx_device_t* parent) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 
+    char board_name[fuchsia_sysinfo_SYSINFO_BOARD_NAME_LEN + 1];
+    size_t board_name_actual = 0;
+    status = smbios_get_board_name(board_name, sizeof(board_name), &board_name_actual);
+    if (status != ZX_OK) {
+        if (status == ZX_ERR_BUFFER_TOO_SMALL) {
+            zxlogf(INFO, "acpi: smbios board name too big for sysinfo\n");
+        } else if (status != ZX_ERR_NOT_FOUND) {
+            zxlogf(ERROR, "acpi: smbios board name could not be read: %s\n",
+                   zx_status_get_string(status));
+        }
+        strcpy(board_name, "pc");
+        board_name_actual = strlen(board_name) + 1;
+    }
+    zxlogf(INFO, "acpi: board_name='%s'\n", board_name);
+
     bool use_iommu = true;
     size_t actual;
     status = device_get_metadata(parent, DEVICE_METADATA_BOARD_PRIVATE, &use_iommu,
@@ -78,7 +93,7 @@ static zx_status_t x86_bind(void* ctx, zx_device_t* parent) {
     }
 
     // Do ACPI init.
-    status = acpi_init(use_iommu);
+    status = acpi_init(use_iommu, board_name, board_name_actual);
     if (status != ZX_OK) {
         free(x86);
         zxlogf(ERROR, "%s: failed to initialize ACPI %d \n", __func__, status);
@@ -109,20 +124,6 @@ static zx_status_t x86_bind(void* ctx, zx_device_t* parent) {
         free(x86);
         zxlogf(ERROR, "acpi: error %d in device_add(sys/platform/acpi)\n", status);
         return status;
-    }
-
-    char board_name[fuchsia_sysinfo_SYSINFO_BOARD_NAME_LEN + 1];
-    size_t board_name_actual = 0;
-    status = smbios_get_board_name(board_name, sizeof(board_name), &board_name_actual);
-    if (status != ZX_OK) {
-        if (status == ZX_ERR_BUFFER_TOO_SMALL) {
-            zxlogf(INFO, "acpi: smbios board name too big for sysinfo\n");
-        } else if (status != ZX_ERR_NOT_FOUND) {
-            zxlogf(ERROR, "acpi: smbios board name could not be read: %s\n",
-                   zx_status_get_string(status));
-        }
-        strcpy(board_name, "pc");
-        board_name_actual = strlen(board_name) + 1;
     }
 
     // Publish board name to sysinfo driver

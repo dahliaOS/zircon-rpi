@@ -13,7 +13,8 @@ __BEGIN_CDECLS
 // the IOMMU manager will be left in a well-defined empty state, and
 // iommu_manager_iommu_for_bdf() can still succeed (yielding dummy IOMMU
 // handles).
-zx_status_t iommu_manager_init(bool use_hardware_iommu);
+zx_status_t iommu_manager_init(bool use_hardware_iommu, const char* board_name,
+                               size_t board_name_size);
 
 // Returns a handle to the IOMMU that is responsible for the given BDF. The
 // returned handle is borrowed from the iommu_manager.  The caller
@@ -23,5 +24,8 @@ zx_status_t iommu_manager_iommu_for_bdf(uint32_t bdf, zx_handle_t* iommu);
 // Returns a handle to the dummy IOMMU. The returned handle is BORROWED from
 // the iommu_manager.
 zx_status_t iommu_manager_get_dummy_iommu(zx_handle_t* iommu);
+
+// Returns true if the IOMMU should be used.  Exposed here for use in tests.
+bool iommu_use_hardware_if_present(const char* board_name, size_t board_name_size);
 
 __END_CDECLS
