@@ -28,8 +28,11 @@ namespace aml_usb_phy {
 
 // Based on set_usb_pll() in phy-aml-new-usb2-v2.c
 void AmlUsbPhy::InitPll(ddk::MmioBuffer* mmio) {
-    PLL_REGISTER::Get(0x40)
-        .FromValue(0x30000000 | pll_settings_[0])
+    PLL_REGISTER_40::Get()
+        .FromValue(0)
+        .set_value(pll_settings_[0])
+        .set_enable(1)
+        .set_reset(1)
         .WriteTo(mmio);
 
     PLL_REGISTER::Get(0x44)
@@ -42,8 +45,11 @@ void AmlUsbPhy::InitPll(ddk::MmioBuffer* mmio) {
 
     usleep(100);
 
-    PLL_REGISTER::Get(0x40)
-        .FromValue(0x10000000 | pll_settings_[0])
+    PLL_REGISTER_40::Get()
+        .FromValue(0)
+        .set_value(pll_settings_[0])
+        .set_enable(1)
+        .set_reset(0)
         .WriteTo(mmio);
 
     // PLL
