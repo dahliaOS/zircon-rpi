@@ -159,7 +159,7 @@ zx_status_t Vim::UsbInit() {
     xhci_dev.bti_count = countof(xhci_btis);
 */
 
-#if 0
+#if 1
     constexpr size_t alignment = alignof(UsbConfig) > __STDCPP_DEFAULT_NEW_ALIGNMENT__
                                      ? alignof(UsbConfig)
                                      : __STDCPP_DEFAULT_NEW_ALIGNMENT__;
