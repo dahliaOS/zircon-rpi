@@ -225,7 +225,7 @@ void Dwc2::HandleOutEpInterrupt() {
 
                 DOEPINT::Get(ep_num).ReadFrom(mmio).set_setup(1).WriteTo(mmio);
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
-                zxlogf(LTRACE, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
+                zxlogf(INFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u wLength: %u\n",
                         cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue, cur_setup_.wIndex,
                         cur_setup_.wLength);
 
@@ -280,7 +280,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
             StopEndpoints();
                 configured_ = true;
             if (dci_intf_.has_value()) {
-                status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
+                status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, out_actual);
             } else {
                 status = ZX_ERR_NOT_SUPPORTED;
             }
@@ -300,7 +300,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
         StopEndpoints();
         configured_ = true;
         if (dci_intf_.has_value()) {
-            status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
+            status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, out_actual);
         } else {
             status = ZX_ERR_NOT_SUPPORTED;
         }
@@ -317,7 +317,7 @@ zx_status_t Dwc2::HandleSetup(size_t* out_actual) {
 
     if (dci_intf_.has_value()) {
         if (length == 0) {
-            status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, nullptr);
+            status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, out_actual);
         } else if (is_in) {
             status = dci_intf_->Control(setup, nullptr, 0, buffer, length, out_actual);
         } else {
@@ -607,7 +607,8 @@ void Dwc2::HandleEp0TransferComplete() {
 
         if (ep->req_offset == ep->req_length) {
             if (dci_intf_.has_value()) {
-                dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), ep->req_length, nullptr, 0, nullptr);
+                size_t actual;
+                dci_intf_->Control(&cur_setup_, (uint8_t*)ep0_buffer_.virt(), ep->req_length, nullptr, 0, &actual);
             }
             HandleEp0Status(true);
         } else {
