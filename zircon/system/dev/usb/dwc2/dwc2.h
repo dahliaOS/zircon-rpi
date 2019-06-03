@@ -101,7 +101,8 @@ private:
 
     DISALLOW_COPY_ASSIGN_AND_MOVE(Dwc2);
 
-    void FlushFifo(uint32_t fifo_num);
+    void FlushTxFifo(uint32_t fifo_num);
+    void FlushRxFifo();
     zx_status_t InitController();
     zx_status_t Start();
     void StartEp0();

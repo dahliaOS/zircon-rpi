@@ -40,10 +40,10 @@ void Dwc2::HandleReset() {
     }
 
     /* Flush the NP Tx FIFO */
-    FlushFifo(0);
+    FlushTxFifo(0);
 
     /* Flush the Learning Queue */
-    GRSTCTL::Get().ReadFrom(mmio).set_intknqflsh(1).WriteTo(mmio);
+    GRSTCTL::Get().FromValue(0).set_intknqflsh(1).WriteTo(mmio);
 
     // EPO IN and OUT
     DAINTMSK::Get().FromValue((1 << DWC_EP0_IN) | (1 << DWC_EP0_OUT)).WriteTo(mmio);
@@ -66,7 +66,10 @@ void Dwc2::HandleReset() {
         WriteTo(mmio);
 
     /* Reset Device Address */
-    DCFG::Get().ReadFrom(mmio).set_devaddr(0).set_epmscnt(2).set_descdma(0).WriteTo(mmio);
+    DCFG::Get()
+        .ReadFrom(mmio)
+        .set_devaddr(0)
+        .WriteTo(mmio);
 
     // TODO how to detect disconnect?
     // also notify later if dci_intf_ not set yet.
@@ -446,7 +449,7 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
     hw_wmb();
 }
 
-void Dwc2::FlushFifo(uint32_t fifo_num) {
+void Dwc2::FlushTxFifo(uint32_t fifo_num) {
     auto* mmio = get_mmio();
     auto grstctl = GRSTCTL::Get().FromValue(0);
 
@@ -463,9 +466,33 @@ void Dwc2::FlushFifo(uint32_t fifo_num) {
 
     zx_nanosleep(zx_deadline_after(ZX_USEC(1)));
 
-    if (fifo_num == 0) {
-        return;
-    }
+    grstctl.set_reg_value(0).set_rxfflsh(1).WriteTo(mmio);
+
+    count = 0;
+    do {
+        grstctl.ReadFrom(mmio);
+        if (++count > 10000)
+            break;
+    } while (grstctl.rxfflsh() == 1);
+
+    zx_nanosleep(zx_deadline_after(ZX_USEC(1)));
+}
+
+void Dwc2::FlushRxFifo() {
+    auto* mmio = get_mmio();
+    auto grstctl = GRSTCTL::Get().FromValue(0);
+
+    grstctl.set_rxfflsh(1);
+    grstctl.WriteTo(mmio);
+    
+    uint32_t count = 0;
+    do {
+        grstctl.ReadFrom(mmio);
+        if (++count > 10000)
+            break;
+    } while (grstctl.rxfflsh() == 1);
+
+    zx_nanosleep(zx_deadline_after(ZX_USEC(1)));
 
     grstctl.set_reg_value(0).set_rxfflsh(1).WriteTo(mmio);
 
@@ -737,8 +764,30 @@ zx_status_t Dwc2::InitController() {
 
     usleep(10 * 1000);
 
-    GUSBCFG::Get().ReadFrom(mmio).set_force_dev_mode(1).WriteTo(mmio);
-    GAHBCFG::Get().FromValue(0).set_dmaenable(1).set_hburstlen(metadata_.dma_burst_len).WriteTo(mmio);
+    GUSBCFG::Get()
+        .ReadFrom(mmio)
+        .set_force_dev_mode(1)
+        .set_srpcap(0)
+        .set_hnpcap(0)
+        .set_ulpi_utmi_sel(1)
+        .set_phyif(0) // astro/sherlock only?
+        .set_ddrsel(0)
+        .WriteTo(mmio);
+    GAHBCFG::Get()
+        .FromValue(0)
+        .set_dmaenable(1)
+        .set_hburstlen(metadata_.dma_burst_len)
+        .WriteTo(mmio);
+
+    GUSBCFG::Get().ReadFrom(mmio).set_usbtrdtim(metadata_.usb_turnaround_time).WriteTo(mmio);
+    DCFG::Get()
+        .ReadFrom(mmio)
+        .set_devaddr(0)
+        .set_epmscnt(2)
+        .set_descdma(0)
+        .set_devspd(0)
+        .set_perfrint(0) // 80%
+        .WriteTo(mmio);
 
     // ???
     DCTL::Get().ReadFrom(mmio).set_sftdiscon(1).WriteTo(mmio);
@@ -762,9 +811,10 @@ printf("InitController: dfifo_base_: %u dfifo_end_ %u\n", dfifo_base_, dfifo_end
 
     GDFIFOCFG::Get().FromValue(0).set_gdfifocfg(dfifo_end_).set_epinfobase(dfifo_base_).WriteTo(mmio).Print();
 
-    FlushFifo(0x10);
+    FlushTxFifo(0x10);
+    FlushRxFifo();
 
-    GRSTCTL::Get().ReadFrom(mmio).set_intknqflsh(1).WriteTo(mmio);
+    GRSTCTL::Get().FromValue(0).set_intknqflsh(1).WriteTo(mmio);
 
     /* Clear all pending Device Interrupts */
     DIEPMSK::Get().FromValue(0).WriteTo(mmio);
