@@ -86,12 +86,18 @@ void Dwc2::HandleReset() {
     if (dci_intf_.has_value()) {
         dci_intf_->SetConnected(true);
     }
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(false);
+    }
 }
 
 // Handler for usbsuspend interrupt.
 void Dwc2::HandleSuspend() {
     if (dci_intf_.has_value()) {
         dci_intf_->SetConnected(false);
+    }
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(false);
     }
 }
 
@@ -941,6 +947,12 @@ zx_status_t Dwc2::Init() {
     if (!pdev_.is_valid()) {
         zxlogf(ERROR, "Dwc2::Create: could not get platform device protocol\n");
         return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    // USB PHY protocol is optional.
+    usb_phy_ = components[1];
+    if (!usb_phy_->is_valid()) {
+        usb_phy_.reset();
     }
 
     for (uint8_t i = 0; i < fbl::count_of(endpoints_); i++) {
