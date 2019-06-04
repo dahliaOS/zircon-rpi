@@ -4,7 +4,7 @@
 
 library fuchsia.bluetooth.avrcp;
 
-using fuchsia.bluetooth;
+using zx;
 
 [Discoverable]
 protocol AvrcpTest {
@@ -14,12 +14,12 @@ protocol AvrcpTest {
     /// dispatch to the MediaSession service. This should only be used for debug and testing.
     RegisterIncomingTargetHandler(TargetHandler handler);
 
-    /// Returns a test client to a remote target service at the address specified by |device_id|.
+    /// Returns a test client to a remote target service at the address specified by |peer_id|.
     /// This client is to be used in conjunction the non test client from the primary Avrcp service.
     /// The test client provides additional methods not exposed by normal client to be used
     /// for debugging and testing purposes.
-    /// TODO (BT-305): change device_id to int.
-    GetTestControllerForTarget(string device_id, request<TestController> test_controller) -> (fuchsia.bluetooth.Status status);
+    /// TODO (BT-305): change peer_id to int.
+    GetTestControllerForTarget(string peer_id, request<TestController> client) -> () error zx.status;
 };
 
 /// An implementation of this interface is registered with the AvrcpTest service to handle
@@ -28,14 +28,25 @@ protocol TargetHandler {
     /// Called when an incoming target is connected. |delegate| should be fulfilled with an
     /// interface that will be used to handle commands from the connected Controller.
     /// TODO (BT-305): change device_id to int.
-    ControllerConnected(string device_id, request<TargetDelegate> delegate);
+    ControllerConnected(string peer_id, request<TargetDelegate> delegate);
+};
+
+/// Defined by AV\C Panel specification.
+enum ResponseCode {
+    NOT_IMPLEMENTED = 0x08;
+    ACCEPTED = 0x09;
+    REJECTED = 0x0A;
+    IN_TRANSITION = 0x0B;
+    IMPLEMENTED_STABLE = 0x0C;
+    CHANGED = 0x0D;
+    INTERIM = 0x0F;
 };
 
 /// Returned by an implementer of the TargetHandler interface.
 /// Handles incoming connection commands by a remote CT device.
 protocol TargetDelegate {
     /// Called after Panel key down and up events.
-    OnCommand(AvcPanelCommand command) -> (fuchsia.bluetooth.Status status);
+    OnCommand(AvcPanelCommand command) -> (ResponseCode code);
 };
 
 /// Provides methods not exposed in `Controller` that are strictly for testing and debug.
@@ -46,7 +57,7 @@ protocol TestController {
     /// Queries the target and returns what events are supported for notification.
     /// Sends GetCapabilties(0x03 (EVENTS_SUPPORTED)) command for all events supported by
     /// the negoitated version of AVRCP.
-    GetEventsSupported() -> (fuchsia.bluetooth.Status status, vector<TargetEvent> events_supported);
+    GetEventsSupported() -> (vector<TargetEvent> events_supported) error ControllerError;
 
     /// Explicitly connect to the remote device.
     Connect();
@@ -54,4 +65,7 @@ protocol TestController {
     /// Explicitly disconnect the L2CAP channel to the remote.
     /// Be warned that other clients may be sharing this L2CAP connection.
     Disconnect();
+
+    /// Send raw vendor depedent command
+    SendRawVendorDependentCommand(uint8 pdu_id, bytes command) -> (bytes response) error ControllerError;
 };

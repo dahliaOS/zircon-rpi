@@ -174,6 +174,9 @@ gen_commands! {
     Cmd {
         AvcCommand = ("key", ["command"], "send an AVC passthrough keypress event"),
         GetMediaAttributes = ("get-media", [], "gets currently playing media attributes"),
+        SupportedEvents = ("get-supported-events", [], "gets the supported events of the target"),
+        SendRawVendorCommand = ("send-raw-vendor-command", ["pdu_id", "payload"], "send a raw vendor AVC command"),
+        IsConnected = ("connection-status", [], "checks if the current device is current connected"),
         Help = ("help", [], "This message"),
         Exit = ("exit", [], "Close REPL"),
         Quit = ("quit", [], "Close REPL"),
