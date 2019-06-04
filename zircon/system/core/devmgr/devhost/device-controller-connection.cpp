@@ -109,6 +109,16 @@ zx_status_t fidl_Suspend(void* raw_ctx, uint32_t flags, fidl_txn_t* txn) {
     return fuchsia_device_manager_DeviceControllerSuspend_reply(txn, r);
 }
 
+zx_status_t fidl_Unbind(void* raw_ctx, fidl_txn_t* txn) {
+    auto ctx = static_cast<DevhostRpcReadContext*>(raw_ctx);
+    zx_status_t r;
+    {
+        ApiAutoLock lock;
+        r = devhost_device_unbind(ctx->conn->dev());
+    }
+    return fuchsia_device_manager_DeviceControllerUnbind_reply(txn, r);
+}
+
 zx_status_t fidl_RemoveDevice(void* raw_ctx) {
     auto ctx = static_cast<DevhostRpcReadContext*>(raw_ctx);
     device_remove(ctx->conn->dev().get());
@@ -131,6 +141,7 @@ zx_status_t fidl_DirectoryOpen(void* ctx, uint32_t flags, uint32_t mode, const c
 const fuchsia_device_manager_DeviceController_ops_t kDefaultDeviceOps = {
     .BindDriver = fidl_BindDriver,
     .ConnectProxy = fidl_ConnectProxy,
+    .Unbind = fidl_Unbind,
     .RemoveDevice = fidl_RemoveDevice,
     .Suspend = fidl_Suspend,
 };
