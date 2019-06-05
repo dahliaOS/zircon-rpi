@@ -195,6 +195,7 @@ pub enum HandleTy {
     IoMmu,
     Pager,
     Pmt,
+    Clock,
 }
 
 #[derive(PartialEq, Eq, Clone, Serialize, Debug, Hash, PartialOrd, Ord)]
@@ -312,6 +313,7 @@ impl Ty {
                                 "iommu" => HandleTy::IoMmu,
                                 "pager" => HandleTy::Pager,
                                 "pmt" => HandleTy::Pmt,
+                                "clock" => HandleTy::Clock,
                                 _e => {
                                     return Err(ParseError::UnrecognizedType(
                                         inner_pair.as_str().to_string(),

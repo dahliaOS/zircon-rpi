@@ -4053,6 +4053,20 @@ BanjoAst {
                             [],
                         ),
                         ty: Handle {
+                            ty: Clock,
+                            reference: false,
+                        },
+                        ident: Ident {
+                            namespace: None,
+                            name: "clock_handle",
+                        },
+                        val: None,
+                    },
+                    StructField {
+                        attributes: Attrs(
+                            [],
+                        ),
+                        ty: Handle {
                             ty: Handle,
                             reference: true,
                         },
@@ -4353,6 +4367,20 @@ BanjoAst {
                         ident: Ident {
                             namespace: None,
                             name: "nullable_pmt_handle",
+                        },
+                        val: None,
+                    },
+                    StructField {
+                        attributes: Attrs(
+                            [],
+                        ),
+                        ty: Handle {
+                            ty: Clock,
+                            reference: true,
+                        },
+                        ident: Ident {
+                            namespace: None,
+                            name: "nullable_clock_handle",
                         },
                         val: None,
                     },

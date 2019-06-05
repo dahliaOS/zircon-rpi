@@ -251,6 +251,7 @@ struct handles {
     handle<iommu> iommu_handle;
     handle<pager> pager_handle;
     handle<pmt> pmt_handle;
+    handle<clock> clock_handle;
 
     handle? nullable_handle_handle;
     handle<process>? nullable_process_handle;
@@ -274,6 +275,7 @@ struct handles {
     handle<iommu>? nullable_iommu_handle;
     handle<pager>? nullable_pager_handle;
     handle<pmt>? nullable_pmt_handle;
+    handle<clock>? nullable_clock_handle;
 };
 
 const uint32 strings_size = 32;

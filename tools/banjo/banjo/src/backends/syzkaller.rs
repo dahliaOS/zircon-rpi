@@ -97,6 +97,7 @@ fn ty_to_syzkaller_str(ast: &ast::BanjoAst, ty: &ast::Ty) -> Result<String, Erro
                     ast::HandleTy::IoMmu => "zx_iommu",
                     ast::HandleTy::Pager => "zx_pager",
                     ast::HandleTy::Pmt => "zx_pmt",
+                    ast::HandleTy::Clock => "zx_clock",
                 };
                 Ok(String::from(handle_ty_str))
             }
