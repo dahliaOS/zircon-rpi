@@ -285,20 +285,6 @@ using time = basic_time<ZX_CLOCK_MONOTONIC>;
 using time_utc = basic_time<ZX_CLOCK_UTC>;
 using time_thread = basic_time<ZX_CLOCK_THREAD>;
 
-class clock final {
-public:
-    clock() = delete;
-
-    template <zx_clock_t kClockId>
-    static zx_status_t get(basic_time<kClockId>* result) {
-        return zx_clock_get(kClockId, result->get_address());
-    }
-
-    static time get_monotonic() {
-        return time(zx_clock_get_monotonic());
-    }
-};
-
 constexpr inline duration nsec(int64_t n) {
     return duration(ZX_NSEC(n));
 }
