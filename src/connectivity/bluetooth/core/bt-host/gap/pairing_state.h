@@ -186,6 +186,9 @@ class PairingState final {
   // Extra information for pairing constructed when pairing begins and destroyed
   // when pairing is reset or errors out.
   struct Data final {
+    static Data MakeInitiator(StatusCallback status_callback);
+    static Data MakeResponder(hci::IOCapability peer_iocap);
+
     // True if the local device initiated pairing.
     bool initiator;
 

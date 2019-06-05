@@ -38,9 +38,7 @@ PairingState::InitiatorAction PairingState::InitiatePairing(
 
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
-    current_pairing_ = Data();
-    current_pairing_->initiator = true;
-    current_pairing_->initiator_callbacks.push_back(std::move(status_cb));
+    current_pairing_ = Data::MakeInitiator(std::move(status_cb));
     bt_log(TRACE, "gap-bredr", "Initiating pairing on %#.04x (id %s)", handle(),
            bt_str(peer_id()));
     state_ = State::kInitiatorPairingStarted;
@@ -97,9 +95,7 @@ std::optional<IOCapability> PairingState::OnIoCapabilityRequest() {
 void PairingState::OnIoCapabilityResponse(IOCapability peer_iocap) {
   if (state() == State::kIdle) {
     ZX_ASSERT(!is_pairing());
-    current_pairing_ = Data();
-    current_pairing_->initiator = false;
-    current_pairing_->peer_iocap = peer_iocap;
+    current_pairing_ = Data::MakeResponder(peer_iocap);
 
     // Defer gathering local IO Capability until OnIoCapabilityRequest, where
     // the pairing can be rejected if there's no pairing delegate.
@@ -259,6 +255,22 @@ void PairingState::OnEncryptionChange(hci::Status status, bool enabled) {
   } else {
     state_ = State::kFailed;
   }
+}
+
+PairingState::Data PairingState::Data::MakeInitiator(
+    StatusCallback status_callback) {
+  Data data;
+  data.initiator = true;
+  data.initiator_callbacks.push_back(std::move(status_callback));
+  return data;
+}
+
+PairingState::Data PairingState::Data::MakeResponder(
+    hci::IOCapability peer_iocap) {
+  Data data;
+  data.initiator = false;
+  data.peer_iocap = peer_iocap;
+  return data;
 }
 
 const char* PairingState::ToString(PairingState::State state) {
