@@ -466,6 +466,7 @@ public:
     DEF_BIT(8, txfifoundrn);
     DEF_BIT(9, bna);
     DEF_BIT(13, nak);
+    DEF_BIT(14, nyet);
     static auto Get(unsigned i) { return hwreg::RegisterAddr<DIEPINT>(0x908 + 0x20 * i); }
 };
 

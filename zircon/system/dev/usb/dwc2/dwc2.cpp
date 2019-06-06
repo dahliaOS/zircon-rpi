@@ -17,7 +17,7 @@ namespace dwc2 {
 void Dwc2::HandleReset() {
     auto* mmio = get_mmio();
 
-    zxlogf(LTRACE, "\nRESET\n");
+    zxlogf(LINFO, "\nRESET\n");
 
     ep0_state_ = Ep0State::DISCONNECTED;
     configured_ = false;
@@ -76,6 +76,8 @@ void Dwc2::HandleReset() {
         set_bna(1).
         set_epdisabled(1).
         WriteTo(mmio);
+
+printf("Reset DOEPMSK %08x\n", DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
     // Clear device address
     DCFG::Get()
@@ -152,82 +154,60 @@ void Dwc2::HandleInEpInterrupt() {
         .FromValue(DWC_EP_IN_MASK)
         .WriteTo(mmio);
 
-
     // Loop through IN endpoints and handle those with interrupt raised
     while (ep_bits) {
         if (ep_bits & 1) {
-            auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
-            diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
+            // Simultaneously read and acknowledge the interrupt flags.
+            auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
+#if 1
+printf("HandleInEpInterrupt ep_num %u DIEPINT: ", ep_num);
+if (diepint.xfercompl()) printf("xfercompl ");
+if (diepint.epdisabled()) printf("epdisabled ");
+if (diepint.ahberr()) printf("ahberr ");
+if (diepint.timeout()) printf("timeout ");
+if (diepint.intktxfemp()) printf("intktxfemp ");
+if (diepint.intknepmis()) printf("intknepmis ");
+if (diepint.inepnakeff()) printf("inepnakeff ");
+if (diepint.txfifoundrn()) printf("txfifoundrn ");
+if (diepint.bna()) printf("bna ");
+if (diepint.nak()) printf("nak ");
+if (diepint.nyet()) printf("nyet ");
+printf("\n");
+#endif
+//            diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
 
             if (diepint.xfercompl()) {
-                DIEPINT::Get(ep_num)
-                    .FromValue(0)
-                    .set_xfercompl(1)
-                    .WriteTo(mmio);
-
                 if (ep_num == DWC_EP0_IN) {
                     HandleEp0TransferComplete();
                 } else {
                     HandleTransferComplete(ep_num);
                     if (diepint.nak()) {
                         zxlogf(ERROR, "Unandled interrupt diepint.nak ep_num %u\n", ep_num);
-                        DIEPINT::Get(ep_num)
-                            .ReadFrom(mmio)
-                            .set_nak(1)
-                            .WriteTo(mmio);
                     }
                 }
             }
-            if (diepint.bna()) {
-                zxlogf(ERROR, "Unandled interrupt bna ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_bna(1)
-                    .WriteTo(mmio);
-            }
 
             // TODO(voydanoff) Implement error recovery for these interrupts
+            if (diepint.bna()) {
+                zxlogf(ERROR, "Unandled interrupt bna ep_num %u\n", ep_num);
+            }
             if (diepint.epdisabled()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.epdisabled for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_epdisabled(1)
-                    .WriteTo(mmio);
             }
             if (diepint.ahberr()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.ahberr for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_ahberr(1)
-                    .WriteTo(mmio);
             }
             if (diepint.timeout()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.timeout for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_timeout(1)
-                    .WriteTo(mmio);
             }
             if (diepint.intktxfemp()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.intktxfemp for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_intktxfemp(1)
-                    .WriteTo(mmio);
             }
             if (diepint.intknepmis()) {
                 zxlogf(ERROR, "Unhandled interrupt diepint.intknepmis for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_intknepmis(1)
-                    .WriteTo(mmio);
             }
             if (diepint.inepnakeff()) {
                 printf("Unandled interrupt diepint.inepnakeff for ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_inepnakeff(1)
-                    .WriteTo(mmio);
             }
         }
         ep_num++;
@@ -256,9 +236,30 @@ void Dwc2::HandleOutEpInterrupt() {
     // Loop through OUT endpoints and handle those with interrupt raised
     while (ep_bits) {
         if (ep_bits & 1) {
-            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
-            doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
+            // Simultaneously read and acknowledge the interrupt flags.
+            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
+#if 1
+printf("HandleOutEpInterrupt ep_num %u DOEPINT: ", ep_num);
+if (doepint.xfercompl()) printf("xfercompl ");
+if (doepint.epdisabled()) printf("epdisabled ");
+if (doepint.ahberr()) printf("ahberr ");
+if (doepint.setup()) printf("setup ");
+if (doepint.outtknepdis()) printf("outtknepdis ");
+if (doepint.stsphsercvd()) printf("stsphsercvd ");
+if (doepint.back2backsetup()) printf("back2backsetup ");
+if (doepint.outpkterr()) printf("outpkterr ");
+if (doepint.bna()) printf("bna ");
+if (doepint.pktdrpsts()) printf("pktdrpsts ");
+if (doepint.babble()) printf("babble ");
+if (doepint.nak()) printf("nak ");
+if (doepint.nyet()) printf("nyet ");
+if (doepint.sr()) printf("sr ");
+printf("\n");
+#endif
+//printf("doepint %08x mask %08x\n", doepint.reg_value(), DOEPMSK::Get().ReadFrom(mmio).reg_value());
+//            doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
+/*
             if (doepint.sr()) {
                 DOEPINT::Get(ep_num)
                     .ReadFrom(mmio)
@@ -278,29 +279,22 @@ void Dwc2::HandleOutEpInterrupt() {
                     .set_bna(1)
                     .WriteTo(mmio);
             }
+*/
 
-            if (doepint.setup()) {
+ //           if (doepint.setup()) {
+            if (doepint.sr()) {
                 // TODO(voydanoff):   On this interrupt, the application must read the DOEPTSIZn
                 // register to determine the number of SETUP packets received and process the last
                 // received SETUP packet.
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_setup(1)
-                    .WriteTo(mmio);
 
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
-                zxlogf(LTRACE, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u "
+                zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u "
                        "wLength: %u\n", cur_setup_.bmRequestType, cur_setup_.bRequest,
                        cur_setup_.wValue, cur_setup_.wIndex, cur_setup_.wLength);
 
                 HandleEp0Setup();
             }
             if (doepint.xfercompl()) {
-                DOEPINT::Get(ep_num)
-                    .FromValue(0)
-                    .set_xfercompl(1)
-                    .WriteTo(mmio);
-
                 if (ep_num == DWC_EP0_OUT) {
                     if (!doepint.setup()) {
                         HandleEp0TransferComplete();
@@ -312,17 +306,9 @@ void Dwc2::HandleOutEpInterrupt() {
             // TODO(voydanoff) Implement error recovery for these interrupts
             if (doepint.epdisabled()) {
                 zxlogf(ERROR, "Unhandled interrupt doepint.epdisabled for ep_num %u\n", ep_num);
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_epdisabled(1)
-                    .WriteTo(mmio);
             }
             if (doepint.ahberr()) {
                 zxlogf(ERROR, "Unhandled interrupt doepint.ahberr for ep_num %u\n", ep_num);
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_ahberr(1)
-                    .WriteTo(mmio);
             }
         }
         ep_num++;
@@ -341,12 +327,12 @@ zx_status_t Dwc2::HandleSetupRequest(size_t* out_actual) {
         // Handle some special setup requests in this driver
         switch (setup->bRequest) {
         case USB_REQ_SET_ADDRESS:
-            zxlogf(LTRACE, "SET_ADDRESS %d\n", setup->wValue);
+            zxlogf(LINFO, "SET_ADDRESS %d\n", setup->wValue);
             SetAddress(static_cast<uint8_t>(setup->wValue));
             *out_actual = 0;
             return ZX_OK;
         case USB_REQ_SET_CONFIGURATION:
-            zxlogf(LTRACE, "SET_CONFIGURATION %d\n", setup->wValue);
+            zxlogf(LINFO, "SET_CONFIGURATION %d\n", setup->wValue);
             configured_ = true;
             if (dci_intf_.has_value()) {
                 status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, out_actual);
@@ -461,7 +447,7 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
     auto ep_num = ep->ep_num;
     auto* mmio = get_mmio();
     bool is_in = DWC_EP_IS_IN(ep_num);
-
+printf("StartTransfer ep %u length %u\n", ep_num, length);
     if (length > 0) {
         if (is_in) {
             if (ep_num == DWC_EP0_IN) {
@@ -712,7 +698,7 @@ void Dwc2::HandleEp0TransferComplete() {
         break;
     case Ep0State::STALL:
     default:
-        zxlogf(LINFO, "EP0 state is %d, should not get here\n", static_cast<int>(ep0_state_));
+        zxlogf(ERROR, "EP0 state is %d, should not get here\n", static_cast<int>(ep0_state_));
         break;
     }
 }
@@ -744,6 +730,7 @@ void Dwc2::HandleTransferComplete(uint8_t ep_num) {
 zx_status_t Dwc2::InitController() {
     auto* mmio = get_mmio();
 
+printf("Dwc2::InitController start\n");
     auto gsnpsid = GSNPSID::Get().ReadFrom(mmio).reg_value();
     if (gsnpsid != 0x4f54400a && gsnpsid != 0x4f54330a) {
         zxlogf(WARN, "DWC2 driver has not been tested with IP version 0x%08x. "
@@ -797,6 +784,7 @@ zx_status_t Dwc2::InitController() {
         .FromValue(0)
         .set_dmaenable(1)
         .set_hburstlen(metadata_.dma_burst_len)
+        .set_nptxfemplvl_txfemplvl(1)
         .WriteTo(mmio);
 
     // Set turnaround time based on metadata
@@ -907,6 +895,8 @@ zx_status_t Dwc2::InitController() {
         .set_glblintrmsk(1)
         .WriteTo(mmio);
 
+
+printf("Dwc2::InitController ZX_OK\n");
     return ZX_OK;
 }
 
@@ -1037,6 +1027,43 @@ int Dwc2::IrqThread() {
         if (gintsts.reg_value() == 0) {
             continue;
         }
+
+#if 0
+        zxlogf(LINFO, "IRQ IRQ IRQ IRQ IRQ IRQ 0x%08X 0x%08X:", gintsts.reg_value(), gintmsk.reg_value());
+
+        if (gintsts.modemismatch()) zxlogf(LINFO, " modemismatch");
+        if (gintsts.otgintr()) zxlogf(LINFO, " otgintr gotgint: %08x\n  ", GOTGINT::Get().ReadFrom(mmio).reg_value());
+        if (gintsts.sof_intr()) zxlogf(LINFO, " sof_intr");
+        if (gintsts.rxstsqlvl()) zxlogf(LINFO, " rxstsqlvl");
+        if (gintsts.nptxfempty()) zxlogf(LINFO, " nptxfempty");
+        if (gintsts.ginnakeff()) zxlogf(LINFO, " ginnakeff");
+        if (gintsts.goutnakeff()) zxlogf(LINFO, " goutnakeff");
+        if (gintsts.ulpickint()) zxlogf(LINFO, " ulpickint");
+        if (gintsts.i2cintr()) zxlogf(LINFO, " i2cintr");
+        if (gintsts.erlysuspend()) zxlogf(LINFO, " erlysuspend");
+        if (gintsts.usbsuspend()) zxlogf(LINFO, " usbsuspend");
+        if (gintsts.usbreset()) zxlogf(LINFO, " usbreset");
+        if (gintsts.enumdone()) zxlogf(LINFO, " enumdone");
+        if (gintsts.isooutdrop()) zxlogf(LINFO, " isooutdrop");
+        if (gintsts.eopframe()) zxlogf(LINFO, " eopframe");
+        if (gintsts.restoredone()) zxlogf(LINFO, " restoredone");
+        if (gintsts.epmismatch()) zxlogf(LINFO, " epmismatch");
+        if (gintsts.inepintr()) zxlogf(LINFO, " inepintr");
+        if (gintsts.outepintr()) zxlogf(LINFO, " outepintr");
+        if (gintsts.incomplisoin()) zxlogf(LINFO, " incomplisoin");
+        if (gintsts.incomplisoout()) zxlogf(LINFO, " incomplisoout");
+        if (gintsts.fetsusp()) zxlogf(LINFO, " fetsusp");
+        if (gintsts.resetdet()) zxlogf(LINFO, " resetdet");
+        if (gintsts.port_intr()) zxlogf(LINFO, " port_intr");
+        if (gintsts.host_channel_intr()) zxlogf(LINFO, " host_channel_intr");
+        if (gintsts.ptxfempty()) zxlogf(LINFO, " ptxfempty");
+        if (gintsts.lpmtranrcvd()) zxlogf(LINFO, " lpmtranrcvd");
+        if (gintsts.conidstschng()) zxlogf(LINFO, " conidstschng");
+        if (gintsts.disconnect()) zxlogf(LINFO, " disconnect");
+        if (gintsts.sessreqintr()) zxlogf(LINFO, " sessreqintr");
+        if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
+        zxlogf(LINFO, "\n");
+#endif
 
         if (gintsts.usbreset()) {
             HandleReset();
