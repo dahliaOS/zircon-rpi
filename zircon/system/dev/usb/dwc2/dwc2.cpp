@@ -17,7 +17,7 @@ namespace dwc2 {
 void Dwc2::HandleReset() {
     auto* mmio = get_mmio();
 
-    zxlogf(LINFO, "\nRESET\n");
+    zxlogf(LINFO, "\nDwc2::HandleReset\n");
 
     ep0_state_ = Ep0State::DISCONNECTED;
     configured_ = false;
@@ -63,17 +63,16 @@ void Dwc2::HandleReset() {
     DOEPMSK::Get().FromValue(0).
         set_setup(1).
         set_stsphsercvd(1).
-        set_sr(1).
         set_xfercompl(1).
         set_ahberr(1).
         set_epdisabled(1).
-        set_bna(1).
+//        set_bna(1).
         WriteTo(mmio);
     DIEPMSK::Get().FromValue(0).
         set_xfercompl(1).
         set_timeout(1).
         set_ahberr(1).
-        set_bna(1).
+//        set_bna(1).
         set_epdisabled(1).
         WriteTo(mmio);
 
@@ -98,13 +97,16 @@ void Dwc2::HandleSuspend() {
     if (dci_intf_.has_value()) {
         dci_intf_->SetConnected(false);
     }
-    if (usb_phy_.has_value()) {
-        usb_phy_->ConnectStatusChanged(false);
-    }
 }
 
 // Handler for enumdone interrupt.
 void Dwc2::HandleEnumDone() {
+    zxlogf(LINFO, "\nDwc2::HandleEnumDone\n");
+
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(true);
+    }
+
     auto* mmio = get_mmio();
 
     ep0_state_ = Ep0State::IDLE;
@@ -157,8 +159,7 @@ void Dwc2::HandleInEpInterrupt() {
     // Loop through IN endpoints and handle those with interrupt raised
     while (ep_bits) {
         if (ep_bits & 1) {
-            // Simultaneously read and acknowledge the interrupt flags.
-            auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
+            auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
 #if 1
 printf("HandleInEpInterrupt ep_num %u DIEPINT: ", ep_num);
 if (diepint.xfercompl()) printf("xfercompl ");
@@ -177,6 +178,7 @@ printf("\n");
 //            diepint.set_reg_value(diepint.reg_value() & DIEPMSK::Get().ReadFrom(mmio).reg_value());
 
             if (diepint.xfercompl()) {
+DIEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
                 if (ep_num == DWC_EP0_IN) {
                     HandleEp0TransferComplete();
                 } else {
@@ -188,26 +190,17 @@ printf("\n");
             }
 
             // TODO(voydanoff) Implement error recovery for these interrupts
-            if (diepint.bna()) {
-                zxlogf(ERROR, "Unandled interrupt bna ep_num %u\n", ep_num);
-            }
             if (diepint.epdisabled()) {
+DIEPINT::Get(ep_num).FromValue(0).set_epdisabled(1).WriteTo(mmio);
                 zxlogf(ERROR, "Unandled interrupt diepint.epdisabled for ep_num %u\n", ep_num);
             }
             if (diepint.ahberr()) {
+DIEPINT::Get(ep_num).FromValue(0).set_ahberr(1).WriteTo(mmio);
                 zxlogf(ERROR, "Unandled interrupt diepint.ahberr for ep_num %u\n", ep_num);
             }
             if (diepint.timeout()) {
+DIEPINT::Get(ep_num).FromValue(0).set_timeout(1).WriteTo(mmio);
                 zxlogf(ERROR, "Unandled interrupt diepint.timeout for ep_num %u\n", ep_num);
-            }
-            if (diepint.intktxfemp()) {
-                zxlogf(ERROR, "Unandled interrupt diepint.intktxfemp for ep_num %u\n", ep_num);
-            }
-            if (diepint.intknepmis()) {
-                zxlogf(ERROR, "Unhandled interrupt diepint.intknepmis for ep_num %u\n", ep_num);
-            }
-            if (diepint.inepnakeff()) {
-                printf("Unandled interrupt diepint.inepnakeff for ep_num %u\n", ep_num);
             }
         }
         ep_num++;
@@ -236,8 +229,10 @@ void Dwc2::HandleOutEpInterrupt() {
     // Loop through OUT endpoints and handle those with interrupt raised
     while (ep_bits) {
         if (ep_bits & 1) {
-            // Simultaneously read and acknowledge the interrupt flags.
-            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
+
+//            // Simultaneously read and acknowledge the interrupt flags.
+//            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
+            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
 #if 1
 printf("HandleOutEpInterrupt ep_num %u DOEPINT: ", ep_num);
 if (doepint.xfercompl()) printf("xfercompl ");
@@ -260,29 +255,7 @@ printf("\n");
 //            doepint.set_reg_value(doepint.reg_value() & DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
 /*
-            if (doepint.sr()) {
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_sr(1)
-                    .WriteTo(mmio);
-            }
-
-            if (doepint.stsphsercvd()) {
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_stsphsercvd(1)
-                    .WriteTo(mmio);
-            }
-            if (doepint.bna()) {
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_bna(1)
-                    .WriteTo(mmio);
-            }
-*/
-
- //           if (doepint.setup()) {
-            if (doepint.sr()) {
+            if (doepint.setup() || doepint.sr()) {
                 // TODO(voydanoff):   On this interrupt, the application must read the DOEPTSIZn
                 // register to determine the number of SETUP packets received and process the last
                 // received SETUP packet.
@@ -294,20 +267,47 @@ printf("\n");
 
                 HandleEp0Setup();
             }
+*/
             if (doepint.xfercompl()) {
+DOEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
                 if (ep_num == DWC_EP0_OUT) {
-                    if (!doepint.setup()) {
+                    if (doepint.sr()) {
+DOEPINT::Get(ep_num).FromValue(0).set_sr(1).WriteTo(mmio);
+                        if (!doepint.setup()) {
+                            usleep(100);
+                            doepint.ReadFrom(mmio);
+                        }
+
+                        if (doepint.setup()) {
+DOEPINT::Get(ep_num).FromValue(0).set_setup(1).WriteTo(mmio);
+                            memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
+                            zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u "
+                                   "wLength: %u\n", cur_setup_.bmRequestType, cur_setup_.bRequest,
+                                   cur_setup_.wValue, cur_setup_.wIndex, cur_setup_.wLength);
+            
+                            HandleEp0Setup();
+                        } else {
+                            // Prepare for more setup packets
+printf("Prepare for more setup packets\n");
+                            StartEp0();
+                        }
+                    } else {
                         HandleEp0TransferComplete();
                     }
                 } else {
                     HandleTransferComplete(ep_num);
                 }
             }
+            if (doepint.stsphsercvd()) {
+DOEPINT::Get(ep_num).FromValue(0).set_stsphsercvd(1).WriteTo(mmio);
+            }
             // TODO(voydanoff) Implement error recovery for these interrupts
             if (doepint.epdisabled()) {
+DOEPINT::Get(ep_num).FromValue(0).set_epdisabled(1).WriteTo(mmio);
                 zxlogf(ERROR, "Unhandled interrupt doepint.epdisabled for ep_num %u\n", ep_num);
             }
             if (doepint.ahberr()) {
+DOEPINT::Get(ep_num).FromValue(0).set_ahberr(1).WriteTo(mmio);
                 zxlogf(ERROR, "Unhandled interrupt doepint.ahberr for ep_num %u\n", ep_num);
             }
         }
@@ -411,11 +411,13 @@ void Dwc2::StartEp0() {
         .set_pktcnt(1)
         .set_xfersize(ep->req_xfersize)
         .WriteTo(mmio);
+    hw_wmb();
 
     DEPCTL::Get(DWC_EP0_OUT)
         .ReadFrom(mmio)
         .set_epena(1)
         .WriteTo(mmio);
+    hw_wmb();
 }
 
 // Queues the next USB request for the specified endpoint
@@ -1018,14 +1020,15 @@ int Dwc2::IrqThread() {
         if (wait_res != ZX_OK) {
             zxlogf(ERROR, "dwc_usb: irq wait failed, retcode = %d\n", wait_res);
         }
-
+while (1) {
         auto gintsts = GINTSTS::Get().ReadFrom(mmio);
         auto gintmsk = GINTMSK::Get().ReadFrom(mmio);
         gintsts.WriteTo(mmio);
         gintsts.set_reg_value(gintsts.reg_value() & gintmsk.reg_value());
 
         if (gintsts.reg_value() == 0) {
-            continue;
+//            continue;
+            break;
         }
 
 #if 0
@@ -1081,7 +1084,7 @@ int Dwc2::IrqThread() {
             HandleOutEpInterrupt();
         }
     }
-
+}
     zxlogf(INFO, "dwc_usb: irq thread finished\n");
     return 0;
 }

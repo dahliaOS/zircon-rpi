@@ -230,6 +230,7 @@ zx_status_t aml_usb_init(aml_bus_t* bus) {
         return status;
     }
 
+#if 1
     const size_t config_size = sizeof(struct UsbConfig) +
             2 * sizeof(fuchsia_hardware_usb_peripheral_FunctionDescriptor);
     struct UsbConfig* config = (struct UsbConfig*)calloc(1, config_size);
@@ -249,7 +250,24 @@ zx_status_t aml_usb_init(aml_bus_t* bus) {
     config->functions[1].interface_protocol = 0;
     usb_metadata[0].data_size = config_size;
     usb_metadata[0].data_buffer = config;
-
+#else
+    const size_t config_size = sizeof(struct UsbConfig) +
+            sizeof(fuchsia_hardware_usb_peripheral_FunctionDescriptor);
+    struct UsbConfig* config = (struct UsbConfig*)calloc(1, config_size);
+    if (!config) {
+        return ZX_ERR_NO_MEMORY;
+    }
+    config->vid = GOOGLE_USB_VID;
+    config->pid = GOOGLE_USB_FUNCTION_TEST_PID;
+    strcpy(config->manufacturer, kManufacturer);
+    strcpy(config->serial, kSerial);
+    strcpy(config->product, kProduct);
+    config->functions[0].interface_class = USB_CLASS_VENDOR;
+    config->functions[0].interface_subclass = 0;
+    config->functions[0].interface_protocol = 0;
+    usb_metadata[0].data_size = config_size;
+    usb_metadata[0].data_buffer = config;
+#endif
     status = pbus_composite_device_add(&bus->pbus, &dwc2_dev, dwc2_components,
                                      countof(dwc2_components), 1);
     free(config);
