@@ -66,17 +66,13 @@ void Dwc2::HandleReset() {
         set_xfercompl(1).
         set_ahberr(1).
         set_epdisabled(1).
-//        set_bna(1).
         WriteTo(mmio);
     DIEPMSK::Get().FromValue(0).
         set_xfercompl(1).
         set_timeout(1).
         set_ahberr(1).
-//        set_bna(1).
         set_epdisabled(1).
         WriteTo(mmio);
-
-printf("Reset DOEPMSK %08x\n", DOEPMSK::Get().ReadFrom(mmio).reg_value());
 
     // Clear device address
     DCFG::Get()
@@ -160,7 +156,7 @@ void Dwc2::HandleInEpInterrupt() {
     while (ep_bits) {
         if (ep_bits & 1) {
             auto diepint = DIEPINT::Get(ep_num).ReadFrom(mmio);
-#if 1
+#if 0
 printf("HandleInEpInterrupt ep_num %u DIEPINT: ", ep_num);
 if (diepint.xfercompl()) printf("xfercompl ");
 if (diepint.epdisabled()) printf("epdisabled ");
@@ -184,7 +180,7 @@ DIEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
                 } else {
                     HandleTransferComplete(ep_num);
                     if (diepint.nak()) {
-                        zxlogf(ERROR, "Unandled interrupt diepint.nak ep_num %u\n", ep_num);
+DIEPINT::Get(ep_num).FromValue(0).set_nak(1).WriteTo(mmio);
                     }
                 }
             }
@@ -192,15 +188,15 @@ DIEPINT::Get(ep_num).FromValue(0).set_xfercompl(1).WriteTo(mmio);
             // TODO(voydanoff) Implement error recovery for these interrupts
             if (diepint.epdisabled()) {
 DIEPINT::Get(ep_num).FromValue(0).set_epdisabled(1).WriteTo(mmio);
-                zxlogf(ERROR, "Unandled interrupt diepint.epdisabled for ep_num %u\n", ep_num);
+                zxlogf(ERROR, "Unhandled interrupt diepint.epdisabled for ep_num %u\n", ep_num);
             }
             if (diepint.ahberr()) {
 DIEPINT::Get(ep_num).FromValue(0).set_ahberr(1).WriteTo(mmio);
-                zxlogf(ERROR, "Unandled interrupt diepint.ahberr for ep_num %u\n", ep_num);
+                zxlogf(ERROR, "Unhandled interrupt diepint.ahberr for ep_num %u\n", ep_num);
             }
             if (diepint.timeout()) {
 DIEPINT::Get(ep_num).FromValue(0).set_timeout(1).WriteTo(mmio);
-                zxlogf(ERROR, "Unandled interrupt diepint.timeout for ep_num %u\n", ep_num);
+                zxlogf(ERROR, "Unhandled interrupt diepint.timeout for ep_num %u\n", ep_num);
             }
         }
         ep_num++;
@@ -233,7 +229,7 @@ void Dwc2::HandleOutEpInterrupt() {
 //            // Simultaneously read and acknowledge the interrupt flags.
 //            auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio).WriteTo(mmio);
             auto doepint = DOEPINT::Get(ep_num).ReadFrom(mmio);
-#if 1
+#if 0
 printf("HandleOutEpInterrupt ep_num %u DOEPINT: ", ep_num);
 if (doepint.xfercompl()) printf("xfercompl ");
 if (doepint.epdisabled()) printf("epdisabled ");
@@ -449,7 +445,6 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
     auto ep_num = ep->ep_num;
     auto* mmio = get_mmio();
     bool is_in = DWC_EP_IS_IN(ep_num);
-printf("StartTransfer ep %u length %u\n", ep_num, length);
     if (length > 0) {
         if (is_in) {
             if (ep_num == DWC_EP0_IN) {
@@ -732,7 +727,6 @@ void Dwc2::HandleTransferComplete(uint8_t ep_num) {
 zx_status_t Dwc2::InitController() {
     auto* mmio = get_mmio();
 
-printf("Dwc2::InitController start\n");
     auto gsnpsid = GSNPSID::Get().ReadFrom(mmio).reg_value();
     if (gsnpsid != 0x4f54400a && gsnpsid != 0x4f54330a) {
         zxlogf(WARN, "DWC2 driver has not been tested with IP version 0x%08x. "
@@ -897,8 +891,6 @@ printf("Dwc2::InitController start\n");
         .set_glblintrmsk(1)
         .WriteTo(mmio);
 
-
-printf("Dwc2::InitController ZX_OK\n");
     return ZX_OK;
 }
 
