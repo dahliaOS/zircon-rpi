@@ -227,12 +227,33 @@ async fn connect<'a>(
     if args.len() != 1 {
         return Ok(format!("usage: {}", Cmd::Connect.cmd_help()));
     }
-    // `args[0]` is the identifier of the remote device to connect to
+    // `args[0]` is the identifier of the peer to connect to
     let id = match to_identifier(state, args[0]) {
         Some(id) => id,
         None => return Ok(format!("Unable to connect: Unknown address {}", args[0])),
     };
     let response = await!(control_svc.connect(&id))?;
+    if response.error.is_some() {
+        Ok(Status::from(response).to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
+async fn disconnect<'a>(
+    args: &'a [&'a str],
+    state: &'a Mutex<State>,
+    control_svc: &'a ControlProxy,
+) -> Result<String, Error> {
+    if args.len() != 1 {
+        return Ok(format!("usage: {}", Cmd::Disconnect.cmd_help()));
+    }
+    // `args[0]` is the identifier of the peer to connect to
+    let id = match to_identifier(state, args[0]) {
+        Some(id) => id,
+        None => return Ok(format!("Unable to disconnect: Unknown address {}", args[0])),
+    };
+    let response = await!(control_svc.disconnect(&id))?;
     if response.error.is_some() {
         Ok(Status::from(response).to_string())
     } else {
@@ -311,6 +332,7 @@ async fn handle_cmd(
         let cmd = raw_cmd.parse();
         let res = match cmd {
             Ok(Cmd::Connect) => await!(connect(args, &state, &bt_svc)),
+            Ok(Cmd::Disconnect) => await!(disconnect(args, &state, &bt_svc)),
             Ok(Cmd::StartDiscovery) => await!(set_discovery(true, &bt_svc)),
             Ok(Cmd::StopDiscovery) => await!(set_discovery(false, &bt_svc)),
             Ok(Cmd::Discoverable) => await!(set_discoverable(true, &bt_svc)),

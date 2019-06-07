@@ -87,14 +87,15 @@ macro_rules! gen_commands {
 // `Cmd` is the declarative specification of all commands that bt-cli accepts.
 gen_commands! {
     Cmd {
-        Connect = ("connect", ["id|addr"], "connect to a remote device"),
+        Connect = ("connect", ["id|addr"], "connect to a peer"),
+        Disconnect = ("disconnect", ["id|addr"], "disconnect from a peer"),
         ActiveAdapter = ("adapter", [], "Show the Active Adapter"),
         SetActiveAdapter = ("set-adapter", ["id"], "Set the Active Adapter"),
         SetAdapterName = ("set-local-name", ["name"], "Set the name of the Active Adapter"),
         SetAdapterDeviceClass = ("set-device-class", ["Major Class", "Minor Class", "Service Classes..."], "Set the device class of the Active Adapter"),
         GetAdapters = ("list-adapters", [], "Show all known bluetooth adapters"),
-        GetDevices = ("list-devices", [], "Show all known remote devices"),
-        GetDevice = ("device", ["id|addr"], "Show details for a known remote device"),
+        GetDevices = ("list-devices", [], "Show all known peers"),
+        GetDevice = ("device", ["id|addr"], "Show details for a known peer"),
         StartDiscovery = ("start-discovery", [], "Start Discovery"),
         StopDiscovery = ("stop-discovery", [], "Stop Discovery"),
         Discoverable = ("discoverable", [], "Set this device to be discoverable"),
@@ -134,7 +135,7 @@ impl Completer for CmdHelper {
             let partial_argument = components.get(1).unwrap_or(&"");
             let devices = &self.state.lock().devices;
             let mut candidates = vec![];
-            if command == "connect" || command == "device" {
+            if command == "connect" || command == "disconnect" || command == "device" {
                 // connect and device have 'id|addr' arguments
                 // can match against remote device identifier or address
                 for device in devices.values() {
