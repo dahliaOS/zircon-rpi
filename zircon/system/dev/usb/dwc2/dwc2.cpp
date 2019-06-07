@@ -110,13 +110,13 @@ void Dwc2::HandleEnumDone() {
     endpoints_[DWC_EP0_IN].phys = static_cast<uint32_t>(ep0_buffer_.phys());
     endpoints_[DWC_EP0_OUT].phys = static_cast<uint32_t>(ep0_buffer_.phys());
 
-    DEPCTL::Get(DWC_EP0_IN)
+    DEPCTL0::Get(DWC_EP0_IN)
         .ReadFrom(mmio)
-        .set_mps(DWC_DEP0CTL_MPS_64)
+        .set_mps(DEPCTL0::MPS_64)
         .WriteTo(mmio);
-    DEPCTL::Get(DWC_EP0_OUT)
+    DEPCTL0::Get(DWC_EP0_OUT)
         .ReadFrom(mmio)
-        .set_mps(DWC_DEP0CTL_MPS_64)
+        .set_mps(DEPCTL0::MPS_64)
         .WriteTo(mmio);
 
     DCTL::Get()
@@ -485,16 +485,11 @@ void Dwc2::StartTransfer(Endpoint* ep, uint32_t length) {
     deptsiz.WriteTo(mmio);
     hw_wmb();
 
-    auto depctl = DEPCTL::Get(ep_num).ReadFrom(mmio);
-    depctl.set_cnak(1);
-    depctl.set_epena(1);
-    if (ep_num == DWC_EP0_IN || ep_num == DWC_EP0_OUT) {
-        depctl.set_mps(DWC_DEP0CTL_MPS_64);
-    } else {
-        depctl.set_mps(ep->max_packet_size);
-    }
-
-    depctl.WriteTo(mmio);
+    DEPCTL::Get(ep_num)
+        .ReadFrom(mmio)
+        .set_cnak(1)
+        .set_epena(1)
+        .WriteTo(mmio);
     hw_wmb();
 }
 
@@ -797,7 +792,7 @@ zx_status_t Dwc2::InitController() {
         .set_epmscnt(2)
         .set_descdma(0)
         .set_devspd(0)
-        .set_perfrint(PeriodicFrameInterval::PERCENT_80)
+        .set_perfrint(DCFG::PERCENT_80)
         .WriteTo(mmio);
 
     DCTL::Get()

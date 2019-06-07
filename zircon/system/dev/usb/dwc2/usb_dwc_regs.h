@@ -329,19 +329,15 @@ public:
     static auto Get(unsigned i) { return hwreg::RegisterAddr<DTXFSIZ>(0x104 + 4 * (i - 1)); }
 };
 
-// For DCFG.perfrint.
-// Indicates the time within a (micro)Frame at which the application must be notified
-// using the End Of Periodic Frame Interrupt. This can be used to determine If all the
-// isochronous traffic for that (micro)Frame is complete.
-enum class PeriodicFrameInterval {
-    PERCENT_80 = 0,
-    PERCENT_85 = 1,
-    PERCENT_90 = 2,
-    PERCENT_95 = 3,
-};
-
 class DCFG : public hwreg::RegisterBase<DCFG, uint32_t> {
 public:
+    enum PeriodicFrameInterval {
+        PERCENT_80 = 0,
+        PERCENT_85 = 1,
+        PERCENT_90 = 2,
+        PERCENT_95 = 3,
+    };
+
     DEF_FIELD(1, 0, devspd);
     DEF_BIT(2, nzstsouthshk);
     DEF_BIT(3, ena32khzs);
@@ -430,10 +426,6 @@ public:
 
 class DEPCTL : public hwreg::RegisterBase<DEPCTL, uint32_t> {
 public:
-#define DWC_DEP0CTL_MPS_64	 0
-#define DWC_DEP0CTL_MPS_32	 1
-#define DWC_DEP0CTL_MPS_16	 2
-#define DWC_DEP0CTL_MPS_8	 3
     DEF_FIELD(10, 0, mps);
     DEF_FIELD(14, 11, nextep);
     DEF_BIT(15, usbactep);
@@ -450,6 +442,34 @@ public:
     DEF_BIT(30, epdis);
     DEF_BIT(31, epena);
     static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPCTL>(0x900 + 0x20 * i); }
+};
+
+// Variant of DEPCTL used for endpoint zero
+class DEPCTL0 : public hwreg::RegisterBase<DEPCTL0, uint32_t> {
+public:
+    enum MaxPacketSize {
+        MPS_64 = 0,
+        MPS_32 = 1,
+        MPS_16 = 2,
+        MPS_8 = 3,
+    };
+
+    DEF_ENUM_FIELD(MaxPacketSize, 2, 0, mps);
+    DEF_FIELD(14, 11, nextep);
+    DEF_BIT(15, usbactep);
+    DEF_BIT(16, dpid);
+    DEF_BIT(17, naksts);
+    DEF_FIELD(19, 18, eptype);
+    DEF_BIT(20, snp);
+    DEF_BIT(21, stall);
+    DEF_FIELD(25, 22, txfnum);
+    DEF_BIT(26, cnak);
+    DEF_BIT(27, snak);
+    DEF_BIT(28, setd0pid);
+    DEF_BIT(29, setd1pid);
+    DEF_BIT(30, epdis);
+    DEF_BIT(31, epena);
+    static auto Get(unsigned i) { return hwreg::RegisterAddr<DEPCTL0>(0x900 + 0x20 * i); }
 };
 
 class DIEPINT : public hwreg::RegisterBase<DIEPINT, uint32_t> {
