@@ -410,11 +410,9 @@ public:
     DEF_BIT(6, back2backsetup);
     DEF_BIT(8, outpkterr);
     DEF_BIT(9, bna);
-    DEF_BIT(11, pktdrpsts);
     DEF_BIT(12, babble);
     DEF_BIT(13, nak);
     DEF_BIT(14, nyet);
-    DEF_BIT(15, sr);
     static auto Get() { return hwreg::RegisterAddr<DOEPMSK>(0x814); }
 };
 
@@ -466,6 +464,7 @@ public:
     DEF_BIT(8, txfifoundrn);
     DEF_BIT(9, bna);
     DEF_BIT(13, nak);
+    DEF_BIT(14, nyet);
     static auto Get(unsigned i) { return hwreg::RegisterAddr<DIEPINT>(0x908 + 0x20 * i); }
 };
 

@@ -63,17 +63,14 @@ void Dwc2::HandleReset() {
     DOEPMSK::Get().FromValue(0).
         set_setup(1).
         set_stsphsercvd(1).
-        set_sr(1).
         set_xfercompl(1).
         set_ahberr(1).
         set_epdisabled(1).
-        set_bna(1).
         WriteTo(mmio);
     DIEPMSK::Get().FromValue(0).
         set_xfercompl(1).
         set_timeout(1).
         set_ahberr(1).
-        set_bna(1).
         set_epdisabled(1).
         WriteTo(mmio);
 
@@ -96,13 +93,14 @@ void Dwc2::HandleSuspend() {
     if (dci_intf_.has_value()) {
         dci_intf_->SetConnected(false);
     }
-    if (usb_phy_.has_value()) {
-        usb_phy_->ConnectStatusChanged(false);
-    }
 }
 
 // Handler for enumdone interrupt.
 void Dwc2::HandleEnumDone() {
+    if (usb_phy_.has_value()) {
+        usb_phy_->ConnectStatusChanged(true);
+    }
+
     auto* mmio = get_mmio();
 
     ep0_state_ = Ep0State::IDLE;
@@ -152,7 +150,6 @@ void Dwc2::HandleInEpInterrupt() {
         .FromValue(DWC_EP_IN_MASK)
         .WriteTo(mmio);
 
-
     // Loop through IN endpoints and handle those with interrupt raised
     while (ep_bits) {
         if (ep_bits & 1) {
@@ -177,13 +174,6 @@ void Dwc2::HandleInEpInterrupt() {
                             .WriteTo(mmio);
                     }
                 }
-            }
-            if (diepint.bna()) {
-                zxlogf(ERROR, "Unandled interrupt bna ep_num %u\n", ep_num);
-                DIEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_bna(1)
-                    .WriteTo(mmio);
             }
 
             // TODO(voydanoff) Implement error recovery for these interrupts
@@ -270,12 +260,6 @@ void Dwc2::HandleOutEpInterrupt() {
                 DOEPINT::Get(ep_num)
                     .ReadFrom(mmio)
                     .set_stsphsercvd(1)
-                    .WriteTo(mmio);
-            }
-            if (doepint.bna()) {
-                DOEPINT::Get(ep_num)
-                    .ReadFrom(mmio)
-                    .set_bna(1)
                     .WriteTo(mmio);
             }
 
@@ -425,11 +409,13 @@ void Dwc2::StartEp0() {
         .set_pktcnt(1)
         .set_xfersize(ep->req_xfersize)
         .WriteTo(mmio);
+    hw_wmb();
 
     DEPCTL::Get(DWC_EP0_OUT)
         .ReadFrom(mmio)
         .set_epena(1)
         .WriteTo(mmio);
+    hw_wmb();
 }
 
 // Queues the next USB request for the specified endpoint
@@ -712,7 +698,7 @@ void Dwc2::HandleEp0TransferComplete() {
         break;
     case Ep0State::STALL:
     default:
-        zxlogf(LINFO, "EP0 state is %d, should not get here\n", static_cast<int>(ep0_state_));
+        zxlogf(ERROR, "EP0 state is %d, should not get here\n", static_cast<int>(ep0_state_));
         break;
     }
 }
@@ -797,6 +783,7 @@ zx_status_t Dwc2::InitController() {
         .FromValue(0)
         .set_dmaenable(1)
         .set_hburstlen(metadata_.dma_burst_len)
+        .set_nptxfemplvl_txfemplvl(1)
         .WriteTo(mmio);
 
     // Set turnaround time based on metadata
@@ -1028,15 +1015,53 @@ int Dwc2::IrqThread() {
         if (wait_res != ZX_OK) {
             zxlogf(ERROR, "dwc_usb: irq wait failed, retcode = %d\n", wait_res);
         }
-
+while (1) {
         auto gintsts = GINTSTS::Get().ReadFrom(mmio);
         auto gintmsk = GINTMSK::Get().ReadFrom(mmio);
         gintsts.WriteTo(mmio);
         gintsts.set_reg_value(gintsts.reg_value() & gintmsk.reg_value());
 
         if (gintsts.reg_value() == 0) {
-            continue;
+//            continue;
+            break;
         }
+
+#if 0
+        zxlogf(LINFO, "IRQ IRQ IRQ IRQ IRQ IRQ 0x%08X 0x%08X:", gintsts.reg_value(), gintmsk.reg_value());
+
+        if (gintsts.modemismatch()) zxlogf(LINFO, " modemismatch");
+        if (gintsts.otgintr()) zxlogf(LINFO, " otgintr gotgint: %08x\n  ", GOTGINT::Get().ReadFrom(mmio).reg_value());
+        if (gintsts.sof_intr()) zxlogf(LINFO, " sof_intr");
+        if (gintsts.rxstsqlvl()) zxlogf(LINFO, " rxstsqlvl");
+        if (gintsts.nptxfempty()) zxlogf(LINFO, " nptxfempty");
+        if (gintsts.ginnakeff()) zxlogf(LINFO, " ginnakeff");
+        if (gintsts.goutnakeff()) zxlogf(LINFO, " goutnakeff");
+        if (gintsts.ulpickint()) zxlogf(LINFO, " ulpickint");
+        if (gintsts.i2cintr()) zxlogf(LINFO, " i2cintr");
+        if (gintsts.erlysuspend()) zxlogf(LINFO, " erlysuspend");
+        if (gintsts.usbsuspend()) zxlogf(LINFO, " usbsuspend");
+        if (gintsts.usbreset()) zxlogf(LINFO, " usbreset");
+        if (gintsts.enumdone()) zxlogf(LINFO, " enumdone");
+        if (gintsts.isooutdrop()) zxlogf(LINFO, " isooutdrop");
+        if (gintsts.eopframe()) zxlogf(LINFO, " eopframe");
+        if (gintsts.restoredone()) zxlogf(LINFO, " restoredone");
+        if (gintsts.epmismatch()) zxlogf(LINFO, " epmismatch");
+        if (gintsts.inepintr()) zxlogf(LINFO, " inepintr");
+        if (gintsts.outepintr()) zxlogf(LINFO, " outepintr");
+        if (gintsts.incomplisoin()) zxlogf(LINFO, " incomplisoin");
+        if (gintsts.incomplisoout()) zxlogf(LINFO, " incomplisoout");
+        if (gintsts.fetsusp()) zxlogf(LINFO, " fetsusp");
+        if (gintsts.resetdet()) zxlogf(LINFO, " resetdet");
+        if (gintsts.port_intr()) zxlogf(LINFO, " port_intr");
+        if (gintsts.host_channel_intr()) zxlogf(LINFO, " host_channel_intr");
+        if (gintsts.ptxfempty()) zxlogf(LINFO, " ptxfempty");
+        if (gintsts.lpmtranrcvd()) zxlogf(LINFO, " lpmtranrcvd");
+        if (gintsts.conidstschng()) zxlogf(LINFO, " conidstschng");
+        if (gintsts.disconnect()) zxlogf(LINFO, " disconnect");
+        if (gintsts.sessreqintr()) zxlogf(LINFO, " sessreqintr");
+        if (gintsts.wkupintr()) zxlogf(LINFO, " wkupintr");
+        zxlogf(LINFO, "\n");
+#endif
 
         if (gintsts.usbreset()) {
             HandleReset();
@@ -1054,7 +1079,7 @@ int Dwc2::IrqThread() {
             HandleOutEpInterrupt();
         }
     }
-
+}
     zxlogf(INFO, "dwc_usb: irq thread finished\n");
     return 0;
 }
