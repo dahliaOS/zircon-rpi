@@ -53,6 +53,12 @@ class SuspendTask;
 // return to this state once made visible.
 #define DEV_CTX_INVISIBLE     0x80
 
+// Signals used on the test event
+#define TEST_BIND_DONE_SIGNAL ZX_USER_SIGNAL_0
+#define TEST_SUSPEND_DONE_SIGNAL ZX_USER_SIGNAL_1
+#define TEST_RESUME_DONE_SIGNAL ZX_USER_SIGNAL_2
+#define TEST_REMOVE_DONE_SIGNAL ZX_USER_SIGNAL_4
+
 // clang-format on
 
 struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHandler<Device> {
@@ -330,6 +336,22 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     };
 
     State state() const { return state_; }
+
+    enum class TestStateMachine {
+        kTestNotStarted = 1,
+        kTestUnbindSent,
+        kTestRemoveCalled,
+        kTestBindSent,
+        kTestBindDone,
+        kTestSuspendSent,
+        kTestSupsendDone,
+        kTestResumeSent,
+        kTestResumeDone,
+        kTestDone,
+    };
+
+    TestStateMachine test_state = TestStateMachine::kTestNotStarted;
+    zx_handle_t test_event = ZX_HANDLE_INVALID;
 private:
     zx_status_t HandleRead();
 

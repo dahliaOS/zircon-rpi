@@ -73,6 +73,12 @@ All other libraries should be statically linked into a driver.
 
 Turn on verbose logging.
 
+## driver.\<name>.run-compatibility-tests
+
+if this option is set, devmgr will run compatibility tests for the device
+that is published in DdkAdd("name") by the driver under test. If the compatibility
+tests fail, the driver is unbound. The name comes from the parameter to DdkAdd.
+
 ## driver.\<name>.disable
 
 Disables the driver with the given name. The driver name comes from the
