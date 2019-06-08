@@ -395,7 +395,8 @@ zx_status_t Device::HandleRead() {
                 char bootarg[256];
                 snprintf(bootarg, sizeof(bootarg), "driver.%s.run-compatibility-tests",
                          child.name().data());
-                if (this->coordinator->boot_args().GetBool(bootarg, false)) {
+                if (!strcmp(bootarg, "driver.aml-sd-emmc.run-compatibility-tests")) {
+                //if (this->coordinator->boot_args().GetBool(bootarg, false)) {
                     if (real_parent->test_state == Device::TestStateMachine::kTestNotStarted) {
                         auto newchild = fbl::WrapRefPtr(static_cast<Device*>(&child));
                         this->coordinator->DriverCompatibiltyTest(newchild);

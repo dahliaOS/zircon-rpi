@@ -1375,6 +1375,9 @@ int Coordinator::RunCompatibilityTests() {
         }
     }
 
+    //Release the reference we have taken for context.
+    test_context_.dev.reset();
+
     real_parent->test_state = Device::TestStateMachine::kTestUnbindSent;
     uint32_t observed = 0;
     // Now wait for the device to be removed.
