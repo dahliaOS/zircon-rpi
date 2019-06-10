@@ -26,7 +26,7 @@ use {
 };
 
 use crate::{
-    packets::*,
+    packets::{Error as PacketError, *},
     profile::{AvrcpProfile, AvrcpProfileEvent, AvrcpService},
     types::{PeerError as Error, PeerId},
 };
@@ -788,9 +788,9 @@ impl ControlChannelCommandHandler {
     }
 
     fn handle_notification(&self, _inner: Arc<PeerManagerInner>, command: AvcCommand) {
-        let body = command.body();
+        let packet_body = command.body();
 
-        let preamble = match VendorDependentPreamble::decode(body) {
+        let preamble = match VendorDependentPreamble::decode(packet_body) {
             Err(e) => {
                 if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
                     fx_log_info!(
@@ -799,13 +799,13 @@ impl ControlChannelCommandHandler {
                         e
                     );
                 }
-                let _ = command.send_response(AvcResponseType::Rejected, &[]);
+                let _ = command.send_response(AvcResponseType::NotImplemented, packet_body);
                 return;
             }
             Ok(x) => x,
         };
 
-        let body = &body[preamble.encoded_len()..];
+        let body = &packet_body[preamble.encoded_len()..];
 
         let pdu_id = match PduId::try_from(preamble.pdu_id) {
             Err(e) => {
@@ -818,14 +818,16 @@ impl ControlChannelCommandHandler {
                         e
                     );
                 }
-                let _ = command.send_response(AvcResponseType::NotImplemented, &[]);
+                let _ = command.send_response(AvcResponseType::NotImplemented, packet_body);
                 return;
             }
             Ok(x) => x,
         };
 
         if pdu_id != PduId::RegisterNotification {
-            let _ = command.send_response(AvcResponseType::NotImplemented, &[]);
+            let reject_response = RejectResponse::new(&pdu_id, &StatusCode::InvalidParameter);
+            let packet = reject_response.encode_packet().unwrap();
+            let _ = command.send_response(AvcResponseType::Rejected, &packet[..]);
             return;
         }
 
@@ -942,7 +944,9 @@ impl ControlChannelCommandHandler {
                     return;
                 }*/
                 _ => {
-                    let _ = command.send_response(AvcResponseType::NotImplemented, &[]);
+                    let reject_response = RejectResponse::new(&PduId::RegisterNotification, &StatusCode::InvalidParameter);
+                    let packet = reject_response.encode_packet().unwrap();
+                    let _ = command.send_response(AvcResponseType::Rejected, &packet[..]);
                     return;
                 }
             },
@@ -953,7 +957,9 @@ impl ControlChannelCommandHandler {
                     body,
                     e
                 );
-                let _ = command.send_response(AvcResponseType::NotImplemented, &[]);
+                let reject_response = RejectResponse::new(&PduId::RegisterNotification, &StatusCode::InvalidCommand);
+                let packet = reject_response.encode_packet().unwrap();
+                let _ = command.send_response(AvcResponseType::Rejected, &packet[..]);
                 return;
             }
         }
@@ -962,45 +968,9 @@ impl ControlChannelCommandHandler {
     fn handle_vendor_command(
         &self,
         _inner: Arc<PeerManagerInner>,
-        command: &AvcCommand,
+        pdu_id: PduId,
+        body: &[u8],
     ) -> Result<(AvcResponseType, Vec<u8>), Error> {
-        let body = command.body();
-
-        let preamble = match VendorDependentPreamble::decode(body) {
-            Err(e) => {
-                if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
-                    fx_log_info!(
-                        "Unable to parse vendor dependent preamble {}: {:?}",
-                        remote_peer.peer_id,
-                        e
-                    );
-                }
-                return Err(Error::PacketError(e));
-            }
-            Ok(x) => x,
-        };
-
-        let body = &body[preamble.encoded_len()..];
-
-        let pdu_id = match PduId::try_from(preamble.pdu_id) {
-            Err(e) => {
-                if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
-                    fx_log_err!(
-                        "Unsupported vendor dependent command pdu {} received from peer {} {:#?}: {:?}",
-                        preamble.pdu_id,
-                        remote_peer.peer_id,
-                        body,
-                        e
-                    );
-                }
-                // recoverable error
-                return Ok((AvcResponseType::NotImplemented, vec![]));
-            }
-            Ok(x) => x,
-        };
-
-        fx_vlog!(tag: "avrcp", 2, "Received command PDU {:#?}", pdu_id);
-
         match pdu_id {
             PduId::GetCapabilities => {
                 let get_cap_cmd =
@@ -1016,10 +986,10 @@ impl ControlChannelCommandHandler {
                     }
                     GetCapabilitiesCapabilityId::EventsId => {
                         let response = GetCapabilitiesResponse::new_events(&[
-                            u8::from(&NotificationEventId::EventVolumeChanged),
-                            u8::from(&NotificationEventId::EventPlaybackStatusChanged),
-                            u8::from(&NotificationEventId::EventTrackChanged),
-                            u8::from(&NotificationEventId::EventPlaybackPosChanged),
+                            //u8::from(&NotificationEventId::EventVolumeChanged),
+                            //u8::from(&NotificationEventId::EventPlaybackStatusChanged),
+                            //u8::from(&NotificationEventId::EventTrackChanged),
+                            //u8::from(&NotificationEventId::EventPlaybackPosChanged),
                         ]);
                         let buf = self.assemble_vendor_response(response)?;
                         Ok((AvcResponseType::ImplementedStable, buf))
@@ -1038,7 +1008,7 @@ impl ControlChannelCommandHandler {
                 let buf = self.assemble_vendor_response(response)?;
                 Ok((AvcResponseType::ImplementedStable, buf))
             }
-            _ => Ok((AvcResponseType::NotImplemented, vec![])),
+            _ => Err(Error::CommandNotSupported),
         }
     }
 
@@ -1046,13 +1016,51 @@ impl ControlChannelCommandHandler {
         if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
             fx_vlog!(tag: "avrcp", 2, "received command {:#?}", command);
             if command.is_vendor_dependent() {
+                let packet_body = command.body();
+
+                let preamble = match VendorDependentPreamble::decode(packet_body) {
+                    Err(e) => {
+                        if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
+                            fx_log_info!(
+                                "Unable to parse vendor dependent preamble {}: {:?}",
+                                remote_peer.peer_id,
+                                e
+                            );
+                        }
+                        let _ = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]);
+                        return Ok(());
+                    }
+                    Ok(x) => x,
+                };
+
+                let body = &packet_body[preamble.encoded_len()..];
+
+                let pdu_id = match PduId::try_from(preamble.pdu_id) {
+                    Err(e) => {
+                        if let Some(remote_peer) = Weak::upgrade(&self.remote_peer) {
+                            fx_log_err!(
+                                "Unsupported vendor dependent command pdu {} received from peer {} {:#?}: {:?}",
+                                preamble.pdu_id,
+                                remote_peer.peer_id,
+                                body,
+                                e
+                            );
+                        }
+                        // recoverable error
+                        let _ = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]);
+                        return Ok(());
+                    }
+                    Ok(x) => x,
+                };
+                fx_vlog!(tag: "avrcp", 2, "Received command PDU {:#?}", pdu_id);
+
                 match command.avc_header().packet_type() {
                     AvcPacketType::Command(AvcCommandType::Notify) => {
                         self.handle_notification(pmi, command);
                         Ok(())
                     }
                     AvcPacketType::Command(AvcCommandType::Control) => {
-                        match self.handle_vendor_command(pmi, &command) {
+                        match self.handle_vendor_command(pmi, pdu_id, &body[..]) {
                             Ok((response_type, buf)) => {
                                 if let Err(e) = command.send_response(response_type, &buf[..]) {
                                     fx_log_err!(
@@ -1070,13 +1078,52 @@ impl ControlChannelCommandHandler {
                                     remote_peer.peer_id,
                                     e
                                 );
-                                let _ = command.send_response(AvcResponseType::Rejected, &[]);
-                                Err(e)
+
+                                match e {
+                                    Error::CommandNotSupported => {
+                                        if let Err(e) = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]) {
+                                            fx_log_err!(
+                                                "Error sending not implemented response to peer {}, {:?}",
+                                                remote_peer.peer_id,
+                                                e
+                                            );
+                                            return Err(Error::from(e));
+                                        }
+                                        Ok(())
+                                    }
+                                    _=> {
+                                        let response_error_code = match e {
+                                            Error::PacketError(PacketError::OutOfRange) => StatusCode::InvalidParameter,
+                                            Error::PacketError(PacketError::InvalidHeader) => StatusCode::ParameterContentError,
+                                            Error::PacketError(PacketError::InvalidMessage) => StatusCode::ParameterContentError,
+                                            Error::PacketError(PacketError::UnsupportedMessage) => StatusCode::InternalError,
+                                            _ => StatusCode::InternalError,
+                                        };
+
+                                        let reject_response = RejectResponse::new(&PduId::RegisterNotification, &response_error_code);
+                                        if let Ok(packet) = reject_response.encode_packet() {
+                                            if let Err(e) = command.send_response(AvcResponseType::Rejected, &packet[..]) {
+                                                fx_log_err!(
+                                                    "Error sending vendor reject response to peer {}, {:?}",
+                                                    remote_peer.peer_id,
+                                                    e
+                                                );
+                                                return Err(Error::from(e));
+                                            }
+                                        } else {
+                                            // Todo handle this case better.
+                                            fx_log_err!("Unable to encoded reject response");
+                                        }
+                                        Ok(())
+                                    }
+                                }
+
+
                             }
                         }
                     }
                     _ => {
-                        let _ = command.send_response(AvcResponseType::NotImplemented, &[]);
+                        let _ = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]);
                         Ok(())
                     }
                 }
@@ -1200,10 +1247,38 @@ impl Stream for NotificationStream {
                             return Poll::Ready(Some(Err(Error::CommandNotSupported)));
                         }
                         AvcResponseType::Rejected => {
-                            // can happen when a player has changed.
-                            this.stream = None;
+                            let body = response.response();
+                            if let Ok(reject_packet) = VendorDependentPreamble::decode(&body[..]) {
+                                let payload = &body[reject_packet.encoded_len()..];
+                                if payload.len() > 0 {
+                                    if let Ok(status_code) = StatusCode::try_from(payload[0]) {
+                                        match status_code {
+                                            StatusCode::AddressedPlayerChanged => {
+                                                this.stream = None;
+                                                continue;
+                                            }
+                                            StatusCode::InvalidCommand => {
+                                                this.terminated = true;
+                                                return Poll::Ready(Some(Err(Error::CommandFailed)));
+                                            }
+                                            StatusCode::InvalidParameter => {
+                                                this.terminated = true;
+                                                return Poll::Ready(Some(Err(Error::CommandNotSupported)));
+                                            }
+                                            StatusCode::InternalError => {
+                                                this.terminated = true;
+                                                return Poll::Ready(Some(Err(Error::GenericError(format_err!("Remote internal error")))));
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                            this.terminated = true;
+                            return Poll::Ready(Some(Err(Error::UnexpectedResponse)));
                         }
                         AvcResponseType::Changed => {
+                            // Repump.
                             this.stream = None;
                         }
                         // All others are invalid responses for register notification.

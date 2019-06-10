@@ -11,10 +11,11 @@ mod continuation;
 mod getcapabilities;
 mod getelementattributes;
 mod notification;
+mod rejected;
 
 pub use {
     self::continuation::*, self::getcapabilities::*, self::getelementattributes::*,
-    self::notification::*,
+    self::notification::*, self::rejected::*,
 };
 
 /// The error types for packet parsing.
@@ -89,6 +90,20 @@ pub_decodable_enum! {
         Start => 0b01,
         Continue => 0b10,
         Stop => 0b11,
+    }
+}
+
+// Todo: Missing browsing channel specific status codes
+pub_decodable_enum! {
+    StatusCode<u8, Error> {
+        InvalidCommand => 0x00,
+        InvalidParameter => 0x01,
+        ParameterContentError => 0x02,
+        InternalError => 0x03,
+        Success => 0x04,
+        UidChanged => 0x05,
+        NoAvailablePlayers => 0x15,
+        AddressedPlayerChanged => 0x16,
     }
 }
 
