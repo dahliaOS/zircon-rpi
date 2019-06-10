@@ -291,6 +291,7 @@ static zx_status_t fidl_RemoveDevice(void* ctx, fidl_txn_t* txn);
 static zx_status_t fidl_MakeVisible(void* ctx, fidl_txn_t* txn);
 static zx_status_t fidl_BindDevice(void* ctx, const char* driver_path_data, size_t driver_path_size,
                                    fidl_txn_t* txn);
+static zx_status_t fidl_RunCompatibilityTests(void* ctx, fidl_txn_t* txn);
 static zx_status_t fidl_GetTopologicalPath(void* ctx, fidl_txn_t* txn);
 static zx_status_t fidl_LoadFirmware(void* ctx, const char* fw_path_data, size_t fw_path_size,
                                      fidl_txn_t* txn);
@@ -321,6 +322,7 @@ static const fuchsia_device_manager_Coordinator_ops_t fidl_ops = {
     .PublishMetadata = fidl_PublishMetadata,
     .AddCompositeDevice = fidl_AddCompositeDevice,
     .DirectoryWatch = fidl_DirectoryWatch,
+    .RunCompatibilityTests = fidl_RunCompatibilityTests,
 };
 
 zx_status_t Device::HandleRead() {
@@ -576,6 +578,13 @@ static zx_status_t fidl_BindDevice(void* ctx, const char* driver_path_data, size
     log(ERROR, "devcoordinator: rpc: bind-device '%s'\n", dev->name().data());
     zx_status_t status = dev->coordinator->BindDevice(dev, driver_path, false /* new device */);
     return fuchsia_device_manager_CoordinatorBindDevice_reply(txn, status);
+}
+
+static zx_status_t fidl_RunCompatibilityTests(void* ctx, fidl_txn_t* txn) {
+    auto dev = fbl::WrapRefPtr(static_cast<Device*>(ctx));
+    log(ERROR, "devcoordinator: rpc: fidl_RunCompatibilityTests '%s'\n", dev->name().data());
+    zx_status_t status = dev->coordinator->DriverCompatibiltyTest(dev);
+    return fuchsia_device_manager_CoordinatorRunCompatibilityTests_reply(txn, status);
 }
 
 static zx_status_t fidl_GetTopologicalPath(void* ctx, fidl_txn_t* txn) {

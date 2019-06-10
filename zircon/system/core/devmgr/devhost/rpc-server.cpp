@@ -576,6 +576,12 @@ static zx_status_t fidl_DeviceControllerBind(void* ctx, const char* driver_data,
     return device_bind(conn->dev, drv_libname);
 }
 
+static zx_status_t fidl_DeviceControllerRunCompatibilityTests(void* ctx, fidl_txn_t* txn) {
+    auto conn = static_cast<DevfsConnection*>(ctx);
+    zx_status_t status = device_run_compatibility_tests(conn->dev);
+    return fuchsia_device_ControllerRunCompatibilityTests_reply(txn, status);
+}
+
 static zx_status_t fidl_DeviceControllerUnbind(void* ctx, fidl_txn_t* txn) {
     auto conn = static_cast<DevfsConnection*>(ctx);
     zx_status_t status = device_unbind(conn->dev);
@@ -672,6 +678,7 @@ static const fuchsia_device_Controller_ops_t kDeviceControllerOps = {
     .SetDriverLogFlags = fidl_DeviceControllerSetDriverLogFlags,
     .DebugSuspend = fidl_DeviceControllerDebugSuspend,
     .DebugResume = fidl_DeviceControllerDebugResume,
+    .RunCompatibilityTests = fidl_DeviceControllerRunCompatibilityTests,
 };
 
 zx_status_t devhost_fidl_handler(fidl_msg_t* msg, fidl_txn_t* txn, void* cookie) {

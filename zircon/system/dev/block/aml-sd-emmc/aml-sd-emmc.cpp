@@ -968,9 +968,6 @@ zx_status_t AmlSdEmmc::Create(void* ctx, zx_device_t* parent) {
 }
 
 AmlSdEmmc::~AmlSdEmmc() {
-    irq_.destroy();
-    if (irq_thread_)
-        thrd_join(irq_thread_, NULL);
 }
 
 void AmlSdEmmc::DdkUnbind() {

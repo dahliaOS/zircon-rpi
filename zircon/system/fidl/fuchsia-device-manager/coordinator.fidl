@@ -211,4 +211,7 @@ protocol Coordinator {
     /// See fuchsia.io.Directory for more information.
     DirectoryWatch(uint32 mask, uint32 options, handle<channel> watcher)
         -> (zx.status s);
+
+    /// Run Compatibility tests
+    RunCompatibilityTests() -> (zx.status status);
 };

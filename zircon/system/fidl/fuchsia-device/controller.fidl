@@ -62,4 +62,8 @@ protocol Controller {
     DebugSuspend() -> (zx.status status);
     /// Debug command: execute the device's resume hook
     DebugResume() -> (zx.status status);
+
+    /// RunCompatibilityTests: Run compatibility test on the driver that added
+    /// this device.
+    RunCompatibilityTests() -> (zx.status status);
 };

@@ -197,6 +197,10 @@ private:
     // The connection associated with a fuchsia.device.Controller/Bind.
     fbl::Mutex bind_conn_lock_;
     fbl::Vector<fs::FidlConnection> bind_conn_ TA_GUARDED(bind_conn_lock_);
+    
+    // The connection associated with fuchsia.device.Controller/RunCompatibilityTests
+    fbl::Mutex test_conn_lock_;
+    fbl::Vector<fs::FidlConnection> test_conn_ TA_GUARDED(test_conn_lock_);
 };
 
 // zx_device_t objects must be created or initialized by the driver manager's
@@ -222,6 +226,7 @@ private:
 
 zx_status_t device_bind(const fbl::RefPtr<zx_device_t>& dev, const char* drv_libname);
 zx_status_t device_unbind(const fbl::RefPtr<zx_device_t>& dev);
+zx_status_t device_run_compatibility_tests(const fbl::RefPtr<zx_device_t>& dev);
 zx_status_t device_open(const fbl::RefPtr<zx_device_t>& dev, fbl::RefPtr<zx_device_t>* out,
                         uint32_t flags);
 // Note that device_close() is intended to consume a reference (logically, the
