@@ -274,9 +274,12 @@ void SocketChannelRelay<ChannelT>::ServiceSocketWriteQueue() {
   do {
     ZX_DEBUG_ASSERT(!socket_write_queue_.empty());
     ZX_DEBUG_ASSERT(socket_write_queue_.front());
-    ZX_DEBUG_ASSERT(socket_write_queue_.front()->size());
 
     const ByteBuffer& rx_data = *socket_write_queue_.front();
+    if (rx_data.size() == 0) {
+      socket_write_queue_.pop_front();
+      continue;
+    }
     size_t n_bytes_written = 0;
     write_res =
         socket_.write(0, rx_data.data(), rx_data.size(), &n_bytes_written);
