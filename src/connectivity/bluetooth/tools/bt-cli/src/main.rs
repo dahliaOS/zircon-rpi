@@ -115,12 +115,19 @@ async fn set_adapter_device_class<'a>(
     }
 }
 
-fn get_devices(state: &Mutex<State>) -> String {
+fn get_devices<'a>(args: &'a [&'a str], state: &'a Mutex<State>) -> String {
     let state = state.lock();
     if state.devices.is_empty() {
         String::from("No known remote devices")
     } else {
-        format_devices(state.devices.iter().map(|(_, d)| d).collect())
+        if args.len() == 0 {
+            format_devices(state.devices.iter().map(|(_, d)| d).collect(), None)
+        } else if args.len() == 3 && args[0] == "--filter" {
+            format_devices(state.devices.iter().map(|(_, d)| d).collect(),
+                Some((args[1].to_string(), args[2].to_string())))
+        } else {
+            format!("usage: {}", Cmd::GetDevice.cmd_help())
+        }
     }
 }
 
@@ -145,7 +152,19 @@ async fn set_discovery(discovery: bool, control_svc: &ControlProxy) -> Result<St
     }
 }
 
-fn format_devices(devices: Vec<&RemoteDevice>) -> String {
+/*
+ * what if we allowed filters, e.g.
+ *
+ *   list-devices --filter Name="foo"
+ */
+
+fn prefix_match(s: &str, prefix: String) -> bool {
+    let mut s = s.to_string();
+    s.truncate(prefix.len());
+    s == prefix
+}
+
+fn format_devices(devices: Vec<&RemoteDevice>, filter: Option<(String, String)>) -> String {
     let headers = vec![
         "Identifier",
         "Address",
@@ -159,6 +178,15 @@ fn format_devices(devices: Vec<&RemoteDevice>) -> String {
         "Services",
     ];
     let rows: Vec<Vec<String>> = devices.into_iter().map(format_device).collect();
+    let rows = if let Some((field, value)) = filter {
+        if let Some(f_index) = headers.iter().position(|f| f == &field) {
+            rows.iter().filter(|r| prefix_match(&r[f_index], value.clone())).cloned().collect()
+        } else {
+            return format!("Invalid filter field: {}. Allowable fields are {:?}", field, headers);
+        }
+    } else {
+        rows
+    };
     tabulate(rows, Some(headers))
 }
 
@@ -379,7 +407,7 @@ async fn handle_cmd(
             Ok(Cmd::StopDiscovery) => await!(set_discovery(false, &bt_svc)),
             Ok(Cmd::Discoverable) => await!(set_discoverable(true, &bt_svc)),
             Ok(Cmd::NotDiscoverable) => await!(set_discoverable(false, &bt_svc)),
-            Ok(Cmd::GetDevices) => Ok(get_devices(&state)),
+            Ok(Cmd::GetDevices) => Ok(get_devices(args, &state)),
             Ok(Cmd::GetDevice) => Ok(get_device(args, &state)),
             Ok(Cmd::GetAdapters) => await!(get_adapters(&bt_svc)),
             Ok(Cmd::SetActiveAdapter) => await!(set_active_adapter(args, &bt_svc)),
