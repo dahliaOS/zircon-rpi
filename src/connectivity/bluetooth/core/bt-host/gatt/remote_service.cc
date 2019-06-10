@@ -464,10 +464,23 @@ HostError RemoteService::GetCharacteristic(IdType id,
   if (!HasCharacteristics())
     return HostError::kNotReady;
 
+  /*
   if (id >= characteristics_.size())
     return HostError::kNotFound;
 
   *out_char = &characteristics_[id];
+  */
+
+  auto c = std::find_if(
+      characteristics_.begin(),
+      characteristics_.end(),
+      [id](auto& c) { return c.info().handle == static_cast<uint16_t>(id); }
+      );
+
+  if (c == characteristics_.end())
+    return HostError::kNotFound;
+
+  *out_char = &*c;
   return HostError::kNoError;
 }
 
@@ -482,6 +495,7 @@ HostError RemoteService::GetDescriptor(
   if (!HasCharacteristics())
     return HostError::kNotReady;
 
+  /*
   // The second set of 16-bits of |id| represent the characteristic ID and the
   // lower bits are the descriptor index. (See the section titled "ID SCHEME" in
   // remote_characteristic.h)
@@ -497,6 +511,26 @@ HostError RemoteService::GetDescriptor(
 
   *out_desc = &chrc->descriptors()[desc_idx];
   ZX_DEBUG_ASSERT((*out_desc)->id() == id);
+  */
+
+  const RemoteCharacteristic::Descriptor* descriptor = nullptr;
+
+  for (const auto& c: characteristics_) {
+    auto d = std::find_if(
+        c.descriptors().begin(),
+        c.descriptors().end(),
+        [id](auto& d) { return d.info().handle == static_cast<uint16_t>(id); }
+        );
+    if (d != c.descriptors().end()) {
+      descriptor = &*d;
+      break;
+    }
+  }
+
+  if (!descriptor)
+    return HostError::kNotFound;
+
+  *out_desc = descriptor;
 
   return HostError::kNoError;
 }

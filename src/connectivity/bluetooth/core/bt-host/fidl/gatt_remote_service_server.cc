@@ -26,7 +26,8 @@ constexpr uint8_t kPropertyMask = 0x7F;
 
 Characteristic CharacteristicToFidl(const RemoteCharacteristic& chrc) {
   Characteristic fidl_char;
-  fidl_char.id = chrc.id();
+  //fidl_char.id = chrc.id();
+  fidl_char.id = static_cast<uint64_t>(chrc.info().handle);
   fidl_char.type = chrc.info().type.ToString();
   fidl_char.properties =
       static_cast<uint16_t>(chrc.info().properties & kPropertyMask);
@@ -35,7 +36,8 @@ Characteristic CharacteristicToFidl(const RemoteCharacteristic& chrc) {
 
   for (const auto& descr : chrc.descriptors()) {
     Descriptor fidl_descr;
-    fidl_descr.id = descr.id();
+    //fidl_descr.id = descr.id();
+    fidl_descr.id = static_cast<uint64_t>(descr.info().handle);
     fidl_descr.type = descr.info().type.ToString();
     fidl_char.descriptors.push_back(std::move(fidl_descr));
   }
