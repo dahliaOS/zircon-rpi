@@ -563,6 +563,34 @@ async fn main() -> Result<(), Error> {
                     profile,
                     attributes
                 );
+                match remotes.write().entry(peer_id.clone()) {
+                    Entry::Occupied(_) => {
+                        fx_log_info!("Service found but we are already connected. Ignoring.");
+                    }
+                    Entry::Vacant(entry) => {
+                        fx_log_info!("Connecting to discovered peer {}", peer_id);
+                        let (status, channel) = await!(profile_svc.connect_l2cap(&peer_id, PSM_AVDTP as u16))?;
+                        if let Some(e) = status.error {
+                            fx_log_warn!("Couldn't connect to {}: {:?}", peer_id, e);
+                            continue;
+                        }
+                        if channel.is_none() {
+                            fx_log_warn!("Couldn't connect to {}: no channel", peer_id);
+                            continue;
+                        }
+                        let peer = match avdtp::Peer::new(channel.unwrap()) {
+                            Ok(peer) => peer,
+                            Err(e) => {
+                                fx_log_warn!("Error adding signaling peer {}: {:?}", peer_id, e);
+                                continue;
+                            }
+                        };
+                        let remote = entry.insert(RemotePeer::new(peer, streams.clone()));
+                        // Spawn tasks to handle this remote
+                        remote.start_requests_task(remotes.clone(), peer_id);
+                        fuchsia_async::spawn(discover_remote_streams(remote.peer()));
+                    }
+                }
             }
             Ok(ProfileEvent::OnConnected { device_id, service_id: _, channel, protocol }) => {
                 fx_log_info!("Connection from {}: {:?} {:?}!", device_id, channel, protocol);
