@@ -233,7 +233,7 @@ void HostServer::StartDiscovery(StartDiscoveryCallback callback) {
 
 void HostServer::StopDiscovery(StopDiscoveryCallback callback) {
   bt_log(TRACE, "bt-host", "StopDiscovery()");
-  if (!le_discovery_session_) {
+  if (!le_discovery_session_ && !bredr_discovery_session_) {
     bt_log(TRACE, "bt-host", "no active discovery session");
     callback(
         NewFidlError(ErrorCode::BAD_STATE, "No discovery session in progress"));
