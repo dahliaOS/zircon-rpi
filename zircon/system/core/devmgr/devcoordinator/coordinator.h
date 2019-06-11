@@ -120,6 +120,11 @@ struct CoordinatorConfig {
     bool suspend_debug;
 };
 
+struct CompatibilityTestArgs {
+   fbl::RefPtr<Device> dev;
+   char devname[fuchsia_device_manager_DEVICE_NAME_MAX];
+};
+
 class Coordinator {
 public:
     Coordinator(const Coordinator&) = delete;
@@ -233,6 +238,7 @@ public:
 
     SuspendContext& suspend_context() { return suspend_context_; }
     const SuspendContext& suspend_context() const { return suspend_context_; }
+    const CompatibilityTestArgs& test_context() const { return test_context_; }
 
     zx_status_t BindFidlServiceProxy(zx::channel listen_on);
 
@@ -244,6 +250,7 @@ public:
 
     // This method is public only for the test suite.
     zx_status_t BindDriver(Driver* drv, const AttemptBindFunc& attempt_bind);
+    zx_status_t DriverCompatibiltyTest(const fbl::RefPtr<Device>& dev);
 private:
     CoordinatorConfig config_;
     bool running_ = false;
@@ -280,6 +287,7 @@ private:
     fbl::RefPtr<Device> test_device_;
 
     SuspendContext suspend_context_;
+    CompatibilityTestArgs test_context_;
 
     fbl::DoublyLinkedList<fbl::unique_ptr<Metadata>, Metadata::Node> published_metadata_;
 
@@ -309,6 +317,7 @@ private:
 
     zx_status_t GetMetadataRecurse(const fbl::RefPtr<Device>& dev, uint32_t type, void* buffer,
                                    size_t buflen, size_t* size);
+    int RunCompatibilityTests();
 
     void InitOutgoingServices();
 };

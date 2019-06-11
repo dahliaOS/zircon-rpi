@@ -384,6 +384,29 @@ zx_status_t Device::HandleRead() {
         if (resp->status != ZX_OK) {
             log(ERROR, "devcoordinator: rpc: bind-driver '%s' status %d\n", name_.data(),
                 resp->status);
+        } else {
+            Device* real_parent;
+            if (flags & DEV_CTX_PROXY) {
+                real_parent = this->parent().get();
+            } else {
+                real_parent = this;
+            }
+
+            for (auto& child : real_parent->children()) {
+                char bootarg[256];
+                snprintf(bootarg, sizeof(bootarg), "driver.%s.run-compatibility-tests",
+                         child.name().data());
+                if (this->coordinator->boot_args().GetBool(bootarg, false)
+                    && (real_parent->test_state == Device::TestStateMachine::kTestNotStarted)) {
+                        auto newchild = fbl::WrapRefPtr(static_cast<Device*>(&child));
+                        this->coordinator->DriverCompatibiltyTest(newchild);
+                        break;
+                } else if (real_parent->test_state == Device::TestStateMachine::kTestBindSent &&
+                           !strcmp(this->coordinator->test_context().devname, child.name().data())) {
+                    zx_object_signal(real_parent->test_event, 0, TEST_BIND_DONE_SIGNAL);
+                    break;
+                }
+            }
         }
         // TODO: try next driver, clear BOUND flag
     } else if (ordinal == fuchsia_device_manager_DeviceControllerSuspendOrdinal ||
