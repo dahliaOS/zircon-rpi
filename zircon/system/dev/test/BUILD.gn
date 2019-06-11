@@ -7,6 +7,7 @@ group("test") {
   deps = [
     "ddk-test",
     "isolateddevmgr",
+    "ddk-runcompatibilityhook",
     "mock-device",
     "operation",
     "sysdev",

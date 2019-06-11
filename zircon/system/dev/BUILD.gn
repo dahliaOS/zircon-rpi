@@ -39,6 +39,8 @@ group("dev") {
     "sysmem",
     "tee",
     "test/isolateddevmgr:isolateddevmgr-test",
+    "test/ddk-runcompatibilityhook:ddk-runcompatibilityhook-test",
+    "test/ddk-runcompatibilityhook:ddk-runcompatibilityhook-test-child",
     "test/mock-device",
     "test/sysdev",
     "thermal",
