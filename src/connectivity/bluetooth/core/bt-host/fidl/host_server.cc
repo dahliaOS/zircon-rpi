@@ -191,7 +191,7 @@ void HostServer::StartDiscovery(StartDiscoveryCallback callback) {
   bt_log(TRACE, "bt-host", "StartDiscovery()");
   ZX_DEBUG_ASSERT(adapter());
 
-  if (le_discovery_session_ || requesting_discovery_) {
+  if (le_discovery_session_ || bredr_discovery_session_ || requesting_discovery_) {
     bt_log(TRACE, "bt-host", "discovery already in progress");
     callback(
         NewFidlError(ErrorCode::IN_PROGRESS, "Discovery already in progress"));
