@@ -973,27 +973,31 @@ impl ControlChannelCommandHandler {
     ) -> Result<(AvcResponseType, Vec<u8>), Error> {
         match pdu_id {
             PduId::GetCapabilities => {
-                let get_cap_cmd =
-                    GetCapabilitiesCommand::decode(body).map_err(|e| Error::PacketError(e))?;
+                if let Ok(get_cap_cmd) = GetCapabilitiesCommand::decode(body) {
+                    fx_vlog!(tag: "avrcp", 2, "Received GetCapabilities Command {:#?}", get_cap_cmd);
 
-                fx_vlog!(tag: "avrcp", 2, "Received GetCapabilities Command {:#?}", get_cap_cmd);
-
-                match get_cap_cmd.capability_id() {
-                    GetCapabilitiesCapabilityId::CompanyId => {
-                        let response = GetCapabilitiesResponse::new_btsig_company();
-                        let buf = self.assemble_vendor_response(response)?;
-                        Ok((AvcResponseType::ImplementedStable, buf))
+                    match get_cap_cmd.capability_id() {
+                        GetCapabilitiesCapabilityId::CompanyId => {
+                            let response = GetCapabilitiesResponse::new_btsig_company();
+                            let buf = self.assemble_vendor_response(response)?;
+                            Ok((AvcResponseType::ImplementedStable, buf))
+                        }
+                        GetCapabilitiesCapabilityId::EventsId => {
+                            let response = GetCapabilitiesResponse::new_events(&[
+                                //u8::from(&NotificationEventId::EventVolumeChanged),
+                                //u8::from(&NotificationEventId::EventPlaybackStatusChanged),
+                                //u8::from(&NotificationEventId::EventTrackChanged),
+                                //u8::from(&NotificationEventId::EventPlaybackPosChanged),
+                            ]);
+                            let buf = self.assemble_vendor_response(response)?;
+                            Ok((AvcResponseType::ImplementedStable, buf))
+                        }
                     }
-                    GetCapabilitiesCapabilityId::EventsId => {
-                        let response = GetCapabilitiesResponse::new_events(&[
-                            //u8::from(&NotificationEventId::EventVolumeChanged),
-                            //u8::from(&NotificationEventId::EventPlaybackStatusChanged),
-                            //u8::from(&NotificationEventId::EventTrackChanged),
-                            //u8::from(&NotificationEventId::EventPlaybackPosChanged),
-                        ]);
-                        let buf = self.assemble_vendor_response(response)?;
-                        Ok((AvcResponseType::ImplementedStable, buf))
-                    }
+                } else {
+                    fx_vlog!(tag: "avrcp", 2, "Unable to parse GetCapabilitiesCommand, sending rejection.");
+                    let response = RejectResponse::new(&pdu_id, &StatusCode::InvalidParameter);
+                    let buf = self.assemble_vendor_response(response)?;
+                    Ok((AvcResponseType::Rejected, buf))
                 }
             }
             PduId::GetElementAttributes => {
@@ -1047,7 +1051,11 @@ impl ControlChannelCommandHandler {
                             );
                         }
                         // recoverable error
-                        let _ = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]);
+                        let preamble = VendorDependentPreamble::new_single(preamble.pdu_id, 0);
+                        let prelen = preamble.encoded_len();
+                        let mut buf = vec![0; prelen];
+                        preamble.encode(&mut buf[..]).expect("unable to encode preamble");
+                        let _ = command.send_response(AvcResponseType::NotImplemented, &buf[..]);
                         return Ok(());
                     }
                     Ok(x) => x,
@@ -1081,7 +1089,11 @@ impl ControlChannelCommandHandler {
 
                                 match e {
                                     Error::CommandNotSupported => {
-                                        if let Err(e) = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]) {
+                                        let preamble = VendorDependentPreamble::new_single(preamble.pdu_id, 0);
+                                        let prelen = preamble.encoded_len();
+                                        let mut buf = vec![0; prelen];
+                                        preamble.encode(&mut buf[..]).expect("unable to encode preamble");
+                                        if let Err(e) = command.send_response(AvcResponseType::NotImplemented, &buf[..]) {
                                             fx_log_err!(
                                                 "Error sending not implemented response to peer {}, {:?}",
                                                 remote_peer.peer_id,
@@ -1123,7 +1135,11 @@ impl ControlChannelCommandHandler {
                         }
                     }
                     _ => {
-                        let _ = command.send_response(AvcResponseType::NotImplemented, &packet_body[..]);
+                        let preamble = VendorDependentPreamble::new_single(preamble.pdu_id, 0);
+                        let prelen = preamble.encoded_len();
+                        let mut buf = vec![0; prelen];
+                        preamble.encode(&mut buf[..]).expect("unable to encode preamble");
+                        let _ = command.send_response(AvcResponseType::NotImplemented, &buf[..]);
                         Ok(())
                     }
                 }
@@ -1227,7 +1243,7 @@ impl Stream for NotificationStream {
                 }
             }
 
-            let stream_box = this.stream.as_mut().unwrap();
+            let stream_box = this.stream.as_mut().expect("stream should not be none");
             let stream = stream_box.as_mut();
             let result = ready!(stream.poll_next(cx));
             match result {

@@ -161,6 +161,10 @@ impl Encodable for GetCapabilitiesResponse {
     }
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
+        if buf.len() < self.encoded_len() {
+            return Err(Error::OutOfRange);
+        }
+
         buf[0] = u8::from(&self.capability_id);
         buf[1] = u8::try_from(self.capabilities.len()).map_err(|_| Error::Encoding)?;
         match self.capability_id {

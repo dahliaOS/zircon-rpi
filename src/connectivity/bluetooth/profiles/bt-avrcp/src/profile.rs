@@ -189,7 +189,7 @@ impl AvrcpProfile {
 
     pub fn take_event_stream(
         &self,
-    ) -> impl Stream<Item = Result<AvrcpProfileEvent, Error>> + FusedStream {
+    ) -> impl Stream<Item = Result<AvrcpProfileEvent, Error>> {
         let event_stream: ProfileEventStream = self.profile_svc.take_event_stream();
         let expected_service_id = self.service_id;
         event_stream.filter_map(move |event| {
@@ -257,7 +257,7 @@ impl AvrcpProfile {
                         return future::ready(None);
                     }
 
-                    let service_uuids = service_uuids.unwrap();
+                    let service_uuids = service_uuids.expect("service_uuids should not be none");
 
                     let mut services = vec![];
 
