@@ -86,6 +86,9 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
     void PushBindConn(const fs::FidlConnection& conn);
     bool PopBindConn(fs::FidlConnection* conn);
 
+    void PushTestCompatibilityConn(const fs::FidlConnection& conn);
+    bool PopTestCompatibilityConn(fs::FidlConnection* conn);
+
     // Check if this devhost has a device with the given ID, and if so returns a
     // reference to it.
     static fbl::RefPtr<zx_device> GetDeviceFromLocalId(uint64_t local_id);
@@ -197,6 +200,11 @@ private:
     // The connection associated with a fuchsia.device.Controller/Bind.
     fbl::Mutex bind_conn_lock_;
     fbl::Vector<fs::FidlConnection> bind_conn_ TA_GUARDED(bind_conn_lock_);
+
+    // The connection associated with fuchsia.device.Controller/RunCompatibilityTests
+    fbl::Mutex test_compatibility_conn_lock_;
+    fbl::Vector<fs::FidlConnection> test_compatibility_conn_
+                                          TA_GUARDED(test_compatibility_conn_lock_);
 };
 
 // zx_device_t objects must be created or initialized by the driver manager's
@@ -222,6 +230,8 @@ private:
 
 zx_status_t device_bind(const fbl::RefPtr<zx_device_t>& dev, const char* drv_libname);
 zx_status_t device_unbind(const fbl::RefPtr<zx_device_t>& dev);
+zx_status_t device_run_compatibility_tests(const fbl::RefPtr<zx_device_t>& dev,
+                                           const char* child_name);
 zx_status_t device_open(const fbl::RefPtr<zx_device_t>& dev, fbl::RefPtr<zx_device_t>* out,
                         uint32_t flags);
 // Note that device_close() is intended to consume a reference (logically, the
