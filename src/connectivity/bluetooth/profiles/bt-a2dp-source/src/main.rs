@@ -488,6 +488,8 @@ fn make_saw_wave_stream() -> SawWaveStream {
     }
 }
 
+const ENCODED_BYTES_TO_FLUSH: usize = 22050; // 1/8 of a s
+
 /// packetizes and encodes SBC audio frames, and sends them to `sender`
 #[allow(dead_code)]
 async fn sbc_encode_stream(mut frame_stream: impl futures::Stream<Item = Result<Vec<u8>, fuchsia_media::Error>> + stream::FusedStream + Unpin, mut sender: Sender<Vec<u8>>) -> Result<(), Error> {
@@ -531,6 +533,8 @@ async fn sbc_encode_stream(mut frame_stream: impl futures::Stream<Item = Result<
 
     let mut encoder_output = encoder.take_encoded_stream();
 
+    let mut encoded_bytes = 0;
+
     loop {
         let mut frames_fut = frame_stream.select_next_some();
         let mut encoded_fut = encoder_output.select_next_some();
@@ -562,6 +566,11 @@ async fn sbc_encode_stream(mut frame_stream: impl futures::Stream<Item = Result<
             frame_data = frames_fut => {
                 let data = frame_data?;
                 encoder.deliver_input(&data)?;
+                encoded_bytes = encoded_bytes + data.len();
+                if encoded_bytes > ENCODED_BYTES_TO_FLUSH {
+                    let _ = encoder.flush_input_buf()?;
+                    encoded_bytes = 0;
+                }
             },
             complete => return Ok(()),
         }
