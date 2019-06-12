@@ -316,16 +316,36 @@ async fn run_listeners(mut stream: ControlEventStream, state: &Mutex<State>) -> 
             }
             ControlEvent::OnDeviceUpdated { device } => {
                 let device = RemoteDevice::from(device);
-                println!("{}", device.summary());
+                print_device_state_change(&state.lock(), &device);
                 state.lock().devices.insert(device.0.identifier.clone(), device);
             }
             ControlEvent::OnDeviceRemoved { identifier } => {
-                println!("Device {} removed", identifier);
                 state.lock().devices.remove(&identifier);
             }
         }
     }
     Ok(())
+}
+
+fn print_device_state_change(state: &State, device: &RemoteDevice) {
+    let old = state.devices.get(&device.0.identifier);
+    let was_connected = old.map(|d| d.0.connected).unwrap_or(false);
+    let was_bonded = old.map(|d| d.0.bonded).unwrap_or(false);
+    let conn_str = if device.0.connected != was_connected {
+        Some( if device.0.connected { "[connected]".to_string() } else { "[disconnected]".to_string() })
+    } else { None };
+    let bond_str = if device.0.bonded != was_bonded {
+        Some( if device.0.bonded { "[bonded]".to_string() } else { "[unbonded]".to_string() })
+    } else { None };
+    let s = match (conn_str, bond_str) {
+        (Some(a), Some(b)) => Some(format!("{} {}", a, b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    };
+    if let Some(msg) = s {
+        println!("{} {} {}", device.0.identifier, device.0.address, msg)
+    }
 }
 
 /// Tracks all state local to the command line tool.
