@@ -739,18 +739,9 @@ async fn main() -> Result<(), Error> {
                             fx_log_warn!("{} connected an unexpected channel: {}", device_id, e);
                         }
                     }
-                    Entry::Vacant(entry) => {
-                        fx_log_info!("New peer connected: {}", device_id);
-                        let peer = match avdtp::Peer::new(channel) {
-                            Ok(peer) => peer,
-                            Err(e) => {
-                                fx_log_warn!("Error adding new peer {}: {:?}", device_id, e);
-                                continue;
-                            }
-                        };
-                        let remote = entry.insert(RemotePeer::new(peer));
-                        remote.start_requests_task(remotes.clone(), device_id.clone());
-                        fuchsia_async::spawn(log_result("peer discovery".to_string(), discover_and_start(remote.peer(), profile_svc.clone(), device_id.clone(), remotes.clone())));
+                    Entry::Vacant(_) => {
+                        fx_log_info!("Peer connected: {}, disconnecting (will connect from search)", device_id);
+                        continue;
                     }
                 }
             }
