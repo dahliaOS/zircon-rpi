@@ -532,7 +532,6 @@ zx_status_t Coordinator::AddDevice(const fbl::RefPtr<Device>& parent, zx::channe
     log(RPC_IN, "devcoordinator: rpc: add-device '%.*s' args='%.*s'\n",
         static_cast<int>(name.size()), name.data(), static_cast<int>(args.size()), args.data());
 
-    log(ERROR, "MINE MINE devcoord: AddDevice: Added device %s driver_path: %s\n", name.data(), driver_path.data());
     fbl::Array<zx_device_prop_t> props(new zx_device_prop_t[props_count], props_count);
     if (!props) {
         return ZX_ERR_NO_MEMORY;
@@ -1093,8 +1092,6 @@ static zx_status_t dh_bind_driver(const fbl::RefPtr<Device>& dev, const char* li
     if (status != ZX_OK) {
         return status;
     }
-    log(ERROR, "devcoord: dh_bind_driver: Bind driver %s to device %s drivername: %s\n", libname, dev->name().data(),
-        dev->coordinator->LibnameToDriver(libname)->name.data());
     status = dh_send_bind_driver(dev.get(), libname, std::move(vmo));
     if (status != ZX_OK) {
         return status;

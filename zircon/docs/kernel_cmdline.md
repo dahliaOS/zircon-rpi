@@ -75,9 +75,9 @@ Turn on verbose logging.
 
 ## driver.\<name>.run-compatibility-tests
 
-if this option is set, devmgr will run compatibility tests for the device
-that is published in DdkAdd("name") by the driver under test. If the compatibility
-tests fail, the driver is unbound. The name comes from the parameter to DdkAdd.
+If this option is set, devmgr will run compatibility tests for the driver.
+zircon\_driver\_info, and can be found as the first argument to the
+ZIRCON\_DRIVER\_BEGIN macro.
 
 ## driver.\<name>.disable
 
