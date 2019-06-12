@@ -82,14 +82,14 @@ class ServiceDiscoverer final {
   // searches still need to be completed.
   struct DiscoverySession {
     std::unique_ptr<Client> client;
-    // The set of Searches that have yet to complete.
-    // Should always be non-empty if this session exists.
-    std::unordered_set<SearchId> active;
+    // ids referencing searches that have yet to be done.
+    // This should always be non-empty if this session exists.
+    std::deque<SearchId> queue;
   };
 
-  // Finish the Discovery Session for |peer_id| searching |search_id|,
+  // Continue the Discovery Session for |peer_id|, because a search completed.
   // releasing the client if all searches are complete.
-  void FinishPeerSearch(PeerId peer_id, SearchId search_id);
+  void ContinueSession(PeerId peer_id);
 
   // Next likely search id
   SearchId next_id_;
