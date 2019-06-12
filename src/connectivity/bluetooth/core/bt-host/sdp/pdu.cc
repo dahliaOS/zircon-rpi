@@ -78,13 +78,14 @@ size_t ReadAttributeIDList(const ByteBuffer& buf,
   const DataElement* it = attribute_list_elem.At(0);
   for (size_t i = 0; it != nullptr; it = attribute_list_elem.At(++i)) {
     if (it->type() != DataElement::Type::kUnsignedInt) {
-      bt_log(SPEW, "sdp", "attribute range sequence invalid element type");
+      bt_log(SPEW, "sdp", "attribute sequence invalid element type");
       attribute_ranges->clear();
       return 0;
     }
     if (it->size() == DataElement::Size::kTwoBytes) {
       uint16_t single_attr_id = *(it->Get<uint16_t>());
       if (single_attr_id < last_attr) {
+        bt_log(SPEW, "sdp", "attribute sequence not ascending order");
         attribute_ranges->clear();
         return 0;
       }
@@ -95,12 +96,14 @@ size_t ReadAttributeIDList(const ByteBuffer& buf,
       uint16_t start_id = attr_range >> 16;
       uint16_t end_id = attr_range & 0xFFFF;
       if ((start_id < last_attr) || (end_id < start_id)) {
+        bt_log(SPEW, "sdp", "attribute sequence not ascending or backwards");
         attribute_ranges->clear();
         return 0;
       }
       attribute_ranges->emplace_back(start_id, end_id);
       last_attr = end_id;
     } else {
+      bt_log(SPEW, "sdp", "attribute sequence wrong element type");
       attribute_ranges->clear();
       return 0;
     }
@@ -696,12 +699,14 @@ ServiceSearchAttributeRequest::ServiceSearchAttributeRequest(
   size_t elem_size =
       ReadAttributeIDList(params.view(read_size), &attribute_ranges_);
   if (elem_size == 0) {
+    bt_log(SPEW, "sdp", "failed reading attribute id list");
     max_attribute_byte_count_ = 0;
     return;
   }
   read_size += elem_size;
 
   if (!ParseContinuationState(params.view(read_size))) {
+    bt_log(SPEW, "sdp", "continuation state not valid");
     attribute_ranges_.clear();
     return;
   }
