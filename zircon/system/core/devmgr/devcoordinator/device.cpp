@@ -409,7 +409,7 @@ zx_status_t Device::HandleRead() {
                         real_parent->DriverCompatibiltyTest(drivername);
                         break;
                 } else if (real_parent->test_state() == Device::TestStateMachine::kTestBindSent) {
-                    real_parent->test_event.signal(0, TEST_BIND_DONE_SIGNAL);
+                    real_parent->test_event().signal(0, TEST_BIND_DONE_SIGNAL);
                     break;
                 }
             }
@@ -481,7 +481,7 @@ void Device::set_host(Devhost* host) {
 
 zx_status_t Device::DriverCompatibiltyTest(const char* drivername) {
     thrd_t t;
-    strncpy(test_drivername, drivername, sizeof(test_drivername) - 1);
+    set_test_driver_name(drivername);
     if (test_state() != TestStateMachine::kTestNotStarted) {
          return ZX_ERR_ALREADY_EXISTS;
     }
@@ -492,7 +492,7 @@ zx_status_t Device::DriverCompatibiltyTest(const char* drivername) {
     if (ret != thrd_success) {
         log(ERROR,
             "Driver Compatibility test failed for %s: "
-            "Thread creation failed\n", test_drivername);
+            "Thread creation failed\n", test_driver_name());
         return ZX_ERR_NO_RESOURCES;
     }
     thrd_detach(t);
@@ -500,27 +500,27 @@ zx_status_t Device::DriverCompatibiltyTest(const char* drivername) {
 }
 
 int Device::RunCompatibilityTests() {
-    log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_drivername);
+    log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name());
 
     // Device should be bound for test to work
     if (!(flags & DEV_CTX_BOUND)) {
         log(ERROR,
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Parent Device not bound\n",
-            test_drivername);
+            test_driver_name());
         return ZX_ERR_INTERNAL;
     }
-    zx_status_t status = zx::event::create(0, &test_event);
+    zx_status_t status = zx::event::create(0, &test_event());
     if (status != ZX_OK) {
         log(ERROR,
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Event creation failed : %d\n",
-            test_drivername, status);
+            test_driver_name(), status);
         return -1;
     }
 
     auto cleanup = fbl::MakeAutoCall([this]() {
-        test_event.reset();
+        test_event().reset();
         set_test_state(Device::TestStateMachine::kTestDone);
     });
 
@@ -533,7 +533,7 @@ int Device::RunCompatibilityTests() {
             log(ERROR,
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Sending unbind to %s failed\n",
-                test_drivername, child.name().data());
+                test_driver_name(), child.name().data());
             return -1;
         }
     }
@@ -541,7 +541,7 @@ int Device::RunCompatibilityTests() {
     this->set_test_state(Device::TestStateMachine::kTestUnbindSent);
     zx_signals_t observed = 0;
     // Now wait for the device to be removed.
-    status = test_event.wait_one(TEST_REMOVE_DONE_SIGNAL,
+    status = test_event().wait_one(TEST_REMOVE_DONE_SIGNAL,
                                  zx::time(zx_deadline_after(ZX_SEC(20))),
                                  &observed);
     if (status != ZX_OK) {
@@ -551,12 +551,12 @@ int Device::RunCompatibilityTests() {
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Timed out waiting for device to be removed. Check if device_remove was "
                 "called in the unbind routine of the driver: %d\n",
-                test_drivername, status);
+                test_driver_name(), status);
         } else {
             log(ERROR,
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Error waiting for device to be removed.\n",
-                test_drivername);
+                test_driver_name());
         }
         return -1;
     }
@@ -564,7 +564,7 @@ int Device::RunCompatibilityTests() {
     observed = 0;
     this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
     this->set_test_state(Device::TestStateMachine::kTestBindSent);
-    status = test_event.wait_one(TEST_BIND_DONE_SIGNAL,
+    status = test_event().wait_one(TEST_BIND_DONE_SIGNAL,
                                  zx::time(zx_deadline_after(ZX_SEC(20))),
                                  &observed);
     if (status != ZX_OK) {
@@ -574,12 +574,12 @@ int Device::RunCompatibilityTests() {
                  "devcoordinator: Driver Compatibility test failed for %s: "
                  "Timed out waiting for driver to be bound. Check if Bind routine "
                  "of the driver is doing blocking I/O: %d\n",
-                 test_drivername, status);
+                 test_driver_name(), status);
          } else {
              log(ERROR,
                     "devcoordinator: Driver Compatibility test failed for %s: "
                     "Error waiting for driver to be bound: %d\n",
-                    test_drivername, status);
+                    test_driver_name(), status);
             }
             return -1;
     }
@@ -588,14 +588,14 @@ int Device::RunCompatibilityTests() {
        log(ERROR,
            "devcoordinator: Driver Compatibility test failed for %s: "
            "Driver Bind routine did not add a child. Check if Bind routine "
-           "Called DdkAdd() at the end.\n", test_drivername);
+           "Called DdkAdd() at the end.\n", test_driver_name());
        return -1;
     }
     
     // TODO(ravoorir): Test Suspend and Resume hooks
     log(ERROR, "%s: Driver Compatibility test %s for %s\n", __func__,
         this->test_state() == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
-        test_drivername);
+        test_driver_name());
     return ZX_OK;
 }
 
