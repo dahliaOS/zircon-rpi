@@ -409,7 +409,7 @@ zx_status_t Device::HandleRead() {
                         real_parent->DriverCompatibiltyTest(drivername);
                         break;
                 } else if (real_parent->test_state() == Device::TestStateMachine::kTestBindSent) {
-                    zx_object_signal(real_parent->test_event, 0, TEST_BIND_DONE_SIGNAL);
+                    real_parent->test_event.signal(0, TEST_BIND_DONE_SIGNAL);
                     break;
                 }
             }
@@ -510,7 +510,7 @@ int Device::RunCompatibilityTests() {
             test_drivername);
         return ZX_ERR_INTERNAL;
     }
-    zx_status_t status = zx_event_create(0, &test_event);
+    zx_status_t status = zx::event::create(0, &test_event);
     if (status != ZX_OK) {
         log(ERROR,
             "devcoordinator: Driver Compatibility test failed for %s: "
@@ -520,8 +520,7 @@ int Device::RunCompatibilityTests() {
     }
 
     auto cleanup = fbl::MakeAutoCall([this]() {
-        zx_handle_close(this->test_event);
-        test_event = ZX_HANDLE_INVALID;
+        test_event.reset();
         set_test_state(Device::TestStateMachine::kTestDone);
     });
 
@@ -540,10 +539,11 @@ int Device::RunCompatibilityTests() {
     }
 
     this->set_test_state(Device::TestStateMachine::kTestUnbindSent);
-    uint32_t observed = 0;
+    zx_signals_t observed = 0;
     // Now wait for the device to be removed.
-    status = zx_object_wait_one(this->test_event, TEST_REMOVE_DONE_SIGNAL,
-                                zx_deadline_after(ZX_SEC(20)), &observed);
+    status = test_event.wait_one(TEST_REMOVE_DONE_SIGNAL,
+                                 zx::time(zx_deadline_after(ZX_SEC(20))),
+                                 &observed);
     if (status != ZX_OK) {
         if (status == ZX_ERR_TIMED_OUT) {
             // The Remove did not complete.
@@ -564,8 +564,9 @@ int Device::RunCompatibilityTests() {
     observed = 0;
     this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
     this->set_test_state(Device::TestStateMachine::kTestBindSent);
-    status = zx_object_wait_one(this->test_event, TEST_BIND_DONE_SIGNAL,
-                                 zx_deadline_after(ZX_SEC(20)), &observed);
+    status = test_event.wait_one(TEST_BIND_DONE_SIGNAL,
+                                 zx::time(zx_deadline_after(ZX_SEC(20))),
+                                 &observed);
     if (status != ZX_OK) {
          if (status == ZX_ERR_TIMED_OUT) {
              // The Bind did not complete.

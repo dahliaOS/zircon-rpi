@@ -15,6 +15,7 @@
 #include <lib/async/cpp/task.h>
 #include <lib/async/cpp/wait.h>
 #include <lib/zx/channel.h>
+#include <lib/zx/event.h>
 #include <variant>
 
 #include "composite-device.h"
@@ -366,7 +367,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
         test_state_ = new_state;
     }
     char test_drivername[fuchsia_device_MAX_DRIVER_NAME_LEN + 1] = {0};
-    zx_handle_t test_event = ZX_HANDLE_INVALID;
+    zx::event test_event;
 private:
     zx_status_t HandleRead();
     int RunCompatibilityTests();

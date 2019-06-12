@@ -708,7 +708,7 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
                 //      more tied to devhost teardown than it is.
 
                 if (parent->test_state() == Device::TestStateMachine::kTestUnbindSent) {
-                    zx_object_signal(parent->test_event, 0, TEST_REMOVE_DONE_SIGNAL);
+                    parent->test_event.signal(0, TEST_REMOVE_DONE_SIGNAL);
                     if (!(dev->flags & DEV_CTX_PROXY)) {
                         // remove from list of all devices
                         devices_.erase(*dev);
