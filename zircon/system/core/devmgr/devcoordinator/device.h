@@ -312,6 +312,8 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     // Device.
     void CompleteSuspend(zx_status_t status);
 
+    zx_status_t DriverCompatibiltyTest(const char* drivername);
+
     zx::channel take_client_remote() { return std::move(client_remote_); }
 
     const fbl::String& name() const { return name_; }
@@ -351,9 +353,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     };
 
     TestStateMachine test_state = TestStateMachine::kTestNotStarted;
+    char test_drivername[fuchsia_device_manager_DEVICE_NAME_MAX];
     zx_handle_t test_event = ZX_HANDLE_INVALID;
 private:
     zx_status_t HandleRead();
+    int RunCompatibilityTests();
 
     const fbl::String name_;
     const fbl::String libname_;
