@@ -29,7 +29,7 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookSuccess) {
     ASSERT_OK(status);
     fbl::unique_fd parent_fd, child_fd;
     devmgr_integration_test::RecursiveWaitForFile(devmgr.devfs_root(),
-            "sys/platform/11:09:0/compatibility-test", &parent_fd);
+            "sys/platform/11:0a:0/compatibility-test", &parent_fd);
     ASSERT_GT(parent_fd.get(), 0);
     //TODO(ravoorir): Why does this fail? Relative path waits do not work.
     /*devmgr_integration_test::RecursiveWaitForFile(parent_fd,

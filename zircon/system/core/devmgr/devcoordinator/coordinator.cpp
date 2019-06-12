@@ -1093,7 +1093,8 @@ static zx_status_t dh_bind_driver(const fbl::RefPtr<Device>& dev, const char* li
     if (status != ZX_OK) {
         return status;
     }
-    log(ERROR, "devcoord: dh_bind_driver: Bind driver %s to device %s\n", libname, dev->name().data());
+    log(ERROR, "devcoord: dh_bind_driver: Bind driver %s to device %s drivername: %s\n", libname, dev->name().data(),
+        dev->coordinator->LibnameToDriver(libname)->name.data());
     status = dh_send_bind_driver(dev.get(), libname, std::move(vmo));
     if (status != ZX_OK) {
         return status;
