@@ -708,7 +708,6 @@ async fn main() -> Result<(), Error> {
                     }
                     Entry::Vacant(entry) => {
                         fx_log_info!("Connecting to new sink {}..", peer_id);
-                        await!(Timer::new(Time::after(Duration::from_seconds(1))));
                         let (status, channel) = await!(profile_svc.connect_l2cap(&peer_id, PSM_AVDTP as u16))?;
 
                         if let Some(e) = status.error {
