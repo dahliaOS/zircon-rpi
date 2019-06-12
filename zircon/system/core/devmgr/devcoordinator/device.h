@@ -6,8 +6,12 @@
 
 #include <ddk/device.h>
 #include <fbl/array.h>
+#include <fbl/auto_lock.h>
+#include <fbl/mutex.h>
 #include <fbl/ref_counted.h>
 #include <fbl/string.h>
+#include <fuchsia/device/c/fidl.h>
+#include <fuchsia/device/manager/c/fidl.h>
 #include <lib/async/cpp/task.h>
 #include <lib/async/cpp/wait.h>
 #include <lib/zx/channel.h>
@@ -57,7 +61,7 @@ class SuspendTask;
 #define TEST_BIND_DONE_SIGNAL ZX_USER_SIGNAL_0
 #define TEST_SUSPEND_DONE_SIGNAL ZX_USER_SIGNAL_1
 #define TEST_RESUME_DONE_SIGNAL ZX_USER_SIGNAL_2
-#define TEST_REMOVE_DONE_SIGNAL ZX_USER_SIGNAL_4
+#define TEST_REMOVE_DONE_SIGNAL ZX_USER_SIGNAL_3
 
 // clang-format on
 
@@ -346,14 +350,22 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
         kTestBindSent,
         kTestBindDone,
         kTestSuspendSent,
-        kTestSupsendDone,
+        kTestSuspendDone,
         kTestResumeSent,
         kTestResumeDone,
         kTestDone,
     };
 
-    TestStateMachine test_state = TestStateMachine::kTestNotStarted;
-    char test_drivername[fuchsia_device_manager_DEVICE_NAME_MAX];
+    TestStateMachine test_state() {
+        fbl::AutoLock<fbl::Mutex> lock(&test_state_lock_);
+        return test_state_;
+    }
+
+    void set_test_state(TestStateMachine new_state) {
+        fbl::AutoLock<fbl::Mutex> lock(&test_state_lock_);
+        test_state_ = new_state;
+    }
+    char test_drivername[fuchsia_device_MAX_DRIVER_NAME_LEN + 1] = {0};
     zx_handle_t test_event = ZX_HANDLE_INVALID;
 private:
     zx_status_t HandleRead();
@@ -420,6 +432,8 @@ private:
     // For attaching as an open connection to the proxy device,
     // or once the device becomes visible.
     zx::channel client_remote_;
+    fbl::Mutex test_state_lock_;
+    TestStateMachine test_state_ = TestStateMachine::kTestNotStarted;
 };
 
 } // namespace devmgr

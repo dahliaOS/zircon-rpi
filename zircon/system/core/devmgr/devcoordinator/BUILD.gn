@@ -61,6 +61,7 @@ source_set("common") {
   public_deps = [
     "$zx/system/fidl/fuchsia-boot:c",
     "$zx/system/fidl/fuchsia-device-manager:c",
+    "$zx/system/fidl/fuchsia-device:c",
     "$zx/system/fidl/fuchsia-io:c",
     "$zx/system/fidl/fuchsia-mem:c",
     "$zx/system/ulib/async-loop:async-loop-cpp",

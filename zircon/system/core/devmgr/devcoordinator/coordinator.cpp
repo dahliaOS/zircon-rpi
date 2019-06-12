@@ -707,12 +707,7 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
                 //      when a devhost dies.  It should probably be
                 //      more tied to devhost teardown than it is.
 
-                // IF we are the last child of our parent
-                // AND our parent is not itself dead
-                // AND our parent is a BUSDEV
-                // AND our parent's devhost is not dying
-                // THEN we will want to rebind our parent
-                if (parent->test_state == Device::TestStateMachine::kTestUnbindSent) {
+                if (parent->test_state() == Device::TestStateMachine::kTestUnbindSent) {
                     zx_object_signal(parent->test_event, 0, TEST_REMOVE_DONE_SIGNAL);
                     if (!(dev->flags & DEV_CTX_PROXY)) {
                         // remove from list of all devices
@@ -720,6 +715,11 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
                     }
                     return ZX_OK;
                 }
+                // IF we are the last child of our parent
+                // AND our parent is not itself dead
+                // AND our parent is a BUSDEV
+                // AND our parent's devhost is not dying
+                // THEN we will want to rebind our parent
                 if (!(parent->flags & DEV_CTX_DEAD) && (parent->flags & DEV_CTX_MUST_ISOLATE) &&
                     ((parent->host() == nullptr) ||
                      !(parent->host()->flags() & Devhost::Flags::kDying))) {
@@ -1384,144 +1384,6 @@ void Coordinator::DriverAddedSys(Driver* drv, const char* version) {
     } else {
         system_drivers_.push_front(driver.release());
     }
-}
-
-zx_status_t Coordinator::DriverCompatibiltyTest(const fbl::RefPtr<Device>& dev) {
-    thrd_t t;
-    test_context_.dev = dev;
-    memcpy(test_context_.devname, dev->name().data(), strlen(dev->name().data()));
-    auto cb = [](void* arg) -> int {
-        return reinterpret_cast<Coordinator*>(arg)->RunCompatibilityTests();
-    };
-    int ret = thrd_create_with_name(&t, cb, this, "compatibility-tests-thread");
-    if (ret != thrd_success) {
-        log(ERROR,
-            "devcoordinator: Driver Compatibility test failed for %s: "
-            "Thread creation failed\n",
-            dev->name().data());
-        return ZX_ERR_NO_RESOURCES;
-    }
-    thrd_detach(t);
-    return ZX_OK;
-}
-
-int Coordinator::RunCompatibilityTests() {
-    const fbl::RefPtr<Device>& dev = test_context_.dev;
-    log(INFO, "%s: Driver compatibility test for driver %s \n", __func__, dev->name().data());
-    char devname[256];
-    strncpy(devname, dev->name().data(), 255);
-
-    // Get Real Parent. Lets track the test with real parent.
-    // We have a reference for dev. So the parent cannot be deleted without the
-    // dev being deleted.
-    fbl::RefPtr<Device> real_parent;
-    if (dev->parent()->flags & DEV_CTX_PROXY) {
-        real_parent = dev->parent()->parent();
-    } else {
-        real_parent = dev->parent();
-    }
-
-    // Device should be bound for test to work
-    if (!(dev->parent()->flags & DEV_CTX_BOUND)) {
-        log(ERROR,
-            "devcoordinator: Driver Compatibility test failed for %s: "
-            "Parent Device not bound\n",
-            devname);
-        return ZX_ERR_INTERNAL;
-    }
-    zx_status_t status = zx_event_create(0, &real_parent->test_event);
-    if (status != ZX_OK) {
-        log(ERROR,
-            "devcoordinator: Driver Compatibility test failed for %s: "
-            "Event creation failed : %d\n",
-            devname, status);
-        return -1;
-    }
-
-    auto cleanup = fbl::MakeAutoCall([&real_parent]() {
-        zx_handle_close(real_parent->test_event);
-        real_parent->test_event = ZX_HANDLE_INVALID;
-        real_parent->test_state = Device::TestStateMachine::kTestDone;
-    });
-    // Issue unbind on this child all its siblings.
-    for (auto& child : real_parent->children()) {
-        status = dh_send_unbind(&child);
-        if (status != ZX_OK) {
-            // TODO(ravoorir): How do we return to clean state here? Forcefully
-            // remove all the children?
-            log(ERROR,
-                "devcoordinator: Driver Compatibility test failed for %s: "
-                "Sending unbind to %s failed\n",
-                devname, child.name().data());
-            return -1;
-        }
-    }
-
-    //Release the reference we have taken for context.
-    test_context_.dev.reset();
-
-    real_parent->test_state = Device::TestStateMachine::kTestUnbindSent;
-    uint32_t observed = 0;
-    // Now wait for the device to be removed.
-    status = zx_object_wait_one(real_parent->test_event, TEST_REMOVE_DONE_SIGNAL,
-                                zx_deadline_after(ZX_SEC(20)), &observed);
-    if (status != ZX_OK) {
-        if (status == ZX_ERR_TIMED_OUT) {
-            // The Remove did not complete.
-            log(ERROR,
-                "devcoordinator: Driver Compatibility test failed for %s: "
-                "Timed out waiting for device to be removed. Check if device_remove was "
-                "called in the unbind routine of the driver: %d\n",
-                devname, status);
-        } else {
-            log(ERROR,
-                "devcoordinator: Driver Compatibility test failed for %s: "
-                "Error waiting for device to be removed.\n",
-                devname);
-        }
-        return -1;
-    }
-    if (observed & TEST_REMOVE_DONE_SIGNAL) {
-        real_parent->test_state = Device::TestStateMachine::kTestRemoveCalled;
-        observed = 0;
-        HandleNewDevice(real_parent);
-        real_parent->test_state = Device::TestStateMachine::kTestBindSent;
-        status = zx_object_wait_one(real_parent->test_event, TEST_BIND_DONE_SIGNAL,
-                                    zx_deadline_after(ZX_SEC(20)), &observed);
-        if (status != ZX_OK) {
-            if (status == ZX_ERR_TIMED_OUT) {
-                // The Bind did not complete.
-                log(ERROR,
-                    "devcoordinator: Driver Compatibility test failed for %s: "
-                    "Timed out waiting for driver to be bound. Check if Bind routine "
-                    "of the driver is doing blocking I/O: %d\n",
-                    devname, status);
-            } else {
-                log(ERROR,
-                    "devcoordinator: Driver Compatibility test failed for %s: "
-                    "Error waiting for driver to be bound: %d\n",
-                    devname, status);
-            }
-            return -1;
-        }
-        if (observed & TEST_BIND_DONE_SIGNAL) {
-            real_parent->test_state = Device::TestStateMachine::kTestBindDone;
-            if (real_parent->children().is_empty()) {
-                log(ERROR,
-                    "devcoordinator: Driver Compatibility test failed for %s: "
-                    "Driver Bind routine did not add a child. Check if Bind routine "
-                    "Called DdkAdd() at the end.\n",
-                    devname);
-                return -1;
-            }
-        }
-    }
-
-    // TODO(ravoorir): Test Suspend and Resume hooks
-    log(ERROR, "%s: Driver Compatibility test %s for %s\n", __func__,
-        real_parent->test_state == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
-        devname);
-    return ZX_OK;
 }
 
 zx_status_t Coordinator::BindDriverToDevice(const fbl::RefPtr<Device>& dev, const Driver* drv,

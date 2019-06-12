@@ -397,16 +397,18 @@ zx_status_t Device::HandleRead() {
 
             for (auto& child : real_parent->children()) {
                 char bootarg[256];
-                const char* drivername = this->coordinator->LibnameToDriver(child.libname().data())->name.data();
-                snprintf(bootarg, sizeof(bootarg), "driver.%s.run-compatibility-tests", drivername);
+                const char* drivername =
+                     this->coordinator->LibnameToDriver(child.libname().data())->name.data();
+                snprintf(bootarg, sizeof(bootarg), "driver.%s.run-compatibility-tests",
+                         drivername);
 
                 //FOR TESTING PURPOSES
                 if (!strcmp(bootarg, "driver.aml_sd_emmc.run-compatibility-tests")
                 //if (this->coordinator->boot_args().GetBool(bootarg, false)
-                    && (real_parent->test_state == Device::TestStateMachine::kTestNotStarted)) {
+                    && (real_parent->test_state() == Device::TestStateMachine::kTestNotStarted)) {
                         real_parent->DriverCompatibiltyTest(drivername);
                         break;
-                } else if (real_parent->test_state == Device::TestStateMachine::kTestBindSent) {
+                } else if (real_parent->test_state() == Device::TestStateMachine::kTestBindSent) {
                     zx_object_signal(real_parent->test_event, 0, TEST_BIND_DONE_SIGNAL);
                     break;
                 }
@@ -479,7 +481,10 @@ void Device::set_host(Devhost* host) {
 
 zx_status_t Device::DriverCompatibiltyTest(const char* drivername) {
     thrd_t t;
-    strcpy(test_drivername, drivername);
+    strncpy(test_drivername, drivername, sizeof(test_drivername) - 1);
+    if (test_state() != TestStateMachine::kTestNotStarted) {
+         return ZX_ERR_ALREADY_EXISTS;
+    }
     auto cb = [](void* arg) -> int {
         return reinterpret_cast<Device*>(arg)->RunCompatibilityTests();
     };
@@ -517,7 +522,7 @@ int Device::RunCompatibilityTests() {
     auto cleanup = fbl::MakeAutoCall([this]() {
         zx_handle_close(this->test_event);
         test_event = ZX_HANDLE_INVALID;
-        test_state = Device::TestStateMachine::kTestDone;
+        set_test_state(Device::TestStateMachine::kTestDone);
     });
 
     // Issue unbind on all its children.
@@ -534,7 +539,7 @@ int Device::RunCompatibilityTests() {
         }
     }
 
-    this->test_state = Device::TestStateMachine::kTestUnbindSent;
+    this->set_test_state(Device::TestStateMachine::kTestUnbindSent);
     uint32_t observed = 0;
     // Now wait for the device to be removed.
     status = zx_object_wait_one(this->test_event, TEST_REMOVE_DONE_SIGNAL,
@@ -555,45 +560,40 @@ int Device::RunCompatibilityTests() {
         }
         return -1;
     }
-    if (observed & TEST_REMOVE_DONE_SIGNAL) {
-        this->test_state = Device::TestStateMachine::kTestRemoveCalled;
-        observed = 0;
-        this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
-        this->test_state = Device::TestStateMachine::kTestBindSent;
-        status = zx_object_wait_one(this->test_event, TEST_BIND_DONE_SIGNAL,
-                                    zx_deadline_after(ZX_SEC(20)), &observed);
-        if (status != ZX_OK) {
-            if (status == ZX_ERR_TIMED_OUT) {
-                // The Bind did not complete.
-                log(ERROR,
-                    "devcoordinator: Driver Compatibility test failed for %s: "
-                    "Timed out waiting for driver to be bound. Check if Bind routine "
-                    "of the driver is doing blocking I/O: %d\n",
-                    test_drivername, status);
-            } else {
-                log(ERROR,
+    this->set_test_state(Device::TestStateMachine::kTestRemoveCalled);
+    observed = 0;
+    this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
+    this->set_test_state(Device::TestStateMachine::kTestBindSent);
+    status = zx_object_wait_one(this->test_event, TEST_BIND_DONE_SIGNAL,
+                                 zx_deadline_after(ZX_SEC(20)), &observed);
+    if (status != ZX_OK) {
+         if (status == ZX_ERR_TIMED_OUT) {
+             // The Bind did not complete.
+             log(ERROR,
+                 "devcoordinator: Driver Compatibility test failed for %s: "
+                 "Timed out waiting for driver to be bound. Check if Bind routine "
+                 "of the driver is doing blocking I/O: %d\n",
+                 test_drivername, status);
+         } else {
+             log(ERROR,
                     "devcoordinator: Driver Compatibility test failed for %s: "
                     "Error waiting for driver to be bound: %d\n",
                     test_drivername, status);
             }
             return -1;
-        }
-        if (observed & TEST_BIND_DONE_SIGNAL) {
-            this->test_state = Device::TestStateMachine::kTestBindDone;
-            if (this->children().is_empty()) {
-                log(ERROR,
-                    "devcoordinator: Driver Compatibility test failed for %s: "
-                    "Driver Bind routine did not add a child. Check if Bind routine "
-                    "Called DdkAdd() at the end.\n",
-                    test_drivername);
-                return -1;
-            }
-        }
     }
-
+    this->set_test_state(Device::TestStateMachine::kTestBindDone);
+    if (this->children().is_empty()) {
+       log(ERROR,
+           "devcoordinator: Driver Compatibility test failed for %s: "
+           "Driver Bind routine did not add a child. Check if Bind routine "
+           "Called DdkAdd() at the end.\n", test_drivername);
+       return -1;
+    }
+    
     // TODO(ravoorir): Test Suspend and Resume hooks
     log(ERROR, "%s: Driver Compatibility test %s for %s\n", __func__,
-        this->test_state == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
+        this->test_state() == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
         test_drivername);
     return ZX_OK;
 }
@@ -705,8 +705,8 @@ static zx_status_t fidl_BindDevice(void* ctx, const char* driver_path_data, size
 
 static zx_status_t fidl_RunCompatibilityTests(void* ctx, fidl_txn_t* txn) {
     auto dev = fbl::WrapRefPtr(static_cast<Device*>(ctx));
-    zx_status_t status = dev->coordinator->DriverCompatibiltyTest(dev);
-    return fuchsia_device_manager_CoordinatorRunCompatibilityTests_reply(txn, status);
+    //zx_status_t status = dev->coordinator->DriverCompatibiltyTest(dev);
+    return fuchsia_device_manager_CoordinatorRunCompatibilityTests_reply(txn, ZX_OK);
 }
 
 static zx_status_t fidl_GetTopologicalPath(void* ctx, fidl_txn_t* txn) {
