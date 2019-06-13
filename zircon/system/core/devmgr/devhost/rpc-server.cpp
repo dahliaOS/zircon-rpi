@@ -582,6 +582,7 @@ static zx_status_t fidl_DeviceControllerRunCompatibilityTests(void* ctx, const c
     auto conn = static_cast<DevfsConnection*>(ctx);
     char child_name[fuchsia_device_MAX_DEVICE_NAME_LEN + 1];
     memcpy(child_name, child_data, child_data_count);
+    printf("MINE MINE fidl_DeviceControllerRunCompatTests: %p\n", conn->dev.get());
     conn->dev->PushTestCompatibilityConn(fs::FidlConnection::CopyTxn(txn));
     return device_run_compatibility_tests(conn->dev, child_name);
 }

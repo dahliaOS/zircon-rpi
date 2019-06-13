@@ -97,7 +97,7 @@ int SdmmcRootDevice::WorkerThread() {
     }
 
     // Probe for SDIO, SD and then MMC
-    if ((st = sdio_dev_->ProbeSdio()) == ZX_OK) {
+    /*if ((st = sdio_dev_->ProbeSdio()) == ZX_OK) {
         if ((st = sdio_dev_->AddDevice()) == ZX_OK) {
             return thrd_success;
         }
@@ -116,7 +116,7 @@ int SdmmcRootDevice::WorkerThread() {
 
     if ((st = block_dev_->AddDevice()) == ZX_OK) {
         return thrd_success;
-    }
+    }*/
 
     if (!dead_) {
         DdkRemove();

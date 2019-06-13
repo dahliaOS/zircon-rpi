@@ -394,7 +394,6 @@ zx_status_t Device::HandleRead() {
             } else {
                 real_parent = this;
             }
-            if (real_parent->children().is_empty())
 
             for (auto& child : real_parent->children()) {
                 char bootarg[256];
@@ -501,7 +500,7 @@ zx_status_t Device::DriverCompatibiltyTest() {
 
 int Device::RunCompatibilityTests() {
     const char* test_driver_name = GetTestDriverName();
-    log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name);
+    log(INFO, "%s: Running ddk compatibility test for driver %s . saving state in %p\n", __func__, test_driver_name, this);
 
     // Device should be bound for test to work
     if (!(flags & DEV_CTX_BOUND) || children().is_empty()) {
@@ -528,6 +527,7 @@ int Device::RunCompatibilityTests() {
     // Issue unbind on all its children.
     for (auto& child : this->children()) {
         status = dh_send_unbind(&child);
+        log(INFO, "Sending Unbind to child %p\n", &child);
         if (status != ZX_OK) {
             // TODO(ravoorir): How do we return to clean state here? Forcefully
             // remove all the children?
@@ -540,6 +540,7 @@ int Device::RunCompatibilityTests() {
     }
 
     this->set_test_state(Device::TestStateMachine::kTestUnbindSent);
+    log(INFO, "%s: Running ddk compatibility test for driver %s Unbind sent to all children\n", __func__, test_driver_name);
     zx_signals_t observed = 0;
     // Now wait for the device to be removed.
     status = test_event().wait_one(TEST_REMOVE_DONE_SIGNAL,
@@ -561,6 +562,7 @@ int Device::RunCompatibilityTests() {
         }
         return ZX_ERR_BAD_STATE;
     }
+    log(INFO, "%s: Running ddk compatibility test for driver %s REmove called\n", __func__, test_driver_name);
     this->set_test_state(Device::TestStateMachine::kTestRemoveCalled);
     observed = 0;
     this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
@@ -581,9 +583,10 @@ int Device::RunCompatibilityTests() {
                     "devcoordinator: Driver Compatibility test failed for %s: "
                     "Error waiting for driver to be bound: %d\n",
                     test_driver_name, status);
-            }
-            return ZX_ERR_BAD_STATE;
+         }
+         return ZX_ERR_BAD_STATE;
     }
+    log(INFO, "%s: Running ddk compatibility test for driver %s BIND DONE\n", __func__, test_driver_name);
     this->set_test_state(Device::TestStateMachine::kTestBindDone);
     if (this->children().is_empty()) {
        log(ERROR,

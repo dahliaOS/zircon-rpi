@@ -734,7 +734,7 @@ zx_status_t devhost_remove(const fbl::RefPtr<zx_device_t>& dev) {
     // handle that gracefully.
     dev->conn.store(nullptr);
 
-    log(DEVLC, "removing device %p, conn %p\n", dev.get(), conn);
+    log(ERROR, "MINE MINE removing device %p, conn %p\n", dev.get(), conn);
 
     const zx::channel& rpc = *dev->rpc;
     ZX_ASSERT(rpc.is_valid());

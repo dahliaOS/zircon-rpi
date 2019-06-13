@@ -22,14 +22,17 @@ public:
         : DeviceType(parent) {}
     zx_status_t Bind();
     void DdkUnbind() {
+        printf("MINE MINE PARENT UNBIND\n");
         DdkRemove();
     }
     void DdkRelease() {
+        printf("MINE MINE PARENT RELEASE\n");
         delete this;
     }
 };
 
 zx_status_t TestCompatibilityHookDriver::Bind() {
+    printf("MINE MINE PARENT BIND\n");
     return DdkAdd("compatibility-test");
 }
 

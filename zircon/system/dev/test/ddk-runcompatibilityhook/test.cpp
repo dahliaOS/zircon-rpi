@@ -44,6 +44,7 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookSuccess) {
     zx_status_t call_status;
     status = fuchsia_device_ControllerRunCompatibilityTests(parent_device_handle.get(), child_name,
                                                             strlen(child_name), &call_status);
+    zx_nanosleep(zx_deadline_after(ZX_SEC(2)));
     ASSERT_OK(status);
     ASSERT_OK(call_status);
 }

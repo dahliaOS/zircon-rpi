@@ -701,12 +701,6 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
         if (!(dev->flags & DEV_CTX_PROXY)) {
             if (parent->children().is_empty()) {
                 parent->flags &= (~DEV_CTX_BOUND);
-
-                // TODO: This code is to cause the bind process to
-                //      restart and get a new devhost to be launched
-                //      when a devhost dies.  It should probably be
-                //      more tied to devhost teardown than it is.
-
                 if (parent->test_state() == Device::TestStateMachine::kTestUnbindSent) {
                     parent->test_event().signal(0, TEST_REMOVE_DONE_SIGNAL);
                     if (!(dev->flags & DEV_CTX_PROXY)) {
@@ -715,6 +709,10 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
                     }
                     return ZX_OK;
                 }
+                // TODO: This code is to cause the bind process to
+                //      restart and get a new devhost to be launched
+                //      when a devhost dies.  It should probably be
+                //      more tied to devhost teardown than it is.
                 // IF we are the last child of our parent
                 // AND our parent is not itself dead
                 // AND our parent is a BUSDEV

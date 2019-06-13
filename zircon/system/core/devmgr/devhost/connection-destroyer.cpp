@@ -22,6 +22,7 @@ zx_status_t ConnectionDestroyer::QueueProxyConnection(async_dispatcher_t* dispat
 
 zx_status_t ConnectionDestroyer::QueueDeviceControllerConnection(
         async_dispatcher_t* dispatcher, DeviceControllerConnection* conn) {
+    printf("MINE MINE. Queued Connection close on dev:%p\n", conn->dev().get());
     zx_packet_user_t pkt = {};
     pkt.u64[0] = static_cast<uint64_t>(Type::DeviceController);
     pkt.u64[1] = reinterpret_cast<uintptr_t>(conn);
