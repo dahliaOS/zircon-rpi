@@ -889,9 +889,9 @@ zx_status_t Dwc2::InitController() {
 }
 
 void Dwc2::SetConnected(bool connected) {
-    if (connected == connected_) {
-        return;
-    }
+//    if (connected == connected_) {
+//        return;
+//    }
 
     if (dci_intf_) {
         dci_intf_->SetConnected(connected);
