@@ -31,9 +31,8 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookSuccess) {
     devmgr_integration_test::RecursiveWaitForFile(devmgr.devfs_root(),
             "sys/platform/11:0a:0/compatibility-test", &parent_fd);
     ASSERT_GT(parent_fd.get(), 0);
-    //TODO(ravoorir): Why does this fail? Relative path waits do not work.
-    /*devmgr_integration_test::RecursiveWaitForFile(parent_fd,
-            "compatibility-test-child", &child_fd);
+    /*devmgr_integration_test::RecursiveWaitForFile(devmgr.devfs_root(),
+            "sys/platform/11:0a:0/compatibility-test/compatibility-test-child", &child_fd);
     ASSERT_GT(child_fd.get(), 0);*/
 
     zx::channel parent_device_handle;

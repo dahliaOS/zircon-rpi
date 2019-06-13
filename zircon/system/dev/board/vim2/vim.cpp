@@ -139,10 +139,10 @@ int Vim::Thread() {
         return -1;
     }
 
-    if ((status = SdioInit()) != ZX_OK) {
+    /*if ((status = SdioInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: SdioInit failed: %d\n", status);
         return -1;
-    }
+    }*/
 
     if ((status = EthInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: EthInit failed: %d\n", status);
@@ -180,10 +180,10 @@ int Vim::Thread() {
         return -1;
     }
 
-    if ((status = SdInit()) != ZX_OK) {
+    /*if ((status = SdInit()) != ZX_OK) {
         zxlogf(ERROR, "Thread: SdInit failed: %d\n", status);
         return -1;
-    }
+    }*/
 
     return ZX_OK;
 }

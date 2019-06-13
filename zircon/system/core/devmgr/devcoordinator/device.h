@@ -317,7 +317,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     // Device.
     void CompleteSuspend(zx_status_t status);
 
-    zx_status_t DriverCompatibiltyTest(const char* drivername);
+    zx_status_t DriverCompatibiltyTest();
 
     zx::channel take_client_remote() { return std::move(client_remote_); }
 
@@ -369,11 +369,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
 
     zx::event& test_event() { return test_event_; }
 
-    const char* test_driver_name() {return test_driver_name_; }
-
-    void set_test_driver_name(const char* drivername) {
-        strncpy(test_driver_name_, drivername, sizeof(test_driver_name_) - 1);
-    }
+    const char* GetTestDriverName();
 
 private:
     zx_status_t HandleRead();
@@ -443,7 +439,6 @@ private:
     fbl::Mutex test_state_lock_;
     TestStateMachine test_state_ = TestStateMachine::kTestNotStarted;
     zx::event test_event_;
-    char test_driver_name_[fuchsia_device_MAX_DRIVER_NAME_LEN + 1] = {0};
 };
 
 } // namespace devmgr
