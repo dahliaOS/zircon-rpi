@@ -79,26 +79,19 @@ void Dwc2::HandleReset() {
         .set_devaddr(0)
         .WriteTo(mmio);
 
-    if (dci_intf_) {
-        dci_intf_->SetConnected(true);
-    }
-    if (usb_phy_) {
-        usb_phy_->ConnectStatusChanged(false);
-    }
+    zxlogf(INFO, "%s\n", __func__);
+    SetConnected(false);
 }
 
 // Handler for usbsuspend interrupt.
 void Dwc2::HandleSuspend() {
-    if (dci_intf_) {
-        dci_intf_->SetConnected(false);
-    }
+    zxlogf(INFO, "%s\n", __func__);
+    SetConnected(false);
 }
 
 // Handler for enumdone interrupt.
 void Dwc2::HandleEnumDone() {
-    if (usb_phy_) {
-        usb_phy_->ConnectStatusChanged(true);
-    }
+    SetConnected(true);
 
     auto* mmio = get_mmio();
 
@@ -272,7 +265,7 @@ void Dwc2::HandleOutEpInterrupt() {
                     .WriteTo(mmio);
 
                 memcpy(&cur_setup_, ep0_buffer_.virt(), sizeof(cur_setup_));
-                zxlogf(LTRACE, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u "
+                zxlogf(LINFO, "SETUP bmRequestType: 0x%02x bRequest: %u wValue: %u wIndex: %u "
                        "wLength: %u\n", cur_setup_.bmRequestType, cur_setup_.bRequest,
                        cur_setup_.wValue, cur_setup_.wIndex, cur_setup_.wLength);
 
@@ -324,12 +317,12 @@ zx_status_t Dwc2::HandleSetupRequest(size_t* out_actual) {
         // Handle some special setup requests in this driver
         switch (setup->bRequest) {
         case USB_REQ_SET_ADDRESS:
-            zxlogf(LTRACE, "SET_ADDRESS %d\n", setup->wValue);
+            zxlogf(LINFO, "SET_ADDRESS %d\n", setup->wValue);
             SetAddress(static_cast<uint8_t>(setup->wValue));
             *out_actual = 0;
             return ZX_OK;
         case USB_REQ_SET_CONFIGURATION:
-            zxlogf(LTRACE, "SET_CONFIGURATION %d\n", setup->wValue);
+            zxlogf(LINFO, "SET_CONFIGURATION %d\n", setup->wValue);
             configured_ = true;
             if (dci_intf_) {
                 status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, out_actual);
@@ -770,9 +763,9 @@ zx_status_t Dwc2::InitController() {
     // Configure controller for device mode, enable DMA
     GUSBCFG::Get()
         .ReadFrom(mmio)
-        .set_force_dev_mode(1)
-        .set_srpcap(0)
-        .set_hnpcap(0)
+        .set_force_dev_mode(0)
+        .set_srpcap(1)
+        .set_hnpcap(1)
         .set_ulpi_utmi_sel(1)
         .set_phyif(0)
         .set_ddrsel(0)
@@ -883,7 +876,7 @@ zx_status_t Dwc2::InitController() {
         .set_inepintr(1)
         .set_outepintr(1)
         .set_usbsuspend(1)
-        .set_modemismatch(1)
+        .set_erlysuspend(1)
         .WriteTo(mmio);
 
     // Enable global interrupts
@@ -893,6 +886,45 @@ zx_status_t Dwc2::InitController() {
         .WriteTo(mmio);
 
     return ZX_OK;
+}
+
+void Dwc2::SetConnected(bool connected) {
+    if (connected == connected_) {
+        return;
+    }
+
+    if (dci_intf_) {
+        dci_intf_->SetConnected(connected);
+    }
+    if (usb_phy_) {
+        usb_phy_->ConnectStatusChanged(connected);
+    }
+
+    // Complete any pending requests
+    if (!connected) {
+        for (uint8_t i = 0; i < fbl::count_of(endpoints_); i++) {
+            auto* ep = &endpoints_[i];
+            RequestQueue complete_reqs;
+    
+            {
+                fbl::AutoLock lock(&ep->lock);
+                if (ep->current_req) {
+                    complete_reqs.push(Request(ep->current_req, sizeof(usb_request_t)));
+                    ep->current_req = nullptr;
+                }
+                for (auto req = ep->queued_reqs.pop(); req; req = ep->queued_reqs.pop()) {
+                    complete_reqs.push(std::move(*req));
+                }
+
+            }
+            // Requests must be completed outside of the lock.
+            for (auto req = complete_reqs.pop(); req; req = complete_reqs.pop()) {
+                req->Complete(ZX_ERR_IO_NOT_PRESENT, 0);
+            }
+        }
+    }
+
+    connected_ = connected;
 }
 
 zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
@@ -1025,6 +1057,11 @@ int Dwc2::IrqThread() {
                 HandleReset();
             }
             if (gintsts.usbsuspend()) {
+                printf("usbsuspend\n");
+                HandleSuspend();
+            }
+            if (gintsts.erlysuspend()) {
+                printf("erlysuspend\n");
                 HandleSuspend();
             }
             if (gintsts.enumdone()) {
