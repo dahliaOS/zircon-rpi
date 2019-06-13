@@ -503,7 +503,7 @@ int Device::RunCompatibilityTests() {
     log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name());
 
     // Device should be bound for test to work
-    if (!(flags & DEV_CTX_BOUND)) {
+    if (!(flags & DEV_CTX_BOUND) || children().is_empty()) {
         log(ERROR,
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Parent Device not bound\n",
@@ -516,7 +516,7 @@ int Device::RunCompatibilityTests() {
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Event creation failed : %d\n",
             test_driver_name(), status);
-        return -1;
+        return ZX_ERR_NO_RESOURCES;
     }
 
     auto cleanup = fbl::MakeAutoCall([this]() {
@@ -534,7 +534,7 @@ int Device::RunCompatibilityTests() {
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Sending unbind to %s failed\n",
                 test_driver_name(), child.name().data());
-            return -1;
+            return ZX_ERR_INTERNAL;
         }
     }
 
@@ -558,7 +558,7 @@ int Device::RunCompatibilityTests() {
                 "Error waiting for device to be removed.\n",
                 test_driver_name());
         }
-        return -1;
+        return ZX_ERR_BAD_STATE;
     }
     this->set_test_state(Device::TestStateMachine::kTestRemoveCalled);
     observed = 0;
@@ -581,7 +581,7 @@ int Device::RunCompatibilityTests() {
                     "Error waiting for driver to be bound: %d\n",
                     test_driver_name(), status);
             }
-            return -1;
+            return ZX_ERR_BAD_STATE;
     }
     this->set_test_state(Device::TestStateMachine::kTestBindDone);
     if (this->children().is_empty()) {

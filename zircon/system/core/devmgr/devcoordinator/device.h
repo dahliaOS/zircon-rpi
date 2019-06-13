@@ -370,9 +370,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     zx::event& test_event() { return test_event_; }
 
     const char* test_driver_name() {return test_driver_name_; }
+
     void set_test_driver_name(const char* drivername) {
         strncpy(test_driver_name_, drivername, sizeof(test_driver_name_) - 1);
     }
+
 private:
     zx_status_t HandleRead();
     int RunCompatibilityTests();
