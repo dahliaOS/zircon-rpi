@@ -79,26 +79,17 @@ void Dwc2::HandleReset() {
         .set_devaddr(0)
         .WriteTo(mmio);
 
-    if (dci_intf_) {
-        dci_intf_->SetConnected(true);
-    }
-    if (usb_phy_) {
-        usb_phy_->ConnectStatusChanged(false);
-    }
+    SetConnected(false);
 }
 
 // Handler for usbsuspend interrupt.
 void Dwc2::HandleSuspend() {
-    if (dci_intf_) {
-        dci_intf_->SetConnected(false);
-    }
+    SetConnected(false);
 }
 
 // Handler for enumdone interrupt.
 void Dwc2::HandleEnumDone() {
-    if (usb_phy_) {
-        usb_phy_->ConnectStatusChanged(true);
-    }
+    SetConnected(true);
 
     auto* mmio = get_mmio();
 
@@ -767,16 +758,7 @@ zx_status_t Dwc2::InitController() {
 
     zx::nanosleep(zx::deadline_after(zx::msec(10)));
 
-    // Configure controller for device mode, enable DMA
-    GUSBCFG::Get()
-        .ReadFrom(mmio)
-        .set_force_dev_mode(1)
-        .set_srpcap(0)
-        .set_hnpcap(0)
-        .set_ulpi_utmi_sel(1)
-        .set_phyif(0)
-        .set_ddrsel(0)
-        .WriteTo(mmio);
+    // Enable DMA
     GAHBCFG::Get()
         .FromValue(0)
         .set_dmaenable(1)
@@ -883,7 +865,7 @@ zx_status_t Dwc2::InitController() {
         .set_inepintr(1)
         .set_outepintr(1)
         .set_usbsuspend(1)
-        .set_modemismatch(1)
+        .set_erlysuspend(1)
         .WriteTo(mmio);
 
     // Enable global interrupts
@@ -893,6 +875,45 @@ zx_status_t Dwc2::InitController() {
         .WriteTo(mmio);
 
     return ZX_OK;
+}
+
+void Dwc2::SetConnected(bool connected) {
+    if (connected == connected_) {
+        return;
+    }
+
+    if (dci_intf_) {
+        dci_intf_->SetConnected(connected);
+    }
+    if (usb_phy_) {
+        usb_phy_->ConnectStatusChanged(connected);
+    }
+
+    // Complete any pending requests
+    if (!connected) {
+        for (uint8_t i = 0; i < fbl::count_of(endpoints_); i++) {
+            auto* ep = &endpoints_[i];
+            RequestQueue complete_reqs;
+    
+            {
+                fbl::AutoLock lock(&ep->lock);
+                if (ep->current_req) {
+                    complete_reqs.push(Request(ep->current_req, sizeof(usb_request_t)));
+                    ep->current_req = nullptr;
+                }
+                for (auto req = ep->queued_reqs.pop(); req; req = ep->queued_reqs.pop()) {
+                    complete_reqs.push(std::move(*req));
+                }
+
+            }
+            // Requests must be completed outside of the lock.
+            for (auto req = complete_reqs.pop(); req; req = complete_reqs.pop()) {
+                req->Complete(ZX_ERR_IO_NOT_PRESENT, 0);
+            }
+        }
+    }
+
+    connected_ = connected;
 }
 
 zx_status_t Dwc2::Create(void* ctx, zx_device_t* parent) {
@@ -1024,7 +1045,7 @@ int Dwc2::IrqThread() {
             if (gintsts.usbreset()) {
                 HandleReset();
             }
-            if (gintsts.usbsuspend()) {
+            if (gintsts.usbsuspend() || gintsts.erlysuspend()) {
                 HandleSuspend();
             }
             if (gintsts.enumdone()) {
@@ -1066,6 +1087,7 @@ void Dwc2::UsbDciRequestQueue(usb_request_t* req, const usb_request_complete_t* 
     if (!ep->enabled) {
         zxlogf(ERROR, "Dwc2::UsbDciRequestQueue: endpoint 0x%02X not enabled\n",
                req->header.ep_address);
+        usb_request_complete(req, ZX_ERR_BAD_STATE, 0, cb);
         return;
     }
 
