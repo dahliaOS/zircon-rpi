@@ -85,6 +85,7 @@ zx_status_t PowerDevice::Create(void* ctx, zx_device_t* parent) {
         return ZX_ERR_INTERNAL;
     }
 
+    zxlogf(ERROR, "MINE %s: START\n", __PRETTY_FUNCTION__);
     for (uint32_t i = 0; i < count; i++) {
         auto index = power_domains[i].index;
         fbl::AllocChecker ac;

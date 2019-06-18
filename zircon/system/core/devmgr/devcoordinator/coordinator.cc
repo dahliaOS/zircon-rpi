@@ -100,7 +100,7 @@ namespace devmgr {
 
 const char* kComponentDriverPath = "/boot/driver/component.so";
 
-uint32_t log_flags = LOG_ERROR | LOG_INFO;
+uint32_t log_flags = LOG_ERROR | LOG_INFO | LOG_ALL;
 
 Coordinator::Coordinator(CoordinatorConfig config)
     : config_(std::move(config)), outgoing_services_(config_.dispatcher) {
