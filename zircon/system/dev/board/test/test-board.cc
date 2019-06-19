@@ -170,6 +170,10 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         {fbl::count_of(codec_component), codec_component},
     };
 
+    device_component_t composite2[] = {
+        {fbl::count_of(power_component), power_component},
+    };
+
     const uint32_t test_metadata_value = 12345;
 
     const pbus_metadata_t test_metadata[] = {
@@ -193,6 +197,16 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add failed: %d\n", status);
     }
 
+    pbus_dev_t pdev2 = {};
+    pdev2.name = "composite-dev-my-test";
+    pdev2.vid = PDEV_VID_TEST;
+    pdev2.pid = PDEV_PID_PBUS_TEST;
+    pdev2.did = PDEV_DID_TEST_COMPOSITE;
+    status = pbus_composite_device_add(&pbus, &pdev2, composite2, fbl::count_of(composite2),
+                                       UINT32_MAX);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add MINE failed: %d\n", status);
+    }
     return status;
 }
 
