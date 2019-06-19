@@ -119,24 +119,40 @@ static zx_status_t i2c_dw_disable(i2c_dw_dev_t* dev) {
 }
 
 static zx_status_t i2c_dw_wait_event(i2c_dw_dev_t* dev, uint32_t sig_mask) {
-    uint32_t observed;
+    uint32_t observed = 0;
     zx_time_t deadline = zx_deadline_after(dev->timeout);
 
     sig_mask |= I2C_ERROR_SIGNAL;
-
     zx_status_t status = zx_object_wait_one(dev->event_handle, sig_mask, deadline, &observed);
-
     if (status != ZX_OK) {
         return status;
     }
 
-    zx_object_signal(dev->event_handle, observed, 0);
+    status = zx_object_signal(dev->event_handle, observed, 0);
+    if (status != ZX_OK) {
+        return status;
+    }
 
     if (observed & I2C_ERROR_SIGNAL) {
-        return ZX_ERR_TIMED_OUT;
+        return ZX_ERR_INTERNAL;
     }
 
     return ZX_OK;
+}
+
+// Function to clear only the interrupts that are were read. If all the interrupts are cleared,
+// it will lead to race condition.
+static void i2c_dw_clear_specific_interrupts(i2c_dw_dev_t* dev, uint32_t irq) {
+    // resetting only the ones that are waited on
+    if (irq & DW_I2C_INTR_TX_ABRT) {
+        I2C_DW_READ32(DW_I2C_CLR_TX_ABRT);
+    }
+    if (irq & DW_I2C_INTR_RX_DONE) {
+        I2C_DW_READ32(DW_I2C_CLR_RX_DONE);
+    }
+    if (irq & DW_I2C_INTR_STOP_DET) {
+        I2C_DW_READ32(DW_I2C_CLR_STOP_DET);
+    }
 }
 
 // Thread to handle interrupts
@@ -153,18 +169,35 @@ static int i2c_dw_irq_thread(void* arg) {
 
         uint32_t reg = I2C_DW_READ32(DW_I2C_RAW_INTR_STAT);
         if (reg & DW_I2C_INTR_TX_ABRT) {
-            // some sort of error has occurred. figure it out
-            i2c_dw_dumpstate(dev);
-            I2C_DW_READ32(DW_I2C_CLR_TX_ABRT);
-            zx_object_signal(dev->event_handle, 0, I2C_ERROR_SIGNAL);
-            zxlogf(ERROR, "i2c: error on bus\n");
-        } else {
-            zx_object_signal(dev->event_handle, 0, I2C_TXN_COMPLETE_SIGNAL);
+            zxlogf(ERROR, "i2c: error on bus - Abort source 0x%x\n",
+                   I2C_DW_READ32(DW_I2C_TX_ABRT_SOURCE));
+            status = zx_object_signal(dev->event_handle, 0, I2C_ERROR_SIGNAL);
+            if (status != ZX_OK) {
+                zxlogf(ERROR, "Failure signaling I2C error - %d\n", status);
+            }
+        } else if (reg & DW_I2C_INTR_DEFAULT_INTR_MASK) {
+            status = zx_object_signal(dev->event_handle, 0, I2C_TXN_COMPLETE_SIGNAL);
+            if (status != ZX_OK) {
+                zxlogf(ERROR, "Failure signaling I2C complete - %d\n", status);
+            }
         }
-        i2c_dw_clear_interrupts(dev);
-        i2c_dw_disable_interrupts(dev);
+        i2c_dw_clear_specific_interrupts(dev, reg);
     }
 
+    return ZX_OK;
+}
+
+static zx_status_t i2c_dw_wait_bus_busy(i2c_dw_dev_t* dev) {
+    uint32_t timeout = 0;
+    uint32_t mask = I2C_DW_SET_MASK(0, DW_I2C_STATUS_ACTIVITY_START,
+                                    DW_I2C_STATUS_ACTIVITY_BITS, 1);
+    while (I2C_DW_READ32(DW_I2C_STATUS) & mask) {
+        if (timeout > 100) {
+            return ZX_ERR_TIMED_OUT;
+        }
+        usleep(10);
+        timeout++;
+    }
     return ZX_OK;
 }
 
@@ -193,12 +226,23 @@ static zx_status_t i2c_dw_transact(void* ctx, uint32_t bus_id, const i2c_impl_op
             return ZX_ERR_NOT_SUPPORTED;
         }
     }
-    i2c_dw_set_slave_addr(dev, rws[0].address);
-    i2c_dw_enable(dev);
-    i2c_dw_disable_interrupts(dev);
-    i2c_dw_clear_interrupts(dev);
+    zx_status_t status = i2c_dw_wait_bus_busy(dev);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "I2C bus wait failed %d\n", status);
+        return status;
+    }
+    status = i2c_dw_set_slave_addr(dev, rws[0].address);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "I2C set address failed %d\n", status);
+        return status;
+    }
+    status = i2c_dw_enable(dev);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "I2C device enable failed %d\n", status);
+        return status;
+    }
 
-    zx_status_t status = ZX_OK;
+    status = ZX_OK;
     for (i = 0; i < count; ++i) {
         if (rws[i].is_read) {
             status = i2c_dw_read(dev, rws[i].data_buffer, rws[i].data_size, rws[i].stop);
@@ -206,13 +250,15 @@ static zx_status_t i2c_dw_transact(void* ctx, uint32_t bus_id, const i2c_impl_op
             status = i2c_dw_write(dev, rws[i].data_buffer, rws[i].data_size, rws[i].stop);
         }
         if (status != ZX_OK) {
-            return status; // TODO(andresoportus) release the bus
+            //TODO (puneetha): recover bus in case of timeout
+            break;
         }
     }
 
-    i2c_dw_disable_interrupts(dev);
-    i2c_dw_clear_interrupts(dev);
-    i2c_dw_disable(dev);
+    zx_status_t disable_ret = i2c_dw_disable(dev);
+    if (disable_ret != ZX_OK) {
+        zxlogf(ERROR, "I2C device disable failed %d\n", disable_ret);
+    }
 
     return status;
 }
@@ -261,9 +307,14 @@ static zx_status_t i2c_dw_read(i2c_dw_dev_t* dev, uint8_t* buff, uint32_t len, b
         I2C_DW_WRITE32(DW_I2C_DATA_CMD, cmd | (1 << DW_I2C_DATA_CMD_CMD_START));
         len--;
     }
-
+    // clear all signals and interrupts before enabling the interrupt
+    zx_object_signal(dev->event_handle, I2C_ALL_SIGNALS, 0);
+    i2c_dw_clear_interrupts(dev);
     i2c_dw_enable_interrupts(dev, DW_I2C_INTR_READ_INTR_MASK);
+
     zx_status_t status = i2c_dw_wait_event(dev, I2C_TXN_COMPLETE_SIGNAL);
+    i2c_dw_disable_interrupts(dev);
+
     if (status != ZX_OK) {
         return status;
     }
@@ -292,10 +343,15 @@ static zx_status_t i2c_dw_write(i2c_dw_dev_t* dev, const uint8_t* buff, uint32_t
         I2C_DW_WRITE32(DW_I2C_DATA_CMD, cmd | *buff++);
         len--;
     }
+    // clear all signals and interrupts before enabling the interrupt
+    zx_object_signal(dev->event_handle, I2C_ALL_SIGNALS, 0);
+    i2c_dw_clear_interrupts(dev);
+    i2c_dw_enable_interrupts(dev, DW_I2C_INTR_DEFAULT_INTR_MASK);
 
     // at this point, we have to wait until all data has been transmitted.
-    i2c_dw_enable_interrupts(dev, DW_I2C_INTR_DEFAULT_INTR_MASK);
     zx_status_t status = i2c_dw_wait_event(dev, I2C_TXN_COMPLETE_SIGNAL);
+    i2c_dw_disable_interrupts(dev);
+
     if (status != ZX_OK) {
         return status;
     }
@@ -364,11 +420,14 @@ static zx_status_t i2c_dw_host_init(i2c_dw_dev_t* dev) {
     I2C_DW_WRITE32(DW_I2C_CON, regval);
 
     // Write SS/FS LCNT and HCNT
-    // FIXME: for now I am using the magical numbers from android source
-    I2C_DW_SET_BITS32(DW_I2C_SS_SCL_HCNT, DW_I2C_SS_SCL_HCNT_START, DW_I2C_SS_SCL_HCNT_BITS, 0x87);
-    I2C_DW_SET_BITS32(DW_I2C_SS_SCL_LCNT, DW_I2C_SS_SCL_LCNT_START, DW_I2C_SS_SCL_LCNT_BITS, 0x9f);
-    I2C_DW_SET_BITS32(DW_I2C_FS_SCL_HCNT, DW_I2C_FS_SCL_HCNT_START, DW_I2C_FS_SCL_HCNT_BITS, 0x1a);
-    I2C_DW_SET_BITS32(DW_I2C_FS_SCL_LCNT, DW_I2C_FS_SCL_LCNT_START, DW_I2C_FS_SCL_LCNT_BITS, 0x32);
+    I2C_DW_SET_BITS32(DW_I2C_SS_SCL_HCNT, DW_I2C_SS_SCL_HCNT_START, DW_I2C_SS_SCL_HCNT_BITS,
+                      DW_I2C_SS_SCL_HCNT_VALUE);
+    I2C_DW_SET_BITS32(DW_I2C_SS_SCL_LCNT, DW_I2C_SS_SCL_LCNT_START, DW_I2C_SS_SCL_LCNT_BITS,
+                      DW_I2C_SS_SCL_LCNT_VALUE);
+    I2C_DW_SET_BITS32(DW_I2C_FS_SCL_HCNT, DW_I2C_FS_SCL_HCNT_START, DW_I2C_FS_SCL_HCNT_BITS,
+                      DW_I2C_FS_SCL_HCNT_VALUE);
+    I2C_DW_SET_BITS32(DW_I2C_FS_SCL_LCNT, DW_I2C_FS_SCL_LCNT_START, DW_I2C_FS_SCL_LCNT_BITS,
+                      DW_I2C_FS_SCL_LCNT_VALUE);
 
     // Setup TX FIFO Thresholds
     I2C_DW_SET_BITS32(DW_I2C_TX_TL, DW_I2C_TX_TL_START, DW_I2C_TX_TL_BITS, 0);
@@ -382,33 +441,66 @@ static zx_status_t i2c_dw_host_init(i2c_dw_dev_t* dev) {
 #if I2C_AS370_DW_TEST
 static int i2c_dw_test_thread(void* ctx) {
     zx_status_t status;
+    uint8_t addr = 0;
     bool pass = true;
-    uint8_t addr = 0x66; //SY20212DAIC PMIC device
+    uint8_t valid_addr = 0x66;  // SY20212DAIC PMIC device
+    uint8_t valid_value = 0x8B; // Register 0x0 default value for PMIC
     uint8_t data_write = 0;
     uint8_t data_read;
 
-    i2c_impl_op_t ops[] = {
-        {.address = addr,
-         .data_buffer = &data_write,
-         .data_size = 1,
-         .is_read = false,
-         .stop = false},
-        {.address = addr,
-         .data_buffer = &data_read,
-         .data_size = 1,
-         .is_read = true,
-         .stop = true},
-    };
+#if 0
+    zxlogf(INFO, "Finding I2c devices\n");
+    //Find all available devices
+    for (uint32_t i = 0x0; i <= 0x7f; i++) {
+        addr = i;
+        i2c_impl_op_t ops[] = {
+            {.address = addr,
+             .data_buffer = &data_write,
+             .data_size = 1,
+             .is_read = false,
+             .stop = false},
+            {.address = addr,
+             .data_buffer = &data_read,
+             .data_size = 1,
+             .is_read = true,
+             .stop = true},
+        };
 
-    status = i2c_dw_transact(ctx, 0, ops, countof(ops));
-    if (status == ZX_OK) {
-        zxlogf(INFO, "I2C Addr: 0x%02X Reg:0x%02X Value:0x%02X\n", addr, data_write, data_read);
-        //Check with reset value of PMIC registers
-        if (data_read != 0x8B) {
+        status = i2c_dw_transact(ctx, 0, ops, countof(ops));
+        if (status == ZX_OK) {
+            zxlogf(INFO, "I2C device found at address: 0x%02X\n", addr);
+        }
+    }
+#endif
+    zxlogf(INFO, "I2C: Testing PMIC ping\n");
+
+    // Test multiple reads from a known device
+    for (uint32_t i = 0; i < 10; i++) {
+        addr = valid_addr;
+        i2c_impl_op_t ops[] = {
+            {.address = addr,
+             .data_buffer = &data_write,
+             .data_size = 1,
+             .is_read = false,
+             .stop = false},
+            {.address = addr,
+             .data_buffer = &data_read,
+             .data_size = 1,
+             .is_read = true,
+             .stop = true},
+        };
+
+        status = i2c_dw_transact(ctx, 0, ops, countof(ops));
+        if (status == ZX_OK) {
+            //Check with reset value of PMIC registers
+            if (data_read != valid_value) {
+                zxlogf(INFO, "I2C test: PMIC register value not matched - %x\n", data_read);
+                pass = false;
+            }
+        } else {
+            zxlogf(INFO, "I2C test: PMIC ping failed\n");
             pass = false;
         }
-    } else {
-        pass = false;
     }
 
     if (pass) {
@@ -416,7 +508,6 @@ static int i2c_dw_test_thread(void* ctx) {
     } else {
         zxlogf(ERROR, "DW I2C test for AS370 failed\n");
     }
-
     return 0;
 }
 #endif
@@ -425,7 +516,7 @@ static zx_status_t i2c_dw_init(i2c_dw_t* i2c, uint32_t index) {
     zx_status_t status;
     i2c_dw_dev_t* device = &i2c->i2c_devs[index];
 
-    device->timeout = ZX_SEC(10);
+    device->timeout = ZX_SEC(2);
 
     status = pdev_map_mmio_buffer(&i2c->pdev, index, ZX_CACHE_POLICY_UNCACHED_DEVICE,
                                   &device->regs_iobuff);
