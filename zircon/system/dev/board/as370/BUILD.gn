@@ -8,6 +8,7 @@ driver("as370") {
     "as370-gpio.cpp",
     "as370-i2c.cpp",
     "as370-usb.cpp",
+    "as370-audio.cpp",
   ]
   deps = [
     "$zx/system/banjo/ddk.protocol.gpioimpl",

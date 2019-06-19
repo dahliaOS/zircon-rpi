@@ -7,6 +7,7 @@
 #include <threads.h>
 
 #include <ddktl/device.h>
+#include <ddktl/protocol/gpioimpl.h>
 #include <ddktl/protocol/platform/bus.h>
 
 namespace board_as370 {
@@ -33,8 +34,10 @@ private:
     zx_status_t GpioInit();
     zx_status_t I2cInit();
     zx_status_t UsbInit();
+    zx_status_t AudioInit();
 
     ddk::PBusProtocolClient pbus_;
+    ddk::GpioImplProtocolClient gpio_impl_;
     thrd_t thread_;
 };
 
