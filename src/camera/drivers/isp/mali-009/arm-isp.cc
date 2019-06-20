@@ -512,6 +512,64 @@ zx_status_t ArmIspDevice::Create(void* ctx, zx_device_t* parent) {
   return status;
 }
 
+// Functions that the isp_stream_protocol calls:
+zx_status_t ArmIspDevice::ReleaseFrame(uint32_t buffer_id, stream_type_t type) {
+  // Ignore anything that is not FullFrame or Downscaled:
+  switch (type) {
+    case STREAM_TYPE_FULL_RESOLUTION:
+      return full_resolution_dma_->ReleaseFrame(buffer_id);
+    case STREAM_TYPE_DOWNSCALED:
+      return downscaled_dma_->ReleaseFrame(buffer_id);
+    default:
+      zxlogf(ERROR, "%s: Invalid stream type\n", __func__);
+  }
+  return ZX_ERR_INVALID_ARGS;
+}
+
+// A call to either stream type to start will get the isp to start running.
+zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
+  // Ignore anything that is not FullFrame or Downscaled:
+  bool was_streaming = full_resolution_streaming_ || downscaled_streaming_;
+  switch (type) {
+    case STREAM_TYPE_FULL_RESOLUTION:
+      full_resolution_streaming_ = true;
+      break;
+    case STREAM_TYPE_DOWNSCALED:
+      downscaled_streaming_ = true;
+      break;
+    default:
+      zxlogf(ERROR, "%s: Invalid stream type\n", __func__);
+      return ZX_ERR_INVALID_ARGS;
+  }
+  if (!was_streaming) {
+    return StartStreaming();
+  }
+  return ZX_OK;
+}
+
+// The ISP will only stop streaming when both streams are stopped.
+// TODO(CAM-81): Allow actual stopping of individual streams.
+zx_status_t ArmIspDevice::StopStream(stream_type_t type) {
+  // Ignore anything that is not FullFrame or Downscaled:
+  bool was_streaming = full_resolution_streaming_ || downscaled_streaming_;
+  switch (type) {
+    case STREAM_TYPE_FULL_RESOLUTION:
+      full_resolution_streaming_ = false;
+      break;
+    case STREAM_TYPE_DOWNSCALED:
+      downscaled_streaming_ = false;
+      break;
+    default:
+      zxlogf(ERROR, "%s: Invalid stream type\n", __func__);
+      return ZX_ERR_INVALID_ARGS;
+  }
+  bool is_streaming = full_resolution_streaming_ || downscaled_streaming_;
+  if (!is_streaming && was_streaming) {
+    return StopStreaming();
+  }
+  return ZX_OK;
+}
+
 zx_status_t ArmIspDevice::StartStreaming() {
   // At reset we use PING config
   IspGlobal_Config3::Get()
@@ -540,11 +598,57 @@ zx_status_t ArmIspDevice::StopStreaming() {
   return SetPort(kSafeStop);
 }
 
-zx_status_t ArmIspDevice::IspCreateInputStream(
+zx_status_t ArmIspDevice::IspCreateOutputStream(
     const buffer_collection_info_t* buffer_collection, const frame_rate_t* rate,
-    stream_type_t type, const input_stream_callback_t* stream,
-    input_stream_protocol_t* out_s) {
-  return ZX_ERR_NOT_SUPPORTED;
+    stream_type_t type, const output_stream_callback_t* stream,
+    output_stream_protocol_t* out_s) {
+  // TODO(CAM-79): Set frame rate in sensor
+  auto frame_ready_callback =
+      [stream](fuchsia_camera_common_FrameAvailableEvent event) {
+        // TODO(CAM-80): change the output_stream_callback_t so it uses all the
+        // frame available info
+        stream->frame_ready(stream->ctx, event.buffer_id);
+      };
+
+  // Set the control interface:
+  out_s->ctx = this;
+  switch (type) {
+    case STREAM_TYPE_FULL_RESOLUTION:
+      out_s->ops->start = [](void* ctx) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->StartStream(
+            STREAM_TYPE_FULL_RESOLUTION);
+      };
+      out_s->ops->stop = [](void* ctx) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->StopStream(
+            STREAM_TYPE_FULL_RESOLUTION);
+      };
+      out_s->ops->release_frame = [](void* ctx, uint32_t buffer_id) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->ReleaseFrame(
+            buffer_id, STREAM_TYPE_FULL_RESOLUTION);
+      };
+      return full_resolution_dma_->Start(*buffer_collection,
+                                         frame_ready_callback);
+    case STREAM_TYPE_DOWNSCALED:
+      out_s->ops->start = [](void* ctx) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->StartStream(
+            STREAM_TYPE_DOWNSCALED);
+      };
+      out_s->ops->stop = [](void* ctx) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->StopStream(
+            STREAM_TYPE_DOWNSCALED);
+      };
+      out_s->ops->release_frame = [](void* ctx, uint32_t buffer_id) {
+        return reinterpret_cast<ArmIspDevice*>(ctx)->ReleaseFrame(
+            buffer_id, STREAM_TYPE_DOWNSCALED);
+      };
+      return downscaled_dma_->Start(*buffer_collection, frame_ready_callback);
+    case STREAM_TYPE_SCALAR:
+      return ZX_ERR_NOT_SUPPORTED;
+    case STREAM_TYPE_INVALID:
+    default:
+      return ZX_ERR_INVALID_ARGS;
+  }
+  return ZX_ERR_INVALID_ARGS;
 }
 
 ArmIspDevice::~ArmIspDevice() {

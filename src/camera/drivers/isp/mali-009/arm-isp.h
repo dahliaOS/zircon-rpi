@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifndef SRC_CAMERA_DRIVERS_ISP_MALI_009_ARM_ISP_H_
+#define SRC_CAMERA_DRIVERS_ISP_MALI_009_ARM_ISP_H_
+
 #include <ddk/metadata/camera.h>
 #include <ddk/platform-defs.h>
 #include <ddk/protocol/platform/bus.h>
@@ -81,11 +84,42 @@ class ArmIspDevice : public IspDeviceType,
   void DdkRelease();
   void DdkUnbind();
 
-  // ZX_PROTOCOL_ISP
-  zx_status_t IspCreateInputStream(
+  // +++++++++   ZX_PROTOCOL_ISP +++++++++++++++++++++++
+  // This is the interface that is used by the Camera Controller
+  // to set the format for the ISP output streams, provide buffers
+  // for the frames that the ISP writes to, and establishes a control and
+  // response interface between the camera controller and the ISP.
+  // |buffer_collection| : Hold the format and pool of VMOs that the ISP will
+  //                       produce
+  // |stream| : The protocol which calls a function when the ISP is done
+  //            writing to a buffer.
+  // |rate|  : The frame rate of the output
+  // |type|  : The stream type (full resolution or downscaled)
+  // |out_s| : (output) Protocol over which the flow of frames is controlled.
+  // @Return : indicates if the stream was created.
+  zx_status_t IspCreateOutputStream(
       const buffer_collection_info_t* buffer_collection,
       const frame_rate_t* rate, stream_type_t type,
-      const input_stream_callback_t* stream, input_stream_protocol_t* out_s);
+      const output_stream_callback_t* stream, output_stream_protocol_t* out_s);
+
+  // Functions to service the output_stream_protocol interface:
+
+  // Release a frame that was being used by a consumer
+  // |buffer_id| : the buffer_id that was sent with FrameReady
+  // |type| : Either STREAM_TYPE_FULL_RESOLUTION or STREAM_TYPE_DOWNSCALED
+  // @Return : indicates if the frame was released.
+  zx_status_t ReleaseFrame(uint32_t buffer_id, stream_type_t type);
+
+  // Start streaming one of the stream types.
+  // |type| : Either STREAM_TYPE_FULL_RESOLUTION or STREAM_TYPE_DOWNSCALED
+  // @Return : indicates if the stream was started.
+  zx_status_t StartStream(stream_type_t type);
+
+  // Stop streaming one of the stream types.
+  // |type| : Either STREAM_TYPE_FULL_RESOLUTION or STREAM_TYPE_DOWNSCALED
+  // @Return : indicates if the stream was stopped.
+  zx_status_t StopStream(stream_type_t type);
+  // ---------------  End ZX_PROTOCOL_ISP ---------------
 
   // ISP Init Sequences (init_sequences.cc)
   void IspLoadSeq_linear();
@@ -142,6 +176,8 @@ class ArmIspDevice : public IspDeviceType,
   fbl::unique_ptr<camera::StatsManager> statsMgr_;
   fbl::unique_ptr<camera::DmaManager> full_resolution_dma_;
   fbl::unique_ptr<camera::DmaManager> downscaled_dma_;
+  bool full_resolution_streaming_ = false;
+  bool downscaled_streaming_ = false;
 
   //TODO(CAM-88): Formalize isp sub-block ownership.
   GammaRgbRegisters gamma_rgb_fr_regs_;
@@ -160,3 +196,5 @@ class ArmIspDevice : public IspDeviceType,
 };
 
 }  // namespace camera
+
+#endif  // SRC_CAMERA_DRIVERS_ISP_MALI_009_ARM_ISP_H_
