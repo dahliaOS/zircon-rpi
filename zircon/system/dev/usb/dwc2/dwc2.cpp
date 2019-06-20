@@ -187,6 +187,12 @@ void Dwc2::HandleInEpInterrupt() {
                     .ReadFrom(mmio)
                     .set_timeout(1)
                     .WriteTo(mmio);
+
+                // Set Global IN NAK
+                DCTL::Get()
+                    .ReadFrom(mmio)
+                    .set_sgnpinnak(1)
+                    .WriteTo(mmio);
             }
             if (diepint.intktxfemp()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.intktxfemp for ep_num %u\n", ep_num);
@@ -221,7 +227,7 @@ void Dwc2::HandleOutEpInterrupt() {
 
     uint8_t ep_num = DWC_EP0_OUT;
 
-    // Read bits indicating which endpoints have inepintr active
+    // Read bits indicating which endpoints have outepintr active
     auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
     auto ep_mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
     ep_bits &= ep_mask;
@@ -866,6 +872,7 @@ zx_status_t Dwc2::InitController() {
         .set_outepintr(1)
         .set_usbsuspend(1)
         .set_erlysuspend(1)
+        .set_ginnakeff(1)
         .WriteTo(mmio);
 
     // Enable global interrupts
