@@ -1110,7 +1110,7 @@ zx_status_t Coordinator::PrepareProxy(const fbl::RefPtr<Device>& dev, Devhost* t
 
 zx_status_t Coordinator::AttemptBind(const Driver* drv, const fbl::RefPtr<Device>& dev) {
     // cannot bind driver to already bound device
-    if ((dev->flags & DEV_CTX_BOUND) && (!(dev->flags & DEV_CTX_MULTI_BIND))) {
+    if ((dev->flags & DEV_CTX_BOUND) && (!(dev->flags & DEV_CTX_MULTI_BIND) && !(dev->flags & DEV_CTX_MULTI_COMPOSITE))) {
         return ZX_ERR_BAD_STATE;
     }
     if (!(dev->flags & DEV_CTX_MUST_ISOLATE)) {
@@ -1321,7 +1321,7 @@ void Coordinator::DriverAddedSys(Driver* drv, const char* version) {
 
 zx_status_t Coordinator::BindDriverToDevice(const fbl::RefPtr<Device>& dev, const Driver* drv,
                                             bool autobind, const AttemptBindFunc& attempt_bind) {
-    if (!dev->is_bindable()) {
+    if (!dev->is_bindable() && !(dev->flags & DEV_CTX_MULTI_COMPOSITE)) {
         log(ERROR, "devcoordinator: MINE MINE device is already bound. Returning from here. dev:%s\n", dev->name().data());
         return ZX_ERR_NEXT;
     }
@@ -1393,13 +1393,18 @@ zx_status_t Coordinator::BindDevice(const fbl::RefPtr<Device>& dev, fbl::StringP
     // Attempt composite device matching first.  This is unnecessary if a
     // specific driver has been requested.
     if (autobind) {
+        zx_status_t status;
         for (auto& composite : composite_devices_) {
             size_t index;
             if (composite.TryMatchComponents(dev, &index)) {
                 log(SPEW, "devcoordinator: dev='%s' matched component %zu of composite='%s'\n",
                     dev->name().data(), index, composite.name().data());
 
-                composite.BindComponent(index, dev);
+                status = composite.BindComponent(index, dev);
+                if (status != ZX_OK) {
+                    log(ERROR, "composite bind component failed\n");
+                    return status;
+                }
             }
         }
     }

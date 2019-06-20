@@ -37,6 +37,10 @@ class SuspendTask;
 // This device may be bound multiple times
 #define DEV_CTX_MULTI_BIND    0x04
 
+// This device may be component multiple times in
+// multiple composite devices
+#define DEV_CTX_MULTI_COMPOSITE    0x20
+
 // This device is bound and not eligible for binding
 // again until unbound.  Not allowed on MULTI_BIND ctx.
 #define DEV_CTX_BOUND         0x08
