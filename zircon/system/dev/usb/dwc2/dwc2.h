@@ -87,6 +87,7 @@ private:
         bool enabled;
         // Endpoint type: control, bulk, interrupt or isochronous
         uint8_t type;
+        uint32_t fifo_index = 0;
     };
 
     DISALLOW_COPY_ASSIGN_AND_MOVE(Dwc2);
@@ -113,6 +114,8 @@ private:
     void HandleEnumDone();
     void HandleInEpInterrupt();
     void HandleOutEpInterrupt();
+    void HandleInNakEffectiveInterrupt();
+    void HandleEpDisabled(uint8_t ep_num);
 
     zx_status_t HandleSetupRequest(size_t* out_actual);
     void SetAddress(uint8_t address);

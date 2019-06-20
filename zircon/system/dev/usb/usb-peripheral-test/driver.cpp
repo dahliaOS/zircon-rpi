@@ -108,7 +108,7 @@ static void test_bulk_in_complete(void* ctx, usb_request_t* req);
 static void test_intr_complete(void* ctx, usb_request_t* req) {
     auto* test = static_cast<usb_test_t*>(ctx);
 
-    zxlogf(LTRACE, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
+    zxlogf(LINFO, "%s %d %ld\n", __func__, req->response.status, req->response.actual);
 
     fbl::AutoLock lock(&test->lock);
     zx_status_t status = usb_req_list_add_tail(&test->intr_reqs, req, test->parent_req_size);
@@ -224,6 +224,7 @@ static zx_status_t test_control(void* ctx, const usb_setup_t* setup, const void*
             .callback = test_intr_complete,
             .ctx = test,
         };
+zxlogf(LINFO, "queue interrupt request\n");
         usb_function_request_queue(&test->function, req, &complete);
         return ZX_OK;
     } else {

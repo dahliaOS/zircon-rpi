@@ -28,7 +28,7 @@ void Dwc2::HandleReset() {
         .WriteTo(mmio);
 
     for (uint32_t i = 0; i < MAX_EPS_CHANNELS; i++) {
-        auto diepctl = DEPCTL::Get(i).ReadFrom(mmio);
+        auto diepctl = DEPCTL::Get(i + DWC_EP_IN_SHIFT).ReadFrom(mmio);
 
         // Disable IN endpoints
         if (diepctl.epena()) {
@@ -165,15 +165,15 @@ void Dwc2::HandleInEpInterrupt() {
                     }
                 }
             }
-
-            // TODO(voydanoff) Implement error recovery for these interrupts
             if (diepint.epdisabled()) {
-                zxlogf(ERROR, "Unandled interrupt diepint.epdisabled for ep_num %u\n", ep_num);
                 DIEPINT::Get(ep_num)
                     .ReadFrom(mmio)
                     .set_epdisabled(1)
                     .WriteTo(mmio);
+                HandleEpDisabled(ep_num);
             }
+
+            // TODO(voydanoff) Implement error recovery for these interrupts
             if (diepint.ahberr()) {
                 zxlogf(ERROR, "Unandled interrupt diepint.ahberr for ep_num %u\n", ep_num);
                 DIEPINT::Get(ep_num)
@@ -182,11 +182,17 @@ void Dwc2::HandleInEpInterrupt() {
                     .WriteTo(mmio);
             }
             if (diepint.timeout()) {
-                zxlogf(ERROR, "Unandled interrupt diepint.timeout for ep_num %u\n", ep_num);
+                zxlogf(ERROR, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX diepint.timeout for ep_num %u\n", ep_num);
                 DIEPINT::Get(ep_num)
                     .ReadFrom(mmio)
                     .set_timeout(1)
                     .WriteTo(mmio);
+
+            // Enable ginnakeff interrupt
+            GINTMSK::Get()
+                .ReadFrom(mmio)
+                .set_ginnakeff(1)
+                .WriteTo(mmio);
 
                 // Set Global IN NAK
                 DCTL::Get()
@@ -289,14 +295,17 @@ void Dwc2::HandleOutEpInterrupt() {
                     HandleTransferComplete(ep_num);
                 }
             }
-            // TODO(voydanoff) Implement error recovery for these interrupts
             if (doepint.epdisabled()) {
                 zxlogf(ERROR, "Unhandled interrupt doepint.epdisabled for ep_num %u\n", ep_num);
                 DOEPINT::Get(ep_num)
                     .ReadFrom(mmio)
                     .set_epdisabled(1)
                     .WriteTo(mmio);
+
+                HandleEpDisabled(ep_num);
             }
+
+            // TODO(voydanoff) Implement error recovery for these interrupts
             if (doepint.ahberr()) {
                 zxlogf(ERROR, "Unhandled interrupt doepint.ahberr for ep_num %u\n", ep_num);
                 DOEPINT::Get(ep_num)
@@ -307,6 +316,50 @@ void Dwc2::HandleOutEpInterrupt() {
         }
         ep_num++;
         ep_bits >>= 1;
+    }
+}
+
+// Handler for ginnakeff interrupt.
+void Dwc2::HandleInNakEffectiveInterrupt() {
+    auto* mmio = get_mmio();
+
+printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxx HandleInNakEffectiveInterrupt\n");
+
+    // Disable all non-periodic IN endpoints
+    for (uint32_t i = 0; i < MAX_EPS_CHANNELS; i++) {
+        auto diepctl = DEPCTL::Get(i + DWC_EP_IN_SHIFT).ReadFrom(mmio);
+        if (diepctl.epena() && (diepctl.eptype() == USB_ENDPOINT_CONTROL ||
+                                diepctl.eptype() == USB_ENDPOINT_BULK)) {
+            diepctl.set_snak(1);
+            diepctl.set_epdis(1);
+            diepctl.WriteTo(mmio);
+        }
+    }
+
+    // Disable ginnakeff interrupt
+    GINTMSK::Get()
+        .ReadFrom(mmio)
+        .set_ginnakeff(0)
+        .WriteTo(mmio);
+}
+
+void Dwc2::HandleEpDisabled(uint8_t ep_num) {
+    auto* mmio = get_mmio();
+
+printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxx HandleEpDisabled %u\n", ep_num);
+
+
+    if (DWC_EP_IS_IN(ep_num)) {
+        auto* ep = &endpoints_[ep_num];
+        FlushTxFifo(ep->fifo_index);
+
+        DCTL::Get()
+            .ReadFrom(mmio)
+            .set_cgnpinnak(1)
+            .WriteTo(mmio);
+// TODO restart transfer?
+    } else {
+        // TODO(voydanoff) handle disable for OUT endpoints.
     }
 }
 
@@ -872,7 +925,6 @@ zx_status_t Dwc2::InitController() {
         .set_outepintr(1)
         .set_usbsuspend(1)
         .set_erlysuspend(1)
-        .set_ginnakeff(1)
         .WriteTo(mmio);
 
     // Enable global interrupts
@@ -1064,6 +1116,9 @@ int Dwc2::IrqThread() {
             if (gintsts.outepintr()) {
                 HandleOutEpInterrupt();
             }
+            if (gintsts.ginnakeff()) {
+                HandleInNakEffectiveInterrupt();
+            }
         }
     }
 
@@ -1155,7 +1210,9 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
         return ZX_ERR_NOT_SUPPORTED;
     }
 
-    uint32_t txfnum = 0;
+    auto* ep = &endpoints_[ep_num];
+    ep->fifo_index = 0;
+
     // Allocate FIFO space for periodic IN endpoints
     if (is_in && ep_type != USB_ENDPOINT_BULK) {
         fbl::AutoLock lock(&lock_);
@@ -1167,9 +1224,9 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
             return ZX_ERR_NO_RESOURCES;
         }
 
-        txfnum = next_dfifo_++;
+        ep->fifo_index = next_dfifo_++;
 
-        DTXFSIZ::Get(txfnum)
+        DTXFSIZ::Get(ep->fifo_index)
             .FromValue(0)
             .set_startaddr(dfifo_base_)
             .set_depth(fifo_size)
@@ -1185,7 +1242,6 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
         FlushTxFifo(0x10);
     }
 
-    auto* ep = &endpoints_[ep_num];
     fbl::AutoLock lock(&ep->lock);
 
     ep->type = ep_type;
@@ -1197,7 +1253,7 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
         .set_mps(ep->max_packet_size)
         .set_eptype(ep_type)
         .set_setd0pid(1)
-        .set_txfnum(txfnum)
+        .set_txfnum(ep->fifo_index)
         .set_usbactep(1)
         .WriteTo(mmio);
 
