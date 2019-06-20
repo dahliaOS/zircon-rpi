@@ -14,9 +14,9 @@
 namespace {
 
 static const power_domain_t power_domains[] = {
-    { 1 },
+    //{ 1 },
     { 3 },
-    { 5 },
+    //{ 5 },
 };
 
 static const pbus_metadata_t power_metadata[] = {

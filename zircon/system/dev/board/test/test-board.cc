@@ -33,7 +33,7 @@ void TestBoard::DdkRelease() {
 int TestBoard::Thread() {
     zx_status_t status;
 
-    status = GpioInit();
+    /*status = GpioInit();
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: GpioInit failed: %d\n", __func__, status);
     }
@@ -46,14 +46,14 @@ int TestBoard::Thread() {
     status = ClockInit();
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: ClockInit failed: %d\n", __func__, status);
-    }
+    }*/
 
     status = PowerInit();
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: PowerInit failed: %d\n", __func__, status);
     }
 
-    status = TestInit();
+    /*status = TestInit();
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: TestInit failed: %d\n", __func__, status);
     }
@@ -61,7 +61,7 @@ int TestBoard::Thread() {
     status = AudioCodecInit();
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: CodecInit failed: %d\n", __func__, status);
-    }
+    }*/
 
     return 0;
 }
@@ -105,7 +105,15 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
     const zx_bind_inst_t root_match[] = {
         BI_MATCH(),
     };
-    const zx_bind_inst_t gpio_match[] = {
+    const zx_bind_inst_t power_match[] = {
+        BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_POWER),
+        BI_MATCH_IF(EQ, BIND_POWER_DOMAIN, 3),
+    };
+    device_component_part_t power_component[] = {
+        {fbl::count_of(root_match), root_match},
+        {fbl::count_of(power_match), power_match},
+    };
+    /*const zx_bind_inst_t gpio_match[] = {
         BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
         BI_MATCH_IF(EQ, BIND_GPIO_PIN, 3),
     };
@@ -117,10 +125,6 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_I2C),
         BI_ABORT_IF(NE, BIND_I2C_BUS_ID, 1),
         BI_MATCH_IF(EQ, BIND_I2C_ADDRESS, 5),
-    };
-    const zx_bind_inst_t power_match[] = {
-        BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_POWER),
-        BI_MATCH_IF(EQ, BIND_POWER_DOMAIN, 3),
     };
     const zx_bind_inst_t codec_match[] = {
         BI_MATCH_IF(EQ, BIND_PROTOCOL, ZX_PROTOCOL_CODEC),
@@ -147,10 +151,6 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         {fbl::count_of(root_match), root_match},
         {fbl::count_of(i2c_match), i2c_match},
     };
-    device_component_part_t power_component[] = {
-        {fbl::count_of(root_match), root_match},
-        {fbl::count_of(power_match), power_match},
-    };
     device_component_part_t child4_component[] = {
         {fbl::count_of(root_match), root_match},
         {fbl::count_of(child2_match), child2_match},
@@ -159,19 +159,15 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
     device_component_part_t codec_component[] = {
         {fbl::count_of(root_match), root_match},
         {fbl::count_of(codec_match), codec_match},
-    };
+    };*/
 
     device_component_t composite[] = {
-        {fbl::count_of(gpio_component), gpio_component},
-        {fbl::count_of(clock_component), clock_component},
-        {fbl::count_of(i2c_component), i2c_component},
+        //{fbl::count_of(gpio_component), gpio_component},
+        //{fbl::count_of(clock_component), clock_component},
+        //{fbl::count_of(i2c_component), i2c_component},
         {fbl::count_of(power_component), power_component},
-        {fbl::count_of(child4_component), child4_component},
-        {fbl::count_of(codec_component), codec_component},
-    };
-
-    device_component_t composite2[] = {
-        {fbl::count_of(power_component), power_component},
+        //{fbl::count_of(child4_component), child4_component},
+        //{fbl::count_of(codec_component), codec_component},
     };
 
     const uint32_t test_metadata_value = 12345;
@@ -197,16 +193,23 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add failed: %d\n", status);
     }
 
-    pbus_dev_t pdev2 = {};
-    pdev2.name = "composite-dev-my-test";
-    pdev2.vid = PDEV_VID_TEST;
-    pdev2.pid = PDEV_PID_PBUS_TEST;
-    pdev2.did = PDEV_DID_TEST_COMPOSITE;
-    status = pbus_composite_device_add(&pbus, &pdev2, composite2, fbl::count_of(composite2),
-                                       UINT32_MAX);
+    device_component_t composite2[] = {
+        {fbl::count_of(power_component), power_component},
+    };
+    zxlogf(ERROR, "TestBoard STARTED STARTED ADD MY COMPOSITE DEVICE\n");
+    const zx_device_prop_t props[] = {
+        { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_BROADCOM },
+        { BIND_PLATFORM_DEV_PID, 0, PDEV_PID_BCM43458 },
+        { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_BCM_WIFI },
+    };
+
+    status = device_add_composite(parent, "COMPOSITE_DEV_MINE", props, countof(props), composite2,
+                                  countof(composite2), 0);
     if (status != ZX_OK) {
-        zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add MINE failed: %d\n", status);
+        zxlogf(ERROR, "%s: MINE MINE device_add_composite failed: %d\n", __func__, status);
     }
+    zxlogf(ERROR, "TestBoard REACHED HERE AFTER ADDING COMPOSITE DEVICE\n");
+
     return status;
 }
 

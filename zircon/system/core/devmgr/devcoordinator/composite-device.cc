@@ -78,8 +78,8 @@ bool CompositeDevice::TryMatchComponents(const fbl::RefPtr<Device>& dev, size_t*
            return true;
         }
     }
-    log(SPEW, "devcoordinator: no match for composite='%s', dev='%s'\n",
-        name_.data(), dev->name().data());
+    /*log(SPEW, "devcoordinator: no match for composite='%s', dev='%s'\n",
+        name_.data(), dev->name().data());*/
     return false;
 }
 

@@ -25,12 +25,12 @@
 
 enum {
     COMPONENT_PDEV,
-    COMPONENT_GPIO,
-    COMPONENT_CLOCK,
-    COMPONENT_I2C,
+    //COMPONENT_GPIO,
+    //COMPONENT_CLOCK,
+    //COMPONENT_I2C,
     COMPONENT_POWER,
-    COMPONENT_CHILD4,
-    COMPONENT_CODEC,
+    //COMPONENT_CHILD4,
+    //COMPONENT_CODEC,
     COMPONENT_COUNT,
 };
 
@@ -295,15 +295,20 @@ static zx_status_t test_bind(void* ctx, zx_device_t* parent) {
         return ZX_ERR_BAD_STATE;
     }
 
-    pdev_protocol_t pdev;
+    power_protocol_t power;
+    /*pdev_protocol_t pdev;
     gpio_protocol_t gpio;
     clock_protocol_t clock;
     i2c_protocol_t i2c;
-    power_protocol_t power;
     clock_protocol_t child4;
-    codec_protocol_t codec;
+    codec_protocol_t codec;*/
 
-    status = device_get_protocol(components[COMPONENT_PDEV], ZX_PROTOCOL_PDEV, &pdev);
+    status = device_get_protocol(components[COMPONENT_POWER], ZX_PROTOCOL_POWER, &power);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: could not get protocol ZX_PROTOCOL_POWER\n", DRIVER_NAME);
+        return status;
+    }
+    /*status = device_get_protocol(components[COMPONENT_PDEV], ZX_PROTOCOL_PDEV, &pdev);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: could not get protocol ZX_PROTOCOL_PDEV\n", DRIVER_NAME);
         return status;
@@ -321,11 +326,6 @@ static zx_status_t test_bind(void* ctx, zx_device_t* parent) {
     status = device_get_protocol(components[COMPONENT_I2C], ZX_PROTOCOL_I2C, &i2c);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: could not get protocol ZX_PROTOCOL_I2C\n", DRIVER_NAME);
-        return status;
-    }
-    status = device_get_protocol(components[COMPONENT_POWER], ZX_PROTOCOL_POWER, &power);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s: could not get protocol ZX_PROTOCOL_POWER\n", DRIVER_NAME);
         return status;
     }
     status = device_get_protocol(components[COMPONENT_CHILD4], ZX_PROTOCOL_CLOCK, &child4);
@@ -352,17 +352,17 @@ static zx_status_t test_bind(void* ctx, zx_device_t* parent) {
     if ((status = test_i2c(&i2c)) != ZX_OK) {
         zxlogf(ERROR, "%s: test_i2c failed: %d\n", DRIVER_NAME, status);
         return status;
-    }
+    }*/
 
     if ((status = test_power(&power)) != ZX_OK) {
         zxlogf(ERROR, "%s: test_power failed: %d\n", DRIVER_NAME, status);
         return status;
     }
 
-    if ((status = test_codec(&codec)) != ZX_OK) {
+    /*if ((status = test_codec(&codec)) != ZX_OK) {
         zxlogf(ERROR, "%s: test_codec failed: %d\n", DRIVER_NAME, status);
         return status;
-    }
+    }*/
 
     test_t* test = calloc(1, sizeof(test_t));
     if (!test) {

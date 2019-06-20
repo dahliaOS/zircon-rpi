@@ -759,6 +759,7 @@ zx_status_t Coordinator::AddCompositeDevice(
         size_t components_count, uint32_t coresident_device_index) {
     // Only the platform bus driver should be able to use this.  It is the
     // descendant of the sys device node.
+    log(ERROR, "MINE COORDINATOR :: ADD COMP DEVICE: %s\n", name.data());
     if (dev->parent() != sys_device_) {
         return ZX_ERR_ACCESS_DENIED;
     }
@@ -771,10 +772,12 @@ zx_status_t Coordinator::AddCompositeDevice(
         return status;
     }
 
+    log(ERROR, "MINE COORDINATOR :: CREATION DONE MATCHING COMPS COMP DEVICE: %s\n", name.data());
     // Try to bind the new composite device specification against existing
     // devices.
     for (auto& dev : devices_) {
         if (!dev.is_bindable()) {
+            log(ERROR, "MINE COORDINATOR :: dev:%s is NOT Bindable\n", dev.name().data());
             continue;
         }
 
@@ -793,6 +796,7 @@ zx_status_t Coordinator::AddCompositeDevice(
         }
     }
 
+    log(ERROR, "MINE COORDINATOR :: PUSHING TO COMP DEVICES COMP DEVICE: %s\n", name.data());
     composite_devices_.push_back(std::move(new_device));
     return ZX_OK;
 }
@@ -1318,6 +1322,7 @@ void Coordinator::DriverAddedSys(Driver* drv, const char* version) {
 zx_status_t Coordinator::BindDriverToDevice(const fbl::RefPtr<Device>& dev, const Driver* drv,
                                             bool autobind, const AttemptBindFunc& attempt_bind) {
     if (!dev->is_bindable()) {
+        log(ERROR, "devcoordinator: MINE MINE device is already bound. Returning from here. dev:%s\n", dev->name().data());
         return ZX_ERR_NEXT;
     }
     if (!driver_is_bindable(drv, dev->protocol_id(), dev->props(), autobind)) {
@@ -1353,7 +1358,7 @@ zx_status_t Coordinator::BindDriver(Driver* drv, const AttemptBindFunc& attempt_
     if (status != ZX_ERR_NEXT) {
         return status;
     }
-    status = BindDriverToDevice(test_device_, drv, true /* autobind */, attempt_bind);
+    //status = BindDriverToDevice(test_device_, drv, true /* autobind */, attempt_bind);
     if (status != ZX_ERR_NEXT) {
         return status;
     }
@@ -1394,7 +1399,7 @@ zx_status_t Coordinator::BindDevice(const fbl::RefPtr<Device>& dev, fbl::StringP
                 log(SPEW, "devcoordinator: dev='%s' matched component %zu of composite='%s'\n",
                     dev->name().data(), index, composite.name().data());
 
-                return composite.BindComponent(index, dev);
+                composite.BindComponent(index, dev);
             }
         }
     }
