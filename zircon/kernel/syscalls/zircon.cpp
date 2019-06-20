@@ -279,3 +279,18 @@ zx_status_t sys_cprng_add_entropy(user_in_ptr<const void> buffer, size_t buffer_
 
     return ZX_OK;
 }
+
+zx_status_t sys_start_tracing(zx_handle_t thread) {
+    // Do not call this during early boot.
+    // Add property to process.
+    zx_handle_t tracing_vmo;
+    uint32_t options = ZX_RIGHT_READ | ZX_RIGHT_WRITE | ZX_VMO_RESIZABLE;
+    zx_status_t status = zx_vmo_create(PAGE_SIZE, options, &tracing_vmo);
+    if status != ZX_OK {
+        // TODO(flowerhack) return an actual error
+        return -1;
+    }
+    thread.tracing = true;
+    thread.tracing_vmo = tracing_vmo;
+    return ZX_OK;
+}

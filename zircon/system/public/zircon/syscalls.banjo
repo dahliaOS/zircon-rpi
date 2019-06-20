@@ -682,6 +682,9 @@ protocol Api {
              uint64 offset,
              usize buffer_size) ->
         (zx.status status);
+    [rights="None."]
+    start_tracing(handle<thread> thread) ->
+        (zx.status status)
 
     /// Write bytes to the VMO.
     [rights="handle must be of type ZX_OBJ_TYPE_VMO and have ZX_RIGHT_WRITE.",
