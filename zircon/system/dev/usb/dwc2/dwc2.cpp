@@ -327,9 +327,15 @@ printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxx HandleInNakEffectiv
 
     // Disable all non-periodic IN endpoints
     for (uint32_t i = 0; i < MAX_EPS_CHANNELS; i++) {
-        auto diepctl = DEPCTL::Get(i + DWC_EP_IN_SHIFT).ReadFrom(mmio);
-        if (diepctl.epena() && (diepctl.eptype() == USB_ENDPOINT_CONTROL ||
-                                diepctl.eptype() == USB_ENDPOINT_BULK)) {
+        auto diepctl = DEPCTL::Get(i).ReadFrom(mmio);
+        auto* ep = &endpoints_[i];
+
+#if 0
+        if (diepctl.epena() /* && (diepctl.eptype() == USB_ENDPOINT_CONTROL ||
+                                diepctl.eptype() == USB_ENDPOINT_BULK) */) {
+#else
+        if (ep->enabled) {
+#endif                                
             diepctl.set_snak(1);
             diepctl.set_epdis(1);
             diepctl.WriteTo(mmio);
@@ -353,11 +359,45 @@ printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxx HandleEpDisabled %u
         auto* ep = &endpoints_[ep_num];
         FlushTxFifo(ep->fifo_index);
 
+// ??? don't do this untill we get all the disabled interrupts?
+/*
         DCTL::Get()
             .ReadFrom(mmio)
             .set_cgnpinnak(1)
             .WriteTo(mmio);
-// TODO restart transfer?
+*/
+          
+        if (ep->req_xfersize > 0) {
+            auto length = ep->req_xfersize - ep->req_offset;
+
+printf("HandleEpDisabled resuming transfer ep->req_offset %u ep->req_xfersize %u DEPTSIZ xfersize %u\n",
+            ep->req_offset, ep->req_xfersize, DEPTSIZ::Get(ep_num).ReadFrom(mmio).xfersize());
+
+            // Program DMA address
+            DEPDMA::Get(ep_num)
+                .FromValue(0)
+                .set_addr(ep->phys + ep->req_offset)
+                .WriteTo(mmio);
+
+            uint32_t ep_mps = ep->max_packet_size;
+            auto deptsiz = DEPTSIZ::Get(ep_num).FromValue(0);
+
+            deptsiz.set_pktcnt((length + (ep_mps - 1)) / ep_mps);
+            deptsiz.set_xfersize(length);
+            deptsiz.set_mc(1);
+            ep->req_xfersize = deptsiz.xfersize();
+            deptsiz.WriteTo(mmio);
+            hw_wmb();
+        
+            DEPCTL::Get(ep_num)
+                .ReadFrom(mmio)
+                .set_cnak(1)
+                .set_epena(1)
+                .WriteTo(mmio);
+            hw_wmb();
+
+
+        }    
     } else {
         // TODO(voydanoff) handle disable for OUT endpoints.
     }
@@ -435,7 +475,7 @@ void Dwc2::SetAddress(uint8_t address) {
 // Reads number of bytes transfered on specified endpoint
 uint32_t Dwc2::ReadTransfered(Endpoint* ep) {
     auto* mmio = get_mmio();
-    return ep->req_xfersize -  DEPTSIZ::Get(ep->ep_num).ReadFrom(mmio).xfersize();
+    return ep->req_xfersize - DEPTSIZ::Get(ep->ep_num).ReadFrom(mmio).xfersize();
 }
 
 // Prepares to receive next control request on endpoint zero.
