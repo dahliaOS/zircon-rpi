@@ -13,6 +13,7 @@ rustc_library("dhcp") {
   edition = "2018"
   deps = [
     "//garnet/lib/rust/fidl_fuchsia_hardware_ethernet_ext",
+    "//garnet/public/rust/fuchsia-syslog",
     "//third_party/rust_crates:byteorder",
     "//third_party/rust_crates:bytes",
     "//third_party/rust_crates:failure",

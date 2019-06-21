@@ -274,6 +274,7 @@ pub enum OptionCode {
     IpAddrLeaseTime,
     DhcpMessageType,
     ServerId,
+    Message,
     RenewalTime,
     RebindingTime,
 }
@@ -290,6 +291,7 @@ impl Into<u8> for OptionCode {
             OptionCode::IpAddrLeaseTime => 51,
             OptionCode::DhcpMessageType => 53,
             OptionCode::ServerId => 54,
+            OptionCode::Message => 56,
             OptionCode::RenewalTime => 58,
             OptionCode::RebindingTime => 59,
         }
@@ -314,6 +316,7 @@ impl OptionCode {
             51 => Ok(OptionCode::IpAddrLeaseTime),
             53 => Ok(OptionCode::DhcpMessageType),
             54 => Ok(OptionCode::ServerId),
+            56 => Ok(OptionCode::Message),
             58 => Ok(OptionCode::RenewalTime),
             59 => Ok(OptionCode::RebindingTime),
             code => Err(OptionCodeError::UnknownCode(code)),

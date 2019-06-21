@@ -90,9 +90,19 @@ async fn define_msg_handling_loop_future<F: Fn() -> i64>(
         let response = server
             .lock()
             .unwrap()
-            .dispatch(msg)
-            .ok_or_else(|| failure::err_msg("invalid message"))?;
-        fx_log_info!("generated response: {:?}", response);
+            .dispatch(msg)?;
+/*        let response = match result {
+            Ok(msg) => {
+                fx_log_info!("generated response: {:?}", result.unwrap());
+                result.unwrap()
+            },
+            Err(e) => {
+                fx_log_err!("server processing of client message generated error: {:?}", e);
+                return e;
+            }
+        };*/
+        // .ok_or_else(|| failure::err_msg("invalid message"))?;
+
         let response_buffer = response.serialize();
         // A new DHCP client sending a DHCPDISCOVER message will send
         // it from 0.0.0.0. In order to respond with a DHCPOFFER, the server
