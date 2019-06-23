@@ -50,7 +50,7 @@ static const dwc2_metadata_t dwc2_metadata = {
     .dma_burst_len = DWC2_DMA_BURST_INCR8,
     .usb_turnaround_time = 9,
     .rx_fifo_size = 256,
-    .nptx_fifo_size = 256,
+    .nptx_fifo_size = 32,
 };
 
 static pbus_metadata_t usb_metadata[] = {

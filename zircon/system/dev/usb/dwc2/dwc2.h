@@ -148,11 +148,11 @@ private:
     dwc2_metadata_t metadata_;
     bool configured_ = false;
 
-    // FIFO number for next periodic IN endpoint
+    // FIFO number for next IN endpoint
     uint32_t next_dfifo_;
-    // FIFO offset for next periodic IN endpoint
+    // FIFO offset for next IN endpoint
     uint32_t dfifo_base_;
-    // End of dynamic FIFO space for periodic IN endpoints
+    // End of dynamic FIFO space for IN endpoints
     uint32_t dfifo_end_;
 };
 

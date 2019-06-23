@@ -230,7 +230,7 @@ void Dwc2::HandleOutEpInterrupt() {
 
     uint8_t ep_num = DWC_EP0_OUT;
 
-    // Read bits indicating which endpoints have inepintr active
+    // Read bits indicating which endpoints have outepintr active
     auto ep_bits = DAINT::Get().ReadFrom(mmio).reg_value();
     auto ep_mask = DAINTMSK::Get().ReadFrom(mmio).reg_value();
     ep_bits &= ep_mask;
@@ -385,7 +385,7 @@ void Dwc2::SetAddress(uint8_t address) {
 // Reads number of bytes transfered on specified endpoint
 uint32_t Dwc2::ReadTransfered(Endpoint* ep) {
     auto* mmio = get_mmio();
-    return ep->req_xfersize -  DEPTSIZ::Get(ep->ep_num).ReadFrom(mmio).xfersize();
+    return ep->req_xfersize - DEPTSIZ::Get(ep->ep_num).ReadFrom(mmio).xfersize();
 }
 
 // Prepares to receive next control request on endpoint zero.
@@ -510,19 +510,6 @@ void Dwc2::FlushTxFifo(uint32_t fifo_num) {
     } while (grstctl.txfflsh() == 1);
 
     zx::nanosleep(zx::deadline_after(zx::usec(1)));
-
-    grstctl.set_reg_value(0)
-        .set_rxfflsh(1)
-        .WriteTo(mmio);
-
-    count = 0;
-    do {
-        grstctl.ReadFrom(mmio);
-        if (++count > 10000)
-            break;
-    } while (grstctl.rxfflsh() == 1);
-
-    zx::nanosleep(zx::deadline_after(zx::usec(1)));
 }
 
 void Dwc2::FlushRxFifo() {
@@ -533,19 +520,6 @@ void Dwc2::FlushRxFifo() {
         .WriteTo(mmio);
 
     uint32_t count = 0;
-    do {
-        grstctl.ReadFrom(mmio);
-        if (++count > 10000)
-            break;
-    } while (grstctl.rxfflsh() == 1);
-
-    zx::nanosleep(zx::deadline_after(zx::usec(1)));
-
-    grstctl.set_reg_value(0)
-        .set_rxfflsh(1)
-        .WriteTo(mmio);
-
-    count = 0;
     do {
         grstctl.ReadFrom(mmio);
         if (++count > 10000)
@@ -741,6 +715,12 @@ zx_status_t Dwc2::InitController() {
         return ZX_ERR_NOT_SUPPORTED;
     }
 
+    auto ghwcfg4 = GHWCFG4::Get().ReadFrom(mmio);
+    if (!ghwcfg4.ded_fifo_en()) {
+        zxlogf(ERROR, "DWC2 driver requires dedicated FIFO support\n");
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
     auto grstctl = GRSTCTL::Get();
     while (grstctl.ReadFrom(mmio).ahbidle() == 0) {
         zx::nanosleep(zx::deadline_after(zx::msec(1)));
@@ -824,7 +804,7 @@ zx_status_t Dwc2::InitController() {
         .WriteTo(mmio);
 
 
-    // Reset dynamic FIFO values for periodic endpoints.
+    // Reset dynamic FIFO values for IN endpoints.
     next_dfifo_ = 1;
     dfifo_base_ = metadata_.rx_fifo_size + metadata_.nptx_fifo_size;
     dfifo_end_ = GHWCFG3::Get().ReadFrom(mmio).dfifo_depth();
@@ -1066,6 +1046,7 @@ void Dwc2::UsbDciRequestQueue(usb_request_t* req, const usb_request_complete_t* 
     if (!ep->enabled) {
         zxlogf(ERROR, "Dwc2::UsbDciRequestQueue: endpoint 0x%02X not enabled\n",
                req->header.ep_address);
+        usb_request_complete(req, ZX_ERR_BAD_STATE, 0, cb);
         return;
     }
 
@@ -1127,8 +1108,8 @@ zx_status_t Dwc2::UsbDciSetInterface(const usb_dci_interface_protocol_t* interfa
     }
 
     uint32_t txfnum = 0;
-    // Allocate FIFO space for periodic IN endpoints
-    if (is_in && ep_type != USB_ENDPOINT_BULK) {
+    // Allocate FIFO space for IN endpoints
+    if (is_in) {
         fbl::AutoLock lock(&lock_);
 
         // FIFO is in 4 byte word units
