@@ -139,6 +139,13 @@ static void test_bulk_out_complete(void* ctx, usb_request_t* req) {
             usb_request_copy_to(in_req, buffer, req->response.actual, 0);
             req->header.length = req->response.actual;
 
+
+uint8_t* poip = (uint8_t*)buffer;
+for (size_t i = 0; i < req->header.length; i++) {
+    printf("%02x ", poip[i]);
+}
+
+
             usb_request_complete_t complete = {
                 .callback = test_bulk_in_complete,
                 .ctx = test,

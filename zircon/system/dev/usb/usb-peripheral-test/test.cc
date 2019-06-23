@@ -139,7 +139,7 @@ bool bulk_test() {
     receive_req->buffer = receive_buf;
     receive_req->buffer_length = static_cast<int>(BUFFER_SIZE);
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1; i++) {
         randomize();
 
         // Create a thread to wait for request completions.
@@ -163,6 +163,12 @@ bool bulk_test() {
 
         // Sent and received data should match.
         EXPECT_EQ(memcmp(send_buf, receive_buf, BUFFER_SIZE), 0);
+        
+        if (memcmp(send_buf, receive_buf, BUFFER_SIZE)) {
+            for (size_t i = 0; i < BUFFER_SIZE; i++) {
+                printf("%02x ", receive_buf[i]);
+            }
+        }
     }
 
     usb_request_free(send_req);
