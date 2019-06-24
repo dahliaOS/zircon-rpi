@@ -31,6 +31,12 @@ zx_status_t BindReply(const fbl::RefPtr<zx_device_t>& dev, fidl_txn_t* txn, zx_s
         bind_status = fuchsia_device_ControllerBind_reply(conn.Txn(), status);
     }
 
+    //TODO(ravoorir): Move completion to resume hook, when compatibility tests
+    //include suspend/resume tests.
+    if (dev->PopTestCompatibilityConn(&conn)) {
+        fuchsia_device_ControllerRunCompatibilityTests_reply(conn.Txn(), status);
+    }
+
     return bind_driver_status != ZX_OK ? bind_driver_status : bind_status;
 }
 

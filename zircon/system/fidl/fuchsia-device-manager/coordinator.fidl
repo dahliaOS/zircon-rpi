@@ -220,4 +220,11 @@ protocol Coordinator {
     /// See fuchsia.io.Directory for more information.
     DirectoryWatch(uint32 mask, uint32 options, handle<channel> watcher)
         -> (zx.status s);
+
+    /// Run Compatibility tests for the driver that binds to this device.
+    /// The hook_wait_time is the time that the driver expects to take for
+    /// each device hook in nanoseconds.
+    /// Returns whether the compatibility tests started, and does not convey
+    /// anything about the status of the test.
+    RunCompatibilityTests(int64 hook_wait_time) -> (zx.status status);
 };
