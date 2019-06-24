@@ -8,6 +8,7 @@
 #include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/driver.h>
+#include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
 #include <ddktl/device.h>
 #include <fbl/alloc_checker.h>
@@ -18,6 +19,7 @@ class TestCompatibilityHookDriverChild : public DeviceType {
 public:
     TestCompatibilityHookDriverChild(zx_device_t* parent)
         : DeviceType(parent) {}
+    static zx_status_t Create(void* ctx, zx_device_t* device);
     zx_status_t Bind();
     void DdkUnbind() {
         DdkRemove();
@@ -28,10 +30,22 @@ public:
 };
 
 zx_status_t TestCompatibilityHookDriverChild::Bind() {
-    return DdkAdd("compatibility-test-child");
+    size_t actual;
+    bool config = {};
+    auto status = DdkGetMetadata(DEVICE_METADATA_PRIVATE, &config, sizeof(config),
+                                 &actual);
+    if (status != ZX_OK || actual != sizeof(config)) {
+        zxlogf(ERROR, "test_compat_hook_child_get_metadata not succesful\n");
+        return ZX_ERR_INTERNAL;
+    }
+    if (config) {
+        //Success child. Add a device
+        return DdkAdd("compatibility-test-child");
+    }
+    return ZX_OK;
 }
 
-zx_status_t test_compatibility_hook_child_bind(void* ctx, zx_device_t* device) {
+zx_status_t TestCompatibilityHookDriverChild::Create(void* ctx, zx_device_t* device) {
     fbl::AllocChecker ac;
     auto dev = fbl::make_unique_checked<TestCompatibilityHookDriverChild>(&ac, device);
     if (!ac.check()) {
@@ -48,7 +62,7 @@ zx_status_t test_compatibility_hook_child_bind(void* ctx, zx_device_t* device) {
 static zx_driver_ops_t test_compatibility_hook_child_driver_ops = []() -> zx_driver_ops_t {
     zx_driver_ops_t ops;
     ops.version = DRIVER_OPS_VERSION;
-    ops.bind = test_compatibility_hook_child_bind;
+    ops.bind = TestCompatibilityHookDriverChild::Create;
     return ops;
 }();
 

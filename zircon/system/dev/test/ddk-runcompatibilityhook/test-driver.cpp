@@ -8,6 +8,7 @@
 #include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/driver.h>
+#include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
 #include <ddktl/device.h>
 #include <ddktl/protocol/empty-protocol.h>
@@ -27,10 +28,31 @@ public:
     void DdkRelease() {
         delete this;
     }
+private:
+    std::vector<uint8_t> metadata_;
 };
 
 zx_status_t TestCompatibilityHookDriver::Bind() {
-    return DdkAdd("compatibility-test");
+    size_t size;
+    zx_status_t status = DdkGetMetadataSize(DEVICE_METADATA_TEST, &size);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    metadata_.resize(size);
+
+    status = DdkGetMetadata(DEVICE_METADATA_TEST, metadata_.data(), metadata_.size(), &size);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    printf("Got metadata first read as %d\n", metadata_[0]);
+    bool temp = metadata_[0];
+    printf("Parent Driver BIND Got metadata as metadata temp: %d\n", temp);
+    DdkAdd("compatibility-test", DEVICE_ADD_INVISIBLE);
+    status = DdkAddMetadata(DEVICE_METADATA_PRIVATE, &temp, sizeof(temp));
+    DdkMakeVisible();
+    return status;
 }
 
 zx_status_t test_compatibility_hook_bind(void* ctx, zx_device_t* device) {

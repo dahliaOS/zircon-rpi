@@ -444,6 +444,7 @@ private:
     TestStateMachine test_state_ __TA_GUARDED(test_state_lock_) = TestStateMachine::kTestNotStarted;
     zx::event test_event_;
     zx::duration test_time_;
+    zx_status_t test_status_;
 };
 
 } // namespace devmgr
