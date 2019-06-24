@@ -193,7 +193,7 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         zxlogf(ERROR, "TestBoard::Create: pbus_composite_device_add failed: %d\n", status);
     }
 
-    device_component_t composite2[] = {
+    /*device_component_t composite2[] = {
         {fbl::count_of(power_component), power_component},
     };
     zxlogf(ERROR, "TestBoard STARTED STARTED ADD MY COMPOSITE DEVICE\n");
@@ -207,7 +207,7 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
                                   countof(composite2), 0);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: MINE MINE device_add_composite failed: %d\n", __func__, status);
-    }
+    }*/
     zxlogf(ERROR, "TestBoard REACHED HERE AFTER ADDING COMPOSITE DEVICE\n");
 
     return status;

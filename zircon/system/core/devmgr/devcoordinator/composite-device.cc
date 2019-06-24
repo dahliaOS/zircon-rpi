@@ -240,6 +240,7 @@ bool CompositeDeviceComponent::TryMatch(const fbl::RefPtr<Device>& dev) {
 zx_status_t CompositeDeviceComponent::Bind(const fbl::RefPtr<Device>& dev) {
     ZX_ASSERT(bound_device_ == nullptr);
 
+    log(ERROR, "%s: MINE BIND COMPONENT DRIVER TO DEVICE:%s\n", __PRETTY_FUNCTION__, dev->name().data());
     zx_status_t status = dev->coordinator->BindDriverToDevice(
             dev, dev->coordinator->component_driver(), true /* autobind */);
     if (status != ZX_OK) {
@@ -249,6 +250,8 @@ zx_status_t CompositeDeviceComponent::Bind(const fbl::RefPtr<Device>& dev) {
     bound_device_ = dev;
     dev->flags |= DEV_CTX_MULTI_COMPOSITE;
     dev->set_component(this);
+    dev->push_component(this);
+    log(ERROR, "%s: MINE BIND COMPONENT DRIVER TO DEVICE:%s DONE.\n", __PRETTY_FUNCTION__, dev->name().data());
     return ZX_OK;
 }
 

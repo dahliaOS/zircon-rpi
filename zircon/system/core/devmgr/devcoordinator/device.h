@@ -277,6 +277,9 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
         ZX_ASSERT(std::holds_alternative<UnassociatedWithComposite>(composite_));
         composite_ = component;
     }
+    void push_component(CompositeDeviceComponent* component) {
+        components_.push_back(component);
+    }
 
     // If the device was created as a composite, this returns its description.
     CompositeDevice* composite() const {
@@ -379,7 +382,8 @@ private:
     struct UnassociatedWithComposite {};
     std::variant<UnassociatedWithComposite, CompositeDeviceComponent*, CompositeDevice*>
             composite_;
-
+    // list of all components that this device bound to.
+    fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode> components_;
     Devhost* host_ = nullptr;
     // The id of this device from the perspective of the devhost.  This can be
     // used to communicate with the devhost about this device.
