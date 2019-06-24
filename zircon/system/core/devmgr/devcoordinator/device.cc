@@ -516,9 +516,11 @@ int Device::RunCompatibilityTests() {
     const char* test_driver_name = GetTestDriverName();
     log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name);
     auto cleanup = fbl::MakeAutoCall([this]() {
+        log(INFO, "%s: Sending Completion for ddk compatibility tests for driver\n", __func__);
+        dh_send_complete_compatibility_tests(this, test_status_);
+        log(INFO, "%s: Completion for ddk compatibility tests done for driver\n", __func__);
         test_event().reset();
         set_test_state(Device::TestStateMachine::kTestDone);
-        dh_send_complete_compatibility_tests(this, test_status_);
     });
     // Device should be bound for test to work
     if (!(flags & DEV_CTX_BOUND) || children().is_empty()) {

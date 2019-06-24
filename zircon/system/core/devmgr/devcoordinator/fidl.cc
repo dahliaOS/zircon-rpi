@@ -161,6 +161,7 @@ zx_status_t dh_send_complete_compatibility_tests(const Device* dev, zx_status_t 
 
     auto req = builder.New<fuchsia_device_manager_DeviceControllerCompleteCompatibilityTestsRequest>();
     ZX_ASSERT(req != nullptr);
+    req->hdr.ordinal = fuchsia_device_manager_DeviceControllerCompleteCompatibilityTestsOrdinal;
     // TODO(teisenbe): Allocate and track txids
     req->hdr.txid = 1;
     req->status = status;
