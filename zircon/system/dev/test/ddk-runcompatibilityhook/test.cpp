@@ -100,7 +100,7 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookMissingAddInBind) {
     ASSERT_OK(status);
     ASSERT_EQ(call_status, fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD);
 }
-/*
+
 TEST(DeviceControllerIntegrationTest, RunCompatibilityHookMissingRemoveInUnbind) {
     IsolatedDevmgr devmgr;
     IsolatedDevmgr::Args args;
@@ -140,4 +140,4 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookMissingRemoveInUnbind)
                                                             &call_status);
     ASSERT_OK(status);
     ASSERT_EQ(call_status, fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD);
-}*/
+}
