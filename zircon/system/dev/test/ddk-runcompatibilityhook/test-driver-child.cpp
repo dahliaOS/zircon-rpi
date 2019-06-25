@@ -43,7 +43,6 @@ zx_status_t TestCompatibilityHookDriverChild::Bind() {
         return ZX_ERR_INTERNAL;
     }
     if (test_metadata_.add_in_bind) {
-        //Success child. Add a device
         return DdkAdd("compatibility-test-child");
     }
     return ZX_OK;

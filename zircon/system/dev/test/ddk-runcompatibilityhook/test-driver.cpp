@@ -51,10 +51,6 @@ zx_status_t TestCompatibilityHookDriver::Bind() {
         return status;
     }
 
-    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.add_in_bind);
-    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.remove_in_unbind);
-    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.remove_twice_in_unbind);
-
     DdkAdd("compatibility-test", DEVICE_ADD_INVISIBLE);
     status = DdkAddMetadata(DEVICE_METADATA_PRIVATE, &metadata_, size);
     DdkMakeVisible();
