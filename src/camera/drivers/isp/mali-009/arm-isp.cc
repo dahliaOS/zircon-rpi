@@ -223,9 +223,8 @@ zx_status_t ArmIspDevice::IspContextInit() {
   // This is being written to the local_config_buffer_
   IspLoadSeq_settings_context();
 
-  statsMgr_ =
-      camera::StatsManager::Create(isp_mmio_.View(0), isp_mmio_local_,
-                                   camera_sensor_, frame_processing_signal_);
+  statsMgr_ = camera::StatsManager::Create(isp_mmio_.View(0), isp_mmio_local_,
+                                           camera_sensor_);
   if (statsMgr_ == nullptr) {
     zxlogf(ERROR, "%s: Unable to start StatsManager \n", __func__);
     return ZX_ERR_NO_MEMORY;
@@ -293,6 +292,18 @@ zx_status_t ArmIspDevice::InitIsp() {
   running_.store(true);
   int rc =
       thrd_create_with_name(&irq_thread_, start_thread, this, "isp_irq_thread");
+  if (rc != thrd_success) {
+    return ZX_ERR_INTERNAL;
+  }
+
+  // Start frame processing thread
+  auto frame_processing_func = [](void* arg) -> int {
+    return static_cast<ArmIspDevice*>(arg)->IspIrqHandler();
+  };
+
+  running_frame_processing_.store(true);
+  rc = thrd_create_with_name(&frame_processing_thread_, frame_processing_func,
+                             this, "frame_processing thread");
   if (rc != thrd_success) {
     return ZX_ERR_INTERNAL;
   }
@@ -542,7 +553,12 @@ zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
       return ZX_ERR_INVALID_ARGS;
   }
   if (!was_streaming) {
-    return StartStreaming();
+    auto status = StartStreaming();
+    if (status != ZX_OK) {
+        full_resolution_streaming_ = false;
+        downscaled_streaming_ = false;
+    }
+    return status;
   }
   return ZX_OK;
 }
@@ -565,7 +581,12 @@ zx_status_t ArmIspDevice::StopStream(stream_type_t type) {
   }
   bool is_streaming = full_resolution_streaming_ || downscaled_streaming_;
   if (!is_streaming && was_streaming) {
-    return StopStreaming();
+    auto status = StopStreaming();
+    if (status != ZX_OK) {
+        full_resolution_streaming_ = (type == STREAM_TYPE_FULL_RESOLUTION);
+        downscaled_streaming_ = (type == STREAM_TYPE_DOWNSCALED);
+    }
+    return status;
   }
   return ZX_OK;
 }
@@ -651,10 +672,47 @@ zx_status_t ArmIspDevice::IspCreateOutputStream(
   return ZX_ERR_INVALID_ARGS;
 }
 
+int ArmIspDevice::FrameProcessingThread() {
+  while (running_frame_processing_.load()) {
+    sync_completion_wait(&frame_processing_signal_, ZX_TIME_INFINITE);
+
+    // Currently this is called only on the new frame signal, so we maintain
+    // a variable to tell if we need to finish processing the last frame.
+    if (first_frame_processed_) {
+      first_frame_processed_ = false;
+    } else {
+      // Each of these calls has it's own interrupt, that it could be
+      // attached to:
+      if (full_resolution_streaming_) {
+        full_resolution_dma_->OnPrimaryFrameWritten();
+        full_resolution_dma_->OnSecondaryFrameWritten();
+      }
+      if (downscaled_streaming_) {
+        downscaled_dma_->OnPrimaryFrameWritten();
+        downscaled_dma_->OnSecondaryFrameWritten();
+      }
+    }
+    // Now for the actions we should take on new frame:
+    if (full_resolution_streaming_) {
+      full_resolution_dma_->OnNewFrame();
+    }
+    if (downscaled_streaming_) {
+      downscaled_dma_->OnNewFrame();
+    }
+
+    // Reset the signal
+    sync_completion_reset(&frame_processing_signal_);
+  }
+
+  return ZX_OK;
+}
+
 ArmIspDevice::~ArmIspDevice() {
   free(isp_mmio_local_.get());
   running_.store(false);
+  running_frame_processing_.store(false);
   thrd_join(irq_thread_, NULL);
+  thrd_join(frame_processing_thread_, NULL);
   isp_irq_.destroy();
 }
 
