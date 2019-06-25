@@ -114,6 +114,15 @@ struct FrameReadyReceiver {
     zxlogf(ERROR, "[FAILURE] %s\n", msg); \
   }
 
+#define EXPECT_GT(expr1, expr2, msg)      \
+  report.test_count++;                    \
+  if ((expr1) > (expr2)) {                \
+    report.success_count++;               \
+  } else {                                \
+    report.failure_count++;               \
+    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+  }
+
 #define ASSERT_EQ(expr1, expr2, msg)      \
   report.test_count++;                    \
   if ((expr1) == (expr2)) {               \
@@ -189,6 +198,7 @@ void ArmIspDeviceTester::TestConnectStream(
 void ArmIspDeviceTester::TestCallbacks(fuchsia_camera_test_TestReport& report) {
   constexpr uint32_t kWidth = 1920;
   constexpr uint32_t kHeight = 1080;
+  constexpr uint32_t kFramesToSleep = 5;
   constexpr uint32_t kNumberOfBuffers = 8;
   fuchsia_camera_common_FrameRate rate = {.frames_per_sec_numerator = 30,
                                           .frames_per_sec_denominator = 1};
@@ -248,8 +258,27 @@ void ArmIspDeviceTester::TestCallbacks(fuchsia_camera_test_TestReport& report) {
                 downscaled_out_st.ctx, downscaled_receiver.ready_ids[0]),
             "Failed to release frame from downscaled stream.");
 
-  // TODO(CAM-78): Add tests for Start and Stop when the interrupts are hooked
-  // up.
+  // Now call start.  The ISP should start processing frames, and we should
+  // start getting callbacks.  This tests the whole pipeline!
+  // TODO(CAM-91): Enable the test patterns so we can limit testing here to just
+  // the ISP.
+  EXPECT_OK(full_res_out_st.ops->start(full_res_out_st.ctx), "Failed to start streaming.");
+  // sleep for kFramesToSleep frame periods.
+  auto frame_period_ms =
+      1000 * rate.frames_per_sec_denominator / rate.frames_per_sec_numerator;
+  zx_nanosleep(zx_deadline_after(ZX_MSEC(kFramesToSleep * frame_period_ms)));
+  EXPECT_GT(full_res_receiver.ready_ids.size(), 1,
+            "Full res callbacks not increasing past 1. Additional callbacks "
+            "have not been received.");
+  EXPECT_EQ(downscaled_receiver.ready_ids.size(), 1,
+            "Downscaled callbacks have not remained equal to 1.");
+  // When we stop the stream, no further callbacks should be received.
+  EXPECT_OK(full_res_out_st.ops->stop(full_res_out_st.ctx), "Failed to stop streaming.");
+  auto callback_count_at_stop = full_res_receiver.ready_ids.size();
+  // now sleep for a while to make sure we did not get any more callbacks after
+  // stopping the stream:
+  ASSERT_EQ(full_res_receiver.ready_ids.size(), callback_count_at_stop,
+            "Full res callbacks increased after stop was called");
 }
 
 // DDKMessage Helper Functions.
