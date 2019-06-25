@@ -517,9 +517,7 @@ int Device::RunCompatibilityTests() {
     const char* test_driver_name = GetTestDriverName();
     log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name);
     auto cleanup = fbl::MakeAutoCall([this]() {
-        log(INFO, "%s: Sending Completion for ddk compatibility tests for driver\n", __func__);
         dh_send_complete_compatibility_tests(this, test_status_);
-        log(INFO, "%s: Completion for ddk compatibility tests done for driver\n", __func__);
         test_event().reset();
         set_test_state(Device::TestStateMachine::kTestDone);
     });
@@ -615,12 +613,10 @@ int Device::RunCompatibilityTests() {
         test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD;
         return -1;
     }
+    log(ERROR, "devcoordinator: Driver Compatibility test succeeded for %s\n", test_driver_name);
     // TODO(ravoorir): Test Suspend and Resume hooks
-    log(ERROR, "%s: Driver Compatibility test %s for %s\n", __func__,
-        this->test_state() == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
-        test_driver_name);
     test_status_ = fuchsia_device_manager_CompatibilityTestStatus_OK;
-    return ZX_OK;
+    return 0;
 }
 
 // Handlers for the messages from devices
