@@ -13,6 +13,8 @@
 #include <ddktl/device.h>
 #include <fbl/alloc_checker.h>
 
+#include "test-metadata.h"
+
 class TestCompatibilityHookDriverChild;
 using DeviceType = ddk::Device<TestCompatibilityHookDriverChild, ddk::Unbindable>;
 class TestCompatibilityHookDriverChild : public DeviceType {
@@ -27,18 +29,18 @@ public:
     void DdkRelease() {
         delete this;
     }
+    struct compatibility_test_metadata test_metadata_ = {};
 };
 
 zx_status_t TestCompatibilityHookDriverChild::Bind() {
     size_t actual;
-    bool config = {};
-    auto status = DdkGetMetadata(DEVICE_METADATA_PRIVATE, &config, sizeof(config),
+    auto status = DdkGetMetadata(DEVICE_METADATA_PRIVATE, &test_metadata_, sizeof(test_metadata_),
                                  &actual);
-    if (status != ZX_OK || actual != sizeof(config)) {
+    if (status != ZX_OK || actual != sizeof(test_metadata_)) {
         zxlogf(ERROR, "test_compat_hook_child_get_metadata not succesful\n");
         return ZX_ERR_INTERNAL;
     }
-    if (config) {
+    if (test_metadata_.add_in_bind) {
         //Success child. Add a device
         return DdkAdd("compatibility-test-child");
     }

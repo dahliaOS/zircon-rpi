@@ -14,6 +14,8 @@
 #include <ddktl/protocol/empty-protocol.h>
 #include <fbl/alloc_checker.h>
 
+#include "test-metadata.h"
+
 class TestCompatibilityHookDriver;
 using DeviceType = ddk::Device<TestCompatibilityHookDriver, ddk::Unbindable>;
 class TestCompatibilityHookDriver : public DeviceType,
@@ -29,7 +31,7 @@ public:
         delete this;
     }
 private:
-    std::vector<uint8_t> metadata_;
+    struct compatibility_test_metadata metadata_;
 };
 
 zx_status_t TestCompatibilityHookDriver::Bind() {
@@ -39,18 +41,22 @@ zx_status_t TestCompatibilityHookDriver::Bind() {
         return status;
     }
 
-    metadata_.resize(size);
+    if (size != sizeof(struct compatibility_test_metadata)) {
+        printf("Did not get the metadata correctly. size is %lu\n", size);
+        return ZX_ERR_INTERNAL;
+    }
 
-    status = DdkGetMetadata(DEVICE_METADATA_TEST, metadata_.data(), metadata_.size(), &size);
+    status = DdkGetMetadata(DEVICE_METADATA_TEST, &metadata_, size, &size);
     if (status != ZX_OK) {
         return status;
     }
 
-    printf("Got metadata first read as %d\n", metadata_[0]);
-    bool temp = metadata_[0];
-    printf("Parent Driver BIND Got metadata as metadata temp: %d\n", temp);
+    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.add_in_bind);
+    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.remove_in_unbind);
+    printf("Parent Driver BIND Got metadata correctly %d\n", metadata_.remove_twice_in_unbind);
+
     DdkAdd("compatibility-test", DEVICE_ADD_INVISIBLE);
-    status = DdkAddMetadata(DEVICE_METADATA_PRIVATE, &temp, sizeof(temp));
+    status = DdkAddMetadata(DEVICE_METADATA_PRIVATE, &metadata_, size);
     DdkMakeVisible();
     return status;
 }
