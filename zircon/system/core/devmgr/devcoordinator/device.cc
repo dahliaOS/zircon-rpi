@@ -7,6 +7,7 @@
 #include <ddk/driver.h>
 #include <fbl/auto_call.h>
 #include <lib/fidl/coding.h>
+#include <fuchsia/device/manager/c/fidl.h>
 #include "../shared/fidl_txn.h"
 #include "../shared/log.h"
 #include "coordinator.h"
@@ -528,8 +529,8 @@ int Device::RunCompatibilityTests() {
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Parent Device not bound\n",
             test_driver_name);
-        test_status_ = ZX_ERR_INVALID_ARGS;
-        return test_status_;
+        test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD;
+        return -1;
     }
     zx_status_t status = zx::event::create(0, &test_event());
     if (status != ZX_OK) {
@@ -537,8 +538,8 @@ int Device::RunCompatibilityTests() {
             "devcoordinator: Driver Compatibility test failed for %s: "
             "Event creation failed : %d\n",
             test_driver_name, status);
-        test_status_ = ZX_ERR_INTERNAL;
-        return test_status_;
+        test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_INTERNAL;
+        return -1;
     }
 
     // Issue unbind on all its children.
@@ -554,8 +555,8 @@ int Device::RunCompatibilityTests() {
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Sending unbind to %s failed\n",
                 test_driver_name, child.name().data());
-            test_status_ = ZX_ERR_INTERNAL;
-            return test_status_;
+            test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_INTERNAL;
+            return -1;
         }
     }
 
@@ -571,14 +572,15 @@ int Device::RunCompatibilityTests() {
                 "Timed out waiting for device to be removed. Check if device_remove was "
                 "called in the unbind routine of the driver: %d\n",
                 test_driver_name, status);
+            test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_UNBIND_TIMEOUT;
         } else {
             log(ERROR,
                 "devcoordinator: Driver Compatibility test failed for %s: "
                 "Error waiting for device to be removed.\n",
                 test_driver_name);
+            test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_INTERNAL;
         }
-        test_status_ = ZX_ERR_BAD_STATE;
-        return test_status_;
+        return -1;
     }
     this->set_test_state(Device::TestStateMachine::kTestBindSent);
     this->coordinator->HandleNewDevice(fbl::WrapRefPtr(this));
@@ -594,14 +596,15 @@ int Device::RunCompatibilityTests() {
                  "Timed out waiting for driver to be bound. Check if Bind routine "
                  "of the driver is doing blocking I/O: %d\n",
                  test_driver_name, status);
+             test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_TIMEOUT;
          } else {
              log(ERROR,
                     "devcoordinator: Driver Compatibility test failed for %s: "
                     "Error waiting for driver to be bound: %d\n",
                     test_driver_name, status);
+             test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_INTERNAL;
          }
-         test_status_ = ZX_ERR_BAD_STATE;
-         return test_status_;
+         return -1;
     }
     this->set_test_state(Device::TestStateMachine::kTestBindDone);
     if (this->children().is_empty()) {
@@ -609,15 +612,15 @@ int Device::RunCompatibilityTests() {
            "devcoordinator: Driver Compatibility test failed for %s: "
            "Driver Bind routine did not add a child. Check if Bind routine "
            "Called DdkAdd() at the end.\n", test_driver_name);
-        test_status_ = ZX_ERR_BAD_STATE;
-        return test_status_;
+        test_status_ = fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD;
+        return -1;
     }
     // TODO(ravoorir): Test Suspend and Resume hooks
     log(ERROR, "%s: Driver Compatibility test %s for %s\n", __func__,
         this->test_state() == Device::TestStateMachine::kTestBindDone ? "Succeeded" : "Failed",
         test_driver_name);
-    test_status_ = ZX_OK;
-    return test_status_;
+    test_status_ = fuchsia_device_manager_CompatibilityTestStatus_OK;
+    return ZX_OK;
 }
 
 // Handlers for the messages from devices

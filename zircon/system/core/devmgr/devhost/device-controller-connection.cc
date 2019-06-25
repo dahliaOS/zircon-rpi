@@ -87,7 +87,8 @@ zx_status_t fidl_BindDriver(void* raw_ctx, const char* driver_path_data,
     return BindReply(dev, txn, ZX_ERR_NOT_SUPPORTED);
 }
 
-zx_status_t fidl_CompleteCompatibilityTests(void* raw_ctx, zx_status_t test_status) {
+zx_status_t fidl_CompleteCompatibilityTests(void* raw_ctx,
+                                fuchsia_device_manager_CompatibilityTestStatus test_status) {
     auto ctx = static_cast<DevhostRpcReadContext*>(raw_ctx);
     const auto& dev = ctx->conn->dev();
     fs::FidlConnection conn(fidl_txn_t{}, ZX_HANDLE_INVALID, 0);

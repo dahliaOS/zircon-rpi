@@ -1,5 +1,6 @@
 #include <ddk/platform-defs.h>
 #include <fuchsia/device/c/fidl.h>
+#include <fuchsia/device/manager/c/fidl.h>
 #include <lib/driver-integration-test/fixture.h>
 #include <lib/fdio/fd.h>
 #include <lib/fdio/fdio.h>
@@ -82,10 +83,10 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookMissingAddInBind) {
                parent_device_handle.reset_and_get_address()));
     ASSERT_TRUE((parent_device_handle.get() != ZX_HANDLE_INVALID), "");
 
-    zx_status_t call_status;
+    uint32_t call_status;
     status = fuchsia_device_ControllerRunCompatibilityTests(parent_device_handle.get(),
                                                             zx::duration(zx::msec(2000)).get(),
                                                             &call_status);
     ASSERT_OK(status);
-    ASSERT_OK(call_status);
+    ASSERT_EQ(call_status, fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD);
 }

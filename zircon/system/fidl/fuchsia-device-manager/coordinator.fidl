@@ -64,6 +64,17 @@ struct DeviceComponent {
     array<DeviceComponentPart>:DEVICE_COMPONENT_PARTS_MAX parts;
 };
 
+/// A enum of CompatibilityTestStatus
+enum CompatibilityTestStatus : uint32 {
+    OK = 1;
+    ERR_BIND_NO_DDKADD = 2;
+    ERR_BIND_TIMEOUT = 3;
+    ERR_UNBIND_NO_DDKREMOVE = 4;
+    ERR_UNBIND_TIMEOUT = 5;
+    ERR_SUSPEND_LIFECYCLE_CHANGE = 6;
+    ERR_INTERNAL = 7;
+};
+
 /// Protocol for controlling devices in a devhost process from the devcoordinator
 [Layout = "Simple"]
 protocol DeviceController {
@@ -90,7 +101,7 @@ protocol DeviceController {
     /// Inform devhost about the compatibility test status
     // TODO(ravoorir) : Ideally this should be an asynchronous call from devhost to
     // devcoordinator.
-    CompleteCompatibilityTests(zx.status status);
+    CompleteCompatibilityTests(CompatibilityTestStatus status);
 };
 
 /// Protocol for controlling a devhost process from the devcoordinator
