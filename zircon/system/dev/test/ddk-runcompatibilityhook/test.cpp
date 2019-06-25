@@ -139,5 +139,5 @@ TEST(DeviceControllerIntegrationTest, RunCompatibilityHookMissingRemoveInUnbind)
                                                             zx::duration(zx::msec(2000)).get(),
                                                             &call_status);
     ASSERT_OK(status);
-    ASSERT_EQ(call_status, fuchsia_device_manager_CompatibilityTestStatus_ERR_BIND_NO_DDKADD);
+    ASSERT_EQ(call_status, fuchsia_device_manager_CompatibilityTestStatus_ERR_UNBIND_TIMEOUT);
 }

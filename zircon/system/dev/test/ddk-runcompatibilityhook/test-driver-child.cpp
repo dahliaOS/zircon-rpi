@@ -24,7 +24,9 @@ public:
     static zx_status_t Create(void* ctx, zx_device_t* device);
     zx_status_t Bind();
     void DdkUnbind() {
-        DdkRemove();
+        if (test_metadata_.remove_in_unbind) {
+            DdkRemove();
+        }
     }
     void DdkRelease() {
         delete this;
