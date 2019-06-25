@@ -507,6 +507,10 @@ zx_status_t Device::DriverCompatibiltyTest() {
         log(ERROR,
             "Driver Compatibility test failed for %s: "
             "Thread creation failed\n", GetTestDriverName());
+        if (test_reply_required_) {
+            dh_send_complete_compatibility_tests(this,
+                                    fuchsia_device_manager_CompatibilityTestStatus_ERR_INTERNAL);
+        }
         return ZX_ERR_NO_RESOURCES;
     }
     thrd_detach(t);
@@ -517,9 +521,12 @@ int Device::RunCompatibilityTests() {
     const char* test_driver_name = GetTestDriverName();
     log(INFO, "%s: Running ddk compatibility test for driver %s \n", __func__, test_driver_name);
     auto cleanup = fbl::MakeAutoCall([this]() {
-        dh_send_complete_compatibility_tests(this, test_status_);
+        if (test_reply_required_) {
+            dh_send_complete_compatibility_tests(this, test_status_);
+        }
         test_event().reset();
         set_test_state(Device::TestStateMachine::kTestDone);
+        set_test_reply_required(false);
     });
     // Device should be bound for test to work
     if (!(flags & DEV_CTX_BOUND) || children().is_empty()) {
@@ -720,6 +727,7 @@ static zx_status_t fidl_RunCompatibilityTests(void* ctx, int64_t hook_wait_time,
     }
     zx::duration test_time = zx::nsec(hook_wait_time);
     real_parent->set_test_time(test_time);
+    real_parent->set_test_reply_required(true);
     status = real_parent->DriverCompatibiltyTest();
     return fuchsia_device_manager_CoordinatorRunCompatibilityTests_reply(txn, status);
 }
