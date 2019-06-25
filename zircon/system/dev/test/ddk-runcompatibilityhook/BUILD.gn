@@ -4,7 +4,7 @@
 
 driver("ddk-runcompatibilityhook-test") {
   sources = [
-    "test-driver.cpp",
+    "test-driver.cc",
   ]
   deps = [
     "$zx/system/ulib/ddk",
@@ -20,7 +20,7 @@ driver("ddk-runcompatibilityhook-test") {
 
 driver("ddk-runcompatibilityhook-test-child") {
   sources = [
-    "test-driver-child.cpp",
+    "test-driver-child.cc",
   ]
   deps = [
     "$zx/system/ulib/ddk",
@@ -35,7 +35,7 @@ driver("ddk-runcompatibilityhook-test-child") {
 
 test("ddk-runcompatibilityhook") {
   sources = [
-    "test.cpp",
+    "test.cc",
   ]
   deps = [
     "$zx/system/fidl/fuchsia-device:c",
