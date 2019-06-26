@@ -688,8 +688,8 @@ zx_status_t acpi_suspend(uint32_t flags) {
     };
 }
 
-zx_status_t acpi_init(void) {
-    return init();
+zx_status_t acpi_init(bool use_hardware_iommu) {
+    return acpi_to_zx_status(init(use_hardware_iommu));
 }
 
 zx_status_t publish_acpi_devices(zx_device_t* parent, zx_device_t* sys_root, zx_device_t* acpi_root) {

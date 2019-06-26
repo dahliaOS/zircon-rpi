@@ -423,18 +423,7 @@ cleanup:
     return status;
 }
 
-static bool use_hardware_iommu(void) {
-    const char* value = getenv("iommu.enable");
-    if (value == NULL) {
-        return false; // Default to false currently
-    } else if (!strcmp(value, "0") || !strcmp(value, "false") || !strcmp(value, "off")) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-zx_status_t iommu_manager_init(void) {
+zx_status_t iommu_manager_init(bool use_hardware_iommu) {
     int err = mtx_init(&iommu_mgr.lock, mtx_plain);
     if (err != thrd_success) {
         return ZX_ERR_INTERNAL;
@@ -452,7 +441,7 @@ zx_status_t iommu_manager_init(void) {
         return status;
     }
 
-    if (!use_hardware_iommu()) {
+    if (!use_hardware_iommu) {
         zxlogf(INFO, "acpi-bus: not using IOMMU\n");
         return ZX_OK;
     }

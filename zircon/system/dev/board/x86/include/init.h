@@ -6,4 +6,4 @@
 
 #include <acpica/acpi.h>
 
-ACPI_STATUS init(void);
+ACPI_STATUS init(bool use_hardware_iommu);

@@ -14,6 +14,7 @@
 #include <threads.h>
 
 #include <ddk/driver.h>
+#include <ddk/metadata.h>
 #include <driver-info/driver-info.h>
 #include <fbl/unique_ptr.h>
 #include <fuchsia/boot/c/fidl.h>
@@ -138,6 +139,25 @@ zx_status_t Coordinator::InitializeCoreDevices(const char* sys_device_driver) {
     test_device_ = fbl::MakeRefCounted<Device>(this, "test", fbl::String(), "test,", root_device_,
                                                ZX_PROTOCOL_TEST_PARENT, zx::channel());
     test_device_->flags = DEV_CTX_IMMORTAL | DEV_CTX_MUST_ISOLATE | DEV_CTX_MULTI_BIND;
+
+#ifdef __x86_64__
+    // Work-around for plumbing iommu.enable flag to the board driver
+    const char* value = boot_args().Get("iommu.enable");
+    if (value) {
+        bool enabled = true;
+        if (!strcmp(value, "0") || !strcmp(value, "false") || !strcmp(value, "off")) {
+            enabled = false;
+        }
+
+        zx_status_t status = PublishMetadata(sys_device_, "/dev/sys",
+                                             DEVICE_METADATA_BOARD_PRIVATE,
+                                             &enabled, sizeof(enabled));
+        if (status != ZX_OK) {
+            return status;
+        }
+    }
+#endif
+
     return ZX_OK;
 }
 

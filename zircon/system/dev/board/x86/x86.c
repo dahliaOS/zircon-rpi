@@ -68,8 +68,17 @@ static zx_status_t x86_bind(void* ctx, zx_device_t* parent) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 
+    bool use_iommu = true;
+    size_t actual;
+    status = device_get_metadata(parent, DEVICE_METADATA_BOARD_PRIVATE, &use_iommu,
+                                 sizeof(use_iommu), &actual);
+    if (status != ZX_OK || actual != sizeof(use_iommu)) {
+        // Currently we default to not using the IOMMU.
+        use_iommu = false;
+    }
+
     // Do ACPI init.
-    status = acpi_init();
+    status = acpi_init(use_iommu);
     if (status != ZX_OK) {
         free(x86);
         zxlogf(ERROR, "%s: failed to initialize ACPI %d \n", __func__, status);

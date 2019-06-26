@@ -105,7 +105,7 @@ bailout:
     return AE_OK; // We want to keep going even if we bailed out
 }
 
-ACPI_STATUS init(void) {
+ACPI_STATUS init(bool use_hardware_iommu) {
     // This sequence is described in section 10.1.2.1 (Full ACPICA Initialization)
     // of the ACPICA developer's reference.
     ACPI_STATUS status = AcpiInitializeSubsystem();
@@ -144,7 +144,7 @@ ACPI_STATUS init(void) {
         return status;
     }
 
-    zx_status_t zx_status = iommu_manager_init();
+    zx_status_t zx_status = iommu_manager_init(use_hardware_iommu);
     if (zx_status != ZX_OK) {
         zxlogf(INFO, "acpi: Failed to initialize IOMMU manager\n");
     }

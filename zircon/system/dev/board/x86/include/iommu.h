@@ -8,11 +8,12 @@
 #include <zircon/types.h>
 
 __BEGIN_CDECLS
+
 // Initializes the iommu_manager using the ACPI DMAR table. If this fails,
 // the IOMMU manager will be left in a well-defined empty state, and
 // iommu_manager_iommu_for_bdf() can still succeed (yielding dummy IOMMU
 // handles).
-zx_status_t iommu_manager_init(void);
+zx_status_t iommu_manager_init(bool use_hardware_iommu);
 
 // Returns a handle to the IOMMU that is responsible for the given BDF. The
 // returned handle is borrowed from the iommu_manager.  The caller
