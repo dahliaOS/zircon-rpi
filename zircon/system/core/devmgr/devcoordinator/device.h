@@ -280,7 +280,9 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     void push_component(CompositeDeviceComponent* component) {
         components_.push_back(component);
     }
-
+    bool is_components_empty() {
+        return components_.is_empty();
+    }
     // If the device was created as a composite, this returns its description.
     CompositeDevice* composite() const {
         auto val = std::get_if<CompositeDevice*>(&composite_);

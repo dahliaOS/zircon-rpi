@@ -103,9 +103,9 @@ bool enumeration_test() {
     EXPECT_EQ(RecursiveWaitForFile(devmgr.devfs_root(),
                                    "composite-dev/composite", &fd),
               ZX_OK);
-    /*EXPECT_EQ(RecursiveWaitForFile(devmgr.devfs_root(),
+    EXPECT_EQ(RecursiveWaitForFile(devmgr.devfs_root(),
                                    "COMPOSITE_DEV_MINE/composite", &fd),
-              ZX_OK);*/
+              ZX_OK);
 
     const int dirfd = devmgr.devfs_root().get();
     struct stat st;
