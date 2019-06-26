@@ -79,16 +79,18 @@ zx_status_t IommuImpl::Create(ktl::unique_ptr<const uint8_t[]> desc_bytes, size_
     return ZX_OK;
 }
 
-IommuImpl::~IommuImpl() {
-    fbl::AutoLock guard(&lock_);
-
-    // We cannot unpin memory until translation is disabled
+void IommuImpl::ShutdownLocked() {
     zx_status_t status = SetTranslationEnableLocked(false, ZX_TIME_INFINITE);
     ASSERT(status == ZX_OK);
 
     DisableFaultsLocked();
     msi_free_block(&irq_block_);
+}
 
+IommuImpl::~IommuImpl() {
+    fbl::AutoLock guard(&lock_);
+
+    ShutdownLocked();
     VmAspace::kernel_aspace()->FreeRegion(mmio_.base());
 }
 
@@ -265,6 +267,10 @@ zx_status_t IommuImpl::Map(uint64_t bus_txn_id, const fbl::RefPtr<VmObject>& vmo
     ds::Bdf bdf = decode_bus_txn_id(bus_txn_id);
 
     fbl::AutoLock guard(&lock_);
+    if (unlikely(shutdown_)) {
+        return ZX_ERR_BAD_STATE;
+    }
+
     DeviceContext* dev;
     zx_status_t status = GetOrCreateDeviceContextLocked(bdf, &dev);
     if (status != ZX_OK) {
@@ -314,6 +320,10 @@ zx_status_t IommuImpl::Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t size
     ds::Bdf bdf = decode_bus_txn_id(bus_txn_id);
 
     fbl::AutoLock guard(&lock_);
+    if (unlikely(shutdown_)) {
+        return ZX_ERR_BAD_STATE;
+    }
+
     DeviceContext* dev;
     zx_status_t status = GetOrCreateDeviceContextLocked(bdf, &dev);
     if (status != ZX_OK) {
@@ -775,6 +785,17 @@ zx_status_t IommuImpl::GetOrCreateDeviceContextLocked(ds::Bdf bdf, DeviceContext
         return status;
     }
     return ctx_table_state->CreateDeviceContext(bdf, domain_id, context);
+}
+
+void IommuImpl::PrepareForMexec() {
+    fbl::AutoLock guard(&lock_);
+
+    if (shutdown_) {
+        return;
+    }
+
+    ShutdownLocked();
+    shutdown_ = true;
 }
 
 uint64_t IommuImpl::minimum_contiguity(uint64_t bus_txn_id) {

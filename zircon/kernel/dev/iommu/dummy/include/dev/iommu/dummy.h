@@ -26,6 +26,8 @@ public:
                               dev_vaddr_t* vaddr, size_t* mapped_len) final;
     zx_status_t Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t size) final;
 
+    void PrepareForMexec() final { }
+
     uint64_t minimum_contiguity(uint64_t bus_txn_id) final;
     uint64_t aspace_size(uint64_t bus_txn_id) final;
 

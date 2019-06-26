@@ -41,6 +41,8 @@ public:
                               dev_vaddr_t* vaddr, size_t* mapped_len) final;
     zx_status_t Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t size) final;
 
+    void PrepareForMexec() final;
+
     uint64_t minimum_contiguity(uint64_t bus_txn_id) final;
     uint64_t aspace_size(uint64_t bus_txn_id) final;
 
@@ -106,6 +108,8 @@ private:
     zx_status_t GetOrCreateContextTableLocked(ds::Bdf bdf, ContextTableState** tbl) TA_REQ(lock_);
     zx_status_t GetOrCreateDeviceContextLocked(ds::Bdf bdf, DeviceContext** context) TA_REQ(lock_);
 
+    void ShutdownLocked() TA_REQ(lock_);
+
     // Utility for waiting until a register field changes to a value, timing out
     // if the deadline elapses.  If deadline is ZX_TIME_INFINITE, then will never time
     // out.  Can only return NO_ERROR and ERR_TIMED_OUT.
@@ -120,6 +124,9 @@ private:
     }
 
     fbl::Mutex lock_;
+
+    // If true, this instance has been shutdown in preparation for mexec
+    bool shutdown_ TA_GUARDED(lock_) = false;
 
     // Descriptor of this hardware unit
     ktl::unique_ptr<const uint8_t[]> desc_;
