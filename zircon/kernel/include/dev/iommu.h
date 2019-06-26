@@ -76,10 +76,6 @@ public:
     // Returns ZX_ERR_NOT_FOUND if |bus_txn_id| is not valid.
     virtual zx_status_t Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t size) = 0;
 
-    // Remove all mappings for |bus_txn_id|.
-    // Returns ZX_ERR_NOT_FOUND if |bus_txn_id| is not valid.
-    virtual zx_status_t ClearMappingsForBusTxnId(uint64_t bus_txn_id) = 0;
-
     // Returns the number of bytes that Map() can guarantee, upon success, to find
     // a contiguous address range for.  This function is only returns meaningful
     // values if |IsValidBusTxnId(bus_txn_id)|.

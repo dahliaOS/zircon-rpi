@@ -327,11 +327,6 @@ zx_status_t IommuImpl::Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t size
     return ZX_OK;
 }
 
-zx_status_t IommuImpl::ClearMappingsForBusTxnId(uint64_t bus_txn_id) {
-    PANIC_UNIMPLEMENTED;
-    return ZX_ERR_NOT_SUPPORTED;
-}
-
 zx_status_t IommuImpl::Initialize() {
     fbl::AutoLock guard(&lock_);
 

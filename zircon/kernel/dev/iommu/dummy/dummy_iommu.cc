@@ -134,10 +134,6 @@ zx_status_t DummyIommu::Unmap(uint64_t bus_txn_id, dev_vaddr_t vaddr, size_t siz
     return ZX_OK;
 }
 
-zx_status_t DummyIommu::ClearMappingsForBusTxnId(uint64_t bus_txn_id) {
-    return ZX_OK;
-}
-
 uint64_t DummyIommu::minimum_contiguity(uint64_t bus_txn_id) {
     return PAGE_SIZE;
 }
