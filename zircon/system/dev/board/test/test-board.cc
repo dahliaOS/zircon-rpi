@@ -197,14 +197,18 @@ zx_status_t TestBoard::Create(zx_device_t* parent) {
         {fbl::count_of(power_component), power_component},
     };
     zxlogf(ERROR, "TestBoard STARTED STARTED ADD MY COMPOSITE DEVICE\n");
-    const zx_device_prop_t props[] = {
-        { BIND_PLATFORM_DEV_VID, 0, PDEV_VID_BROADCOM },
-        { BIND_PLATFORM_DEV_PID, 0, PDEV_PID_BCM43458 },
-        { BIND_PLATFORM_DEV_DID, 0, PDEV_DID_BCM_WIFI },
-    };
+    pbus_dev_t pdev2 = {};
+    pdev2.name = "COMPOSITE_DEV_MINE";
+    pdev2.vid = PDEV_VID_TEST;
+    pdev2.pid = PDEV_PID_PBUS_TEST;
+    pdev2.did = PDEV_DID_TEST_COMPOSITE;
+    pdev2.metadata_list = test_metadata;
+    pdev2.metadata_count = fbl::count_of(test_metadata);
+    status = pbus_composite_device_add(&pbus, &pdev2, composite2, fbl::count_of(composite2),
+                                       UINT32_MAX);
 
-    status = device_add_composite(parent, "COMPOSITE_DEV_MINE", props, countof(props), composite2,
-                                  countof(composite2), 0);
+    /*status = device_add_composite(parent, "COMPOSITE_DEV_MINE", props, countof(props), composite2,
+                                  countof(composite2), 0);*/
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: MINE MINE device_add_composite failed: %d\n", __func__, status);
     }

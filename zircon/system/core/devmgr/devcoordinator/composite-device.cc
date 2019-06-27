@@ -130,7 +130,8 @@ zx_status_t CompositeDevice::TryAssemble() {
     for (auto& component : bound_) {
         const auto& component_dev = component.component_device();
         auto bound_dev = component.bound_device();
-        log(ERROR, "devcoordinator: TRYASSEMBLE Composite Device %p bound component: %p component_dev: %p bound_dev: %s\n", this, component, component_dev.get(), bound_dev);
+        log(ERROR, "devcoordinator: TRYASSEMBLE Composite Device %p bound component: %p component_dev: %p bound_dev: %p\n",
+            this, &component, component_dev.get(), bound_dev.get());
         coordinator = component_dev->coordinator;
 
         // If the device we're bound to is proxied, we care about its proxy
