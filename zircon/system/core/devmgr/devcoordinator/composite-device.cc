@@ -107,6 +107,7 @@ zx_status_t CompositeDevice::TryAssemble() {
     if (!unbound_.is_empty()) {
         return ZX_ERR_SHOULD_WAIT;
     }
+    log(ERROR, "devcoordinator: TRYASSEMBLE START for Composite Device %p\n", this);
 
     Devhost* devhost = nullptr;
     for (auto& component : bound_) {
@@ -121,6 +122,7 @@ zx_status_t CompositeDevice::TryAssemble() {
         }
     }
 
+    log(ERROR, "devcoordinator: TRYASSEMBLE ALL COMPONENTS BOUND for Composite Device %p\n", this);
     Coordinator* coordinator = nullptr;
     uint64_t component_local_ids[fuchsia_device_manager_COMPONENTS_MAX] = {};
 
@@ -128,6 +130,7 @@ zx_status_t CompositeDevice::TryAssemble() {
     for (auto& component : bound_) {
         const auto& component_dev = component.component_device();
         auto bound_dev = component.bound_device();
+        log(ERROR, "devcoordinator: TRYASSEMBLE Composite Device %p bound component: %p component_dev: %p bound_dev: %s\n", this, component, component_dev.get(), bound_dev);
         coordinator = component_dev->coordinator;
 
         // If the device we're bound to is proxied, we care about its proxy
@@ -197,6 +200,7 @@ zx_status_t CompositeDevice::TryAssemble() {
         return status;
     }
 
+    log(ERROR, "devcoordinator: TRYASSEMBLE END for Composite Device %p\n", this);
     return ZX_OK;
 }
 
@@ -249,7 +253,7 @@ zx_status_t CompositeDeviceComponent::Bind(const fbl::RefPtr<Device>& dev) {
 
     bound_device_ = dev;
     dev->flags |= DEV_CTX_MULTI_COMPOSITE;
-    dev->set_component(this);
+    //dev->set_component(this);
     dev->push_component(this);
     log(ERROR, "%s: MINE BIND COMPONENT DRIVER TO DEVICE:%s DONE.\n", __PRETTY_FUNCTION__, dev->name().data());
     return ZX_OK;

@@ -581,13 +581,29 @@ zx_status_t Coordinator::AddDevice(const fbl::RefPtr<Device>& parent, zx::channe
     // If we're creating a device that's using the component driver, inform the
     // component.
     if (component_driver_ != nullptr && dev->libname() == component_driver_->libname) {
-        CompositeDeviceComponent* component = dev->parent()->component();
+        for (auto& cur_component : dev->parent()->components()) {
+            if (cur_component.component_device() == nullptr) {
+                // The expectation is that the first component that does not
+                // have component device is the one that is getting binded now.
+                log(ERROR, "Device %s added. Looping components of Parent device:%s Component index in composite:%p: %d\n",
+                    dev->name().data(), dev->parent()->name().data(), cur_component.composite(), cur_component.index());
+                cur_component.set_component_device(dev);
+                status = cur_component.composite()->TryAssemble();
+                if (status != ZX_OK && status != ZX_ERR_SHOULD_WAIT) {
+                    log(ERROR, "devcoordinator: failed to assemble composite: %s\n",
+                        zx_status_get_string(status));
+                }
+                break;
+            }
+        }
+
+        /*CompositeDeviceComponent* component = dev->parent()->component();
         component->set_component_device(dev);
         status = component->composite()->TryAssemble();
         if (status != ZX_OK && status != ZX_ERR_SHOULD_WAIT) {
             log(ERROR, "devcoordinator: failed to assemble composite: %s\n",
                 zx_status_get_string(status));
-        }
+        }*/
     }
 
     if (!invisible) {
@@ -665,7 +681,14 @@ zx_status_t Coordinator::RemoveDevice(const fbl::RefPtr<Device>& dev, bool force
         // If it is, then its parent will know about which one (since the parent
         // is the actual device matched by the component description).
         const auto& parent = dev->parent();
-        parent->component()->Unbind();
+        //parent->component()->Unbind();
+
+        for (auto& cur_component : parent->components()) {
+            if (cur_component.component_device() == dev) {
+                cur_component.Unbind();
+                break;
+            }
+        }
     }
 
     // detach from devhost

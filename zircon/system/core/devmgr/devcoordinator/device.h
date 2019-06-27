@@ -283,6 +283,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     bool is_components_empty() {
         return components_.is_empty();
     }
+
+    fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode>& components() {
+        return components_;
+    }
+
     // If the device was created as a composite, this returns its description.
     CompositeDevice* composite() const {
         auto val = std::get_if<CompositeDevice*>(&composite_);
