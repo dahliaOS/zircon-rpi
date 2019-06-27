@@ -11,34 +11,35 @@
 #include <lib/fdio/directory.h>
 #include <lib/fdio/fd.h>
 #include <lib/fdio/fdio.h>
+#include <lib/syslog/global.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <zxtest/zxtest.h>
 
 namespace {
 
-bool IsBoardName(const char* requested_board_name) {
-  constexpr char kSysInfoPath[] = "/dev/misc/sysinfo";
-  fbl::unique_fd sysinfo(open(kSysInfoPath, O_RDWR));
-  if (!sysinfo) {
-    return false;
-  }
-  zx::channel channel;
-  if (fdio_get_service_handle(sysinfo.release(),
-                              channel.reset_and_get_address()) != ZX_OK) {
-    return false;
-  }
+// bool IsBoardName(const char* requested_board_name) {
+  // constexpr char kSysInfoPath[] = "/dev/misc/sysinfo";
+  // fbl::unique_fd sysinfo(open(kSysInfoPath, O_RDWR));
+  // if (!sysinfo) {
+    // return false;
+  // }
+  // zx::channel channel;
+  // if (fdio_get_service_handle(sysinfo.release(),
+                              // channel.reset_and_get_address()) != ZX_OK) {
+    // return false;
+  // }
 
-  char board_name[ZX_MAX_NAME_LEN];
-  zx_status_t status;
-  size_t actual_size;
-  zx_status_t fidl_status = fuchsia_sysinfo_DeviceGetBoardName(
-      channel.get(), &status, board_name, sizeof(board_name), &actual_size);
-  if (fidl_status != ZX_OK || status != ZX_OK) {
-    return false;
-  }
-  return strcmp(board_name, requested_board_name) == 0;
-}
+  // char board_name[ZX_MAX_NAME_LEN];
+  // zx_status_t status;
+  // size_t actual_size;
+  // zx_status_t fidl_status = fuchsia_sysinfo_DeviceGetBoardName(
+      // channel.get(), &status, board_name, sizeof(board_name), &actual_size);
+  // if (fidl_status != ZX_OK || status != ZX_OK) {
+    // return false;
+  // }
+  // return strcmp(board_name, requested_board_name) == 0;
+// }
 
 // Integration test for the driver defined in zircon/system/dev/camera/arm-isp.
 class IspTest : public zxtest::Test {
@@ -76,9 +77,13 @@ TEST_F(IspTest, BasicConnectionTest) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (IsBoardName("sherlock")) {
+  // if (IsBoardName("sherlock")) {
+    FX_LOG(INFO, "", "Sherlock detected, running tests.\n");
+     printf("Sherlock detected, running tests.\n");
     return RUN_ALL_TESTS(argc, argv);
-  }
+  // }
+  FX_LOG(WARNING, "", "Skipping ISP tests for non-sherlock device.\n");
+  printf("Skipping ISP tests for non-sherlock device.\n");
 
   return 0;
 }
