@@ -25,8 +25,18 @@
 typedef uint64_t dev_vaddr_t;
 
 class Iommu : public fbl::RefCounted<Iommu>,
-              public fbl::DoublyLinkedListable<fbl::RefPtr<Iommu>> {
+              public fbl::DoublyLinkedListable<Iommu*> {
 public:
+    Iommu() {
+        Guard<Mutex> guard{&iommu_list_lock_};
+        iommu_list_.push_back(this);
+    }
+
+    virtual ~Iommu() {
+        Guard<Mutex> guard{&iommu_list_lock_};
+        iommu_list_.erase(*this);
+    }
+
     // Check if |bus_txn_id| is valid for this IOMMU (i.e. could be used
     // to configure a device).
     virtual bool IsValidBusTxnId(uint64_t bus_txn_id) const = 0;
@@ -89,5 +99,13 @@ public:
     // function is only returns meaningful values if |IsValidBusTxnId(bus_txn_id)|.
     virtual uint64_t aspace_size(uint64_t bus_txn_id) = 0;
 
-    virtual ~Iommu() { }
+    static void PrepareIommusForMexec() {
+        Guard<Mutex> guard{&iommu_list_lock_};
+        for (auto& iommu : iommu_list_) {
+            iommu.PrepareForMexec();
+        }
+    }
+private:
+    inline static DECLARE_MUTEX(Iommu) iommu_list_lock_;
+    inline static fbl::DoublyLinkedList<Iommu*> iommu_list_ TA_GUARDED(iommu_list_lock_);
 };

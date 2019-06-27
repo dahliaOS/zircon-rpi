@@ -8,6 +8,7 @@
 #include <arch/mp.h>
 #include <debug.h>
 #include <dev/interrupt.h>
+#include <dev/iommu.h>
 #include <kernel/cmdline.h>
 #include <kernel/mp.h>
 #include <kernel/range_check.h>
@@ -252,6 +253,9 @@ zx_status_t sys_system_mexec(zx_handle_t resource, zx_handle_t kernel_vmo, zx_ha
 
     LTRACEF("zx_system_mexec allocated identity mapped page at %p\n",
             id_page_addr);
+
+    // Shut down the system IOMMUs
+    Iommu::PrepareIommusForMexec();
 
     thread_migrate_to_cpu(BOOT_CPU_ID);
 
