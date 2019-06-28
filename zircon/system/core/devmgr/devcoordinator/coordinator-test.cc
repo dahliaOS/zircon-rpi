@@ -880,7 +880,14 @@ TEST_F(CompositeTestCase, ComponentUnbinds) {
     {
         // Remove device the composite, device 0's component device, and device 0
         auto device1 = device(device_indexes[1])->device;
-        auto composite = device1->component()->composite()->device();
+        devmgr::CompositeDeviceComponent* component = nullptr;
+        for (auto& comp : device1->components()) {
+            if (comp.bound_device() == device1) {
+               component = &comp;
+               break;
+            }
+        }
+        auto composite = component->composite()->device();
         ASSERT_OK(coordinator()->RemoveDevice(composite, false));
 
         ASSERT_NO_FATAL_FAILURES(RemoveDevice(component_device_indexes[0]));
