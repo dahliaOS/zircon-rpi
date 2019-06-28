@@ -84,12 +84,17 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     // access to a device in the list.  This is achieved by making the linked
     // list iterator opaque. It is not safe to modify the underlying list while
     // this iterator is in use.
+    //fbl::DoublyLinkedList<Device*, Node>::const_iterator
     template <typename IterType, typename DeviceType>
     class ChildListIterator {
     public:
         ChildListIterator() : state_(Done{}) {}
         explicit ChildListIterator(DeviceType* device)
-                : state_(device->children_.begin()), device_(device) {
+                : state_(device->children_.begin()),
+                  device_(device) {
+            if (device_->parent_) {
+                cur_component_ = device->parent_->components().begin();
+            }
             SkipInvalidStates();
         }
 
@@ -109,7 +114,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
                 if constexpr (std::is_same_v<T, IterType>) {
                     ++arg;
                 } else if constexpr (std::is_same_v<T, Composite>) {
-                    state_ = Done{};
+                    //TODO(ravoorir): Cant go to Done here yet. We need to
+                    // go to next composite device. For that we need to access
+                    // next component. Which means we need to maintain current
+                    // component.
+                    cur_component_++;
                 } else if constexpr (std::is_same_v<T, Done>) {
                     state_ = Done{};
                 }
@@ -124,7 +133,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
                 if constexpr (std::is_same_v<T, IterType>) {
                     return *arg;
                 } else if constexpr (std::is_same_v<T, Composite>) {
-                    return *device_->parent_->component()->composite()->device();
+                    return *(cur_component_->composite()->device());
                 } else {
                     __builtin_trap();
                 }
@@ -153,12 +162,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
                         // that bound to a composite component.  If it is, and
                         // the composite has been constructed, the iterator
                         // should yield the composite.
-                        CompositeDeviceComponent* component = nullptr;
                         if (device_->parent_) {
-                            component = device_->parent_->component();
-                        }
-                        if (component != nullptr && component->composite()->device() != nullptr) {
-                            return false;
+                            if (cur_component_ != device_->parent_->components().end() &&
+                                cur_component_->composite()->device() != nullptr) {
+                                return false;
+                            }
                         }
                         state_ = Done{};
                         return false;
@@ -177,6 +185,8 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
         };
         std::variant<IterType, Composite, Done> state_;
         DeviceType* device_;
+        fbl::DoublyLinkedList<CompositeDeviceComponent*,
+            CompositeDeviceComponent::DeviceNode>::iterator cur_component_;
     };
 
     // This class exists to allow consumers of the Device class to write
@@ -387,8 +397,7 @@ private:
     //   CompositeDevice* and it points to the composite that describes it.
     // - Otherwise, it is inhabited by UnassociatedWithComposite
     struct UnassociatedWithComposite {};
-    std::variant<UnassociatedWithComposite, CompositeDeviceComponent*, CompositeDevice*>
-            composite_;
+    std::variant<UnassociatedWithComposite, CompositeDeviceComponent*, CompositeDevice*> composite_;
     // list of all components that this device bound to.
     fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode> components_;
     Devhost* host_ = nullptr;
