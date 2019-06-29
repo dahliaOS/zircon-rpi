@@ -785,6 +785,81 @@ public:
     void ExecuteTest(AddLocation add);
 };
 
+class CompositeAddOrderSharedComponentTestCase : public CompositeAddOrderTestCase {
+public:
+    enum class DevNum {
+        DEV1 = 1,
+        DEV2
+    };
+    void ExecuteSharedCompoentTest(AddLocation dev1Add, AddLocation dev2Add);
+}
+
+
+void CompositeAddOrderSharedComponentTestCase::ExecuteSharedComponentTest(AddLocation dev1_add,
+                                                                          AddLocation dev2_add) {
+    size_t device_indexes[3];
+    uint32_t protocol_id1[] = {
+        ZX_PROTOCOL_GPIO,
+        ZX_PROTOCOL_I2C,
+        ZX_PROTOCOL_ETHERNET,
+    };
+    uint32_t protocol_id2[] = {
+        ZX_PROTOCOL_GPIO,
+        ZX_PROTOCOL_I2C,
+    };
+    static_assert(std::max(fbl::count_of(protocol_id1), fbl::count_of(protocol_id2)) ==
+                  fbl::count_of(device1_indexes));
+
+    const char* kCompositeDev1Name = "composite-dev1";
+    const char* kCompositeDev2Name = "composite-dev2";
+    auto do_add = [&](DevNum devid) {
+      if (devid == DevNum::DEV1) {
+        ASSERT_NO_FATAL_FAILURES(BindCompositeDefineComposite(
+                platform_bus(), protocol_id, fbl::count_of(protocol_id), nullptr /* props */,
+                0, kCompositeDev1Name));
+      } else if (devid == DevNum::DEV2) {
+        ASSERT_NO_FATAL_FAILURES(BindCompositeDefineComposite(
+                platform_bus(), protocol_id, fbl::count_of(protocol_id), nullptr /* props */,
+                0, kCompositeDev2Name));
+      }
+    };
+
+    if (dev1_add == AddLocation::BEFORE) {
+        ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV1));
+    }
+
+    if (dev2_add == AddLocation::BEFORE) {
+        ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV2));
+    }
+    // Add the devices to construct the composite out of.
+    for (size_t i = 0; i < fbl::count_of(device_indexes); ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "device-%zu", i);
+        ASSERT_NO_FATAL_FAILURES(AddDevice(platform_bus(), name, protocol_id[i], "",
+                                           &device_indexes[i]));
+        if (i == 0 && dev1_add == AddLocation::MIDDLE) {
+            ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV1));
+        }
+        if (i == 0 && dev2_add == AddLocation::MIDDLE) {
+            ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV2));
+        }
+    }
+
+    if (dev1_add == AddLocation::AFTER) {
+        ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV1));
+    }
+
+    if (dev2_add == AddLocation::AFTER) {
+        ASSERT_NO_FATAL_FAILURES(do_add(DevNum::DEV2));
+    }
+
+    zx::channel composite_remote;
+    size_t component_device_indexes[fbl::count_of(device_indexes)];
+    ASSERT_NO_FATAL_FAILURES(CheckCompositeCreation(kCompositeDevName1,
+                                                    device_indexes, fbl::count_of(device_indexes),
+                                                    component_device_indexes, &composite_remote));
+}
+
 void CompositeAddOrderTestCase::ExecuteTest(AddLocation add) {
     size_t device_indexes[3];
     uint32_t protocol_id[] = {
