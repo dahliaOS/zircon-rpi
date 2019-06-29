@@ -170,6 +170,7 @@ zx_status_t PlatformBus::PBusCompositeDeviceAdd(const pbus_dev_t* pdev,
     if (!pdev || !pdev->name) {
         return ZX_ERR_INVALID_ARGS;
     }
+    zxlogf(ERROR, "%s: START\n", __func__);
     if (coresident_device_index == 0) {
         zxlogf(ERROR, "%s: coresident_device_index cannot be zero\n", __func__);
         return ZX_ERR_INVALID_ARGS;
@@ -215,6 +216,7 @@ zx_status_t PlatformBus::PBusCompositeDeviceAdd(const pbus_dev_t* pdev,
         { BIND_PLATFORM_DEV_DID, 0, pdev->did },
     };
 
+    zxlogf(ERROR, "%s: STOP\n", __func__);
     return DdkAddComposite(pdev->name, props, fbl::count_of(props), components,
                            components_count + 1, coresident_device_index);
 }
