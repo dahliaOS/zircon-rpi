@@ -43,6 +43,10 @@ class SuspendTask;
 // This device may be bound multiple times
 #define DEV_CTX_MULTI_BIND    0x04
 
+// This device is a component of a composite device and
+// can be part of multiple composite devices.
+#define DEV_CTX_MULTI_COMPOSITE    0x20
+
 // This device is bound and not eligible for binding
 // again until unbound.  Not allowed on MULTI_BIND ctx.
 #define DEV_CTX_BOUND         0x08
@@ -98,9 +102,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     ChildListIterator() : state_(Done{}) {}
     explicit ChildListIterator(DeviceType* device)
         : state_(device->children_.begin()), device_(device) {
+      if (device_->parent_) {
+        cur_component_ = device->parent_->components().begin();
+      }
       SkipInvalidStates();
     }
-
     ChildListIterator operator++(int) {
       auto other = *this;
       ++*this;
@@ -118,7 +124,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
             if constexpr (std::is_same_v<T, IterType>) {
               ++arg;
             } else if constexpr (std::is_same_v<T, Composite>) {
-              state_ = Done{};
+              cur_component_++;
             } else if constexpr (std::is_same_v<T, Done>) {
               state_ = Done{};
             }
@@ -135,7 +141,7 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
             if constexpr (std::is_same_v<T, IterType>) {
               return *arg;
             } else if constexpr (std::is_same_v<T, Composite>) {
-              return *device_->parent_->component()->composite()->device();
+              return *(cur_component_->composite()->device());
             } else {
               __builtin_trap();
             }
@@ -167,12 +173,11 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
                 // that bound to a composite component.  If it is, and
                 // the composite has been constructed, the iterator
                 // should yield the composite.
-                CompositeDeviceComponent* component = nullptr;
                 if (device_->parent_) {
-                  component = device_->parent_->component();
-                }
-                if (component != nullptr && component->composite()->device() != nullptr) {
-                  return false;
+                  if (cur_component_ != device_->parent_->components().end() &&
+                      cur_component_->composite()->device() != nullptr) {
+                    return false;
+                  }
                 }
                 state_ = Done{};
                 return false;
@@ -192,6 +197,8 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
     };
     std::variant<IterType, Composite, Done> state_;
     DeviceType* device_;
+    fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode>::iterator
+        cur_component_;
   };
 
   // This class exists to allow consumers of the Device class to write
@@ -277,17 +284,13 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
 
   bool is_bindable() const { return !(flags & (DEV_CTX_BOUND | DEV_CTX_DEAD | DEV_CTX_INVISIBLE)); }
 
-  // If the device was bound as a component of a composite, this returns the
-  // component's description.
-  CompositeDeviceComponent* component() const {
-    auto val = std::get_if<CompositeDeviceComponent*>(&composite_);
-    return val ? *val : nullptr;
-  }
-  void set_component(CompositeDeviceComponent* component) {
-    ZX_ASSERT(std::holds_alternative<UnassociatedWithComposite>(composite_));
-    composite_ = component;
-  }
+  void push_component(CompositeDeviceComponent* component) { components_.push_back(component); }
+  bool is_components_empty() { return components_.is_empty(); }
 
+  fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode>&
+  components() {
+    return components_;
+  }
   // If the device was created as a composite, this returns its description.
   CompositeDevice* composite() const {
     auto val = std::get_if<CompositeDevice*>(&composite_);
@@ -415,7 +418,10 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
   //   CompositeDevice* and it points to the composite that describes it.
   // - Otherwise, it is inhabited by UnassociatedWithComposite
   struct UnassociatedWithComposite {};
-  std::variant<UnassociatedWithComposite, CompositeDeviceComponent*, CompositeDevice*> composite_;
+  std::variant<UnassociatedWithComposite, CompositeDevice*> composite_;
+  // list of all components that this device bound to.
+  fbl::DoublyLinkedList<CompositeDeviceComponent*, CompositeDeviceComponent::DeviceNode>
+      components_;
 
   Devhost* host_ = nullptr;
   // The id of this device from the perspective of the devhost.  This can be

@@ -244,7 +244,9 @@ zx_status_t CompositeDeviceComponent::Bind(const fbl::RefPtr<Device>& dev) {
   }
 
   bound_device_ = dev;
-  dev->set_component(this);
+  dev->flags |= DEV_CTX_MULTI_COMPOSITE;
+  dev->push_component(this);
+
   return ZX_OK;
 }
 
