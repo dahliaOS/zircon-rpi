@@ -199,6 +199,7 @@ __EXPORT zx_status_t load_firmware(zx_device_t* dev, const char* path, zx_handle
                                    size_t* size) {
   ApiAutoLock lock;
   fbl::RefPtr<zx_device_t> dev_ref(dev);
+  //TODO(bwb): Can we propogate zx::vmo further up?
   return devhost_load_firmware(dev_ref, path, fw, size);
 }
 

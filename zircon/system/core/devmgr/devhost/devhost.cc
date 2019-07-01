@@ -59,6 +59,8 @@ zx_status_t zx_driver::Create(fbl::RefPtr<zx_driver>* out_driver) {
 
 namespace devmgr {
 
+namespace fuchsia = ::llcpp::fuchsia;
+
 uint32_t log_flags = LOG_ERROR | LOG_INFO;
 
 static fbl::DoublyLinkedList<fbl::RefPtr<zx_driver>> dh_drivers;
@@ -640,17 +642,29 @@ zx_status_t devhost_add(const fbl::RefPtr<zx_device_t>& parent,
   static_assert(sizeof(zx_device_prop_t) == sizeof(uint64_t));
   uint64_t device_id = 0;
   if (add_invisible) {
-    status = fuchsia_device_manager_CoordinatorAddDeviceInvisible(
-        rpc.get(), hsend.release(), reinterpret_cast<const uint64_t*>(props), prop_count,
-        child->name, strlen(child->name), child->protocol_id, child->driver->libname().data(),
-        child->driver->libname().size(), proxy_args, proxy_args_len, client_remote.release(),
-        &call_status, &device_id);
+    status = fuchsia::device::manager::Coordinator::Call::AddDeviceInvisible(
+        zx::unowned_channel(rpc.get()),
+        std::move(hsend),
+        ::fidl::VectorView(prop_count, reinterpret_cast<uint64_t*>(const_cast<zx_device_prop_t*>(props))),
+        ::fidl::StringView(strlen(child->name), child->name),
+        child->protocol_id,
+        ::fidl::StringView(child->driver->libname().size(), child->driver->libname().data()),
+        ::fidl::StringView(proxy_args_len, proxy_args),
+        std::move(client_remote),
+        &call_status,
+        &device_id);
   } else {
-    status = fuchsia_device_manager_CoordinatorAddDevice(
-        rpc.get(), hsend.release(), reinterpret_cast<const uint64_t*>(props), prop_count,
-        child->name, strlen(child->name), child->protocol_id, child->driver->libname().data(),
-        child->driver->libname().size(), proxy_args, proxy_args_len, client_remote.release(),
-        &call_status, &device_id);
+    status = fuchsia::device::manager::Coordinator::Call::AddDevice(
+        zx::unowned_channel(rpc.get()),
+        std::move(hsend),
+        ::fidl::VectorView(prop_count, reinterpret_cast<uint64_t*>(const_cast<zx_device_prop_t*>(props))),
+        ::fidl::StringView(strlen(child->name), child->name),
+        child->protocol_id,
+        ::fidl::StringView(child->driver->libname().size(), child->driver->libname().data()),
+        ::fidl::StringView(proxy_args_len, proxy_args),
+        std::move(client_remote),
+        &call_status,
+        &device_id);
   }
   if (status != ZX_OK) {
     log(ERROR, "devhost[%s] add '%s': rpc sending failed: %d\n", path, child->name, status);
@@ -692,7 +706,7 @@ void devhost_make_visible(const fbl::RefPtr<zx_device_t>& dev) {
   // TODO(teisenbe): Handle failures here...
   log_rpc(dev, "make-visible");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorMakeVisible(rpc.get(), &call_status);
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::MakeVisible(zx::unowned_channel(rpc.get()), &call_status);
   log_rpc_result("make-visible", status, call_status);
 }
 
@@ -719,7 +733,7 @@ zx_status_t devhost_remove(const fbl::RefPtr<zx_device_t>& dev) {
   // TODO(teisenbe): Handle failures here...
   log_rpc(dev, "remove-device");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorRemoveDevice(rpc.get(), &call_status);
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::RemoveDevice(zx::unowned_channel(rpc.get()), &call_status);
   log_rpc_result("remove-device", status, call_status);
 
   // Forget our local ID, to release the reference stored by the local ID map
@@ -761,8 +775,16 @@ zx_status_t devhost_get_topo_path(const fbl::RefPtr<zx_device_t>& dev, char* pat
 
   log_rpc(remote_dev, "get-topo-path");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorGetTopologicalPath(rpc.get(), &call_status,
-                                                                            path, max - 1, actual);
+  uint8_t response_buffer[fidl::MaxSizeInChannel<fuchsia::device::manager::Coordinator::GetTopologicalPathResponse>()] = {};
+  auto resp = fuchsia::device::manager::Coordinator::Call::GetTopologicalPath(
+      zx::unowned_channel(rpc.get()),
+      fidl::BytePart::WrapEmpty(response_buffer));
+  zx_status_t status = resp.status;
+  auto response = resp.Unwrap();
+  call_status = response->status;
+  memcpy(path, response->path.data(), response->path.size());
+  *actual = response->path.size();
+
   log_rpc_result("get-topo-path", status, call_status);
   if (status != ZX_OK) {
     return status;
@@ -788,8 +810,9 @@ zx_status_t devhost_device_bind(const fbl::RefPtr<zx_device_t>& dev, const char*
   }
   log_rpc(dev, "bind-device");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorBindDevice(
-      rpc.get(), drv_libname, strlen(drv_libname), &call_status);
+  auto driver_path = ::fidl::StringView(strlen(drv_libname), drv_libname);
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::BindDevice(
+      zx::unowned_channel(rpc.get()), driver_path, &call_status);
   log_rpc_result("bind-device", status, call_status);
   if (status != ZX_OK) {
     return status;
@@ -805,8 +828,8 @@ zx_status_t devhost_device_run_compatibility_tests(const fbl::RefPtr<zx_device_t
     }
     log_rpc(dev, "run-compatibility-test");
     zx_status_t call_status;
-    zx_status_t status = fuchsia_device_manager_CoordinatorRunCompatibilityTests(
-                          rpc.get(), hook_wait_time, &call_status);
+    zx_status_t status = fuchsia::device::manager::Coordinator::Call::RunCompatibilityTests(
+                          zx::unowned_channel(rpc.get()), hook_wait_time, &call_status);
     log_rpc_result("run-compatibility-test", status, call_status);
     if (status != ZX_OK) {
         return status;
@@ -815,10 +838,12 @@ zx_status_t devhost_device_run_compatibility_tests(const fbl::RefPtr<zx_device_t
 }
 
 zx_status_t devhost_load_firmware(const fbl::RefPtr<zx_device_t>& dev, const char* path,
-                                  zx_handle_t* vmo, size_t* size) {
-  if ((vmo == nullptr) || (size == nullptr)) {
+                                  zx_handle_t* vmo_handle, size_t* size) {
+
+  if ((vmo_handle == nullptr) || (size == nullptr)) {
     return ZX_ERR_INVALID_ARGS;
   }
+  auto vmo = reinterpret_cast<zx::vmo*>(vmo_handle);
 
   const zx::channel& rpc = *dev->rpc;
   if (!rpc.is_valid()) {
@@ -826,13 +851,14 @@ zx_status_t devhost_load_firmware(const fbl::RefPtr<zx_device_t>& dev, const cha
   }
   log_rpc(dev, "load-firmware");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorLoadFirmware(rpc.get(), path, strlen(path),
+  auto str_path = ::fidl::StringView(strlen(path), path);
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::LoadFirmware(zx::unowned_channel(rpc.get()), str_path,
                                                                       &call_status, vmo, size);
   log_rpc_result("load-firmware", status, call_status);
   if (status != ZX_OK) {
     return status;
   }
-  if (call_status == ZX_OK && *vmo == ZX_HANDLE_INVALID) {
+  if (call_status == ZX_OK && *vmo_handle == ZX_HANDLE_INVALID) {
     return ZX_ERR_INTERNAL;
   }
   return call_status;
@@ -848,12 +874,20 @@ zx_status_t devhost_get_metadata(const fbl::RefPtr<zx_device_t>& dev, uint32_t t
   if (!rpc.is_valid()) {
     return ZX_ERR_IO_REFUSED;
   }
-  uint8_t data[fuchsia_device_manager_METADATA_MAX];
-  size_t length = 0;
   log_rpc(dev, "get-metadata");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorGetMetadata(rpc.get(), type, &call_status,
-                                                                     data, sizeof(data), &length);
+
+  uint8_t response_buffer[fidl::MaxSizeInChannel<fuchsia::device::manager::Coordinator::GetMetadataResponse>()] = {};
+  uint8_t request_buffer[fidl::MaxSizeInChannel<fuchsia::device::manager::Coordinator::GetMetadataRequest>()] = {};
+  fidl::DecodedMessage<fuchsia::device::manager::Coordinator::GetMetadataRequest> request(fidl::BytePart::WrapFull(request_buffer));
+  request.message()->key = type;
+  auto resp = fuchsia::device::manager::Coordinator::Call::GetMetadata(zx::unowned_channel(rpc.get()),
+      std::move(request),
+      fidl::BytePart::WrapEmpty(response_buffer));
+  zx_status_t status = resp.status;
+  auto response = resp.Unwrap();
+  call_status = response->status;
+
   if (status != ZX_OK) {
     log(ERROR, "devhost: rpc:get-metadata sending failed: %d\n", status);
     return status;
@@ -865,9 +899,9 @@ zx_status_t devhost_get_metadata(const fbl::RefPtr<zx_device_t>& dev, uint32_t t
     return call_status;
   }
 
-  memcpy(buf, data, length);
+  memcpy(buf, response->data.data(), response->data.count());
   if (actual != nullptr) {
-    *actual = length;
+    *actual = response->data.count();
   }
   return ZX_OK;
 }
@@ -881,7 +915,7 @@ zx_status_t devhost_get_metadata_size(const fbl::RefPtr<zx_device_t>& dev, uint3
   log_rpc(dev, "get-metadata");
   zx_status_t call_status;
   zx_status_t status =
-      fuchsia_device_manager_CoordinatorGetMetadataSize(rpc.get(), type, &call_status, out_length);
+      fuchsia::device::manager::Coordinator::Call::GetMetadataSize(zx::unowned_channel(rpc.get()), type, &call_status, out_length);
   if (status != ZX_OK) {
     log(ERROR, "devhost: rpc:get-metadata sending failed: %d\n", status);
     return status;
@@ -906,8 +940,8 @@ zx_status_t devhost_add_metadata(const fbl::RefPtr<zx_device_t>& dev, uint32_t t
   }
   log_rpc(dev, "add-metadata");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorAddMetadata(
-      rpc.get(), type, reinterpret_cast<const uint8_t*>(data), length, &call_status);
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::AddMetadata(
+      zx::unowned_channel(rpc.get()), type, ::fidl::VectorView(length, reinterpret_cast<uint8_t*>(const_cast<void*>(data))), &call_status);
   log_rpc_result("add-metadata", status, call_status);
   if (status != ZX_OK) {
     return status;
@@ -926,8 +960,9 @@ zx_status_t devhost_publish_metadata(const fbl::RefPtr<zx_device_t>& dev, const 
   }
   log_rpc(dev, "publish-metadata");
   zx_status_t call_status;
-  zx_status_t status = fuchsia_device_manager_CoordinatorPublishMetadata(
-      rpc.get(), path, strlen(path), type, reinterpret_cast<const uint8_t*>(data), length,
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::PublishMetadata(
+      zx::unowned_channel(rpc.get()), ::fidl::StringView(strlen(path), const_cast<char*>(path)), type,
+      ::fidl::VectorView(length, reinterpret_cast<uint8_t*>(const_cast<void*>(data))),
       &call_status);
   log_rpc_result("publish-metadata", status, call_status);
   if (status != ZX_OK) {
@@ -938,10 +973,10 @@ zx_status_t devhost_publish_metadata(const fbl::RefPtr<zx_device_t>& dev, const 
 
 zx_status_t devhost_device_add_composite(const fbl::RefPtr<zx_device_t>& dev, const char* name,
                                          const zx_device_prop_t* props, size_t props_count,
-                                         const device_component_t* components,
+                                         const device_component_t* components_data,
                                          size_t components_count,
                                          uint32_t coresident_device_index) {
-  if ((props == nullptr && props_count > 0) || components == nullptr || name == nullptr) {
+  if ((props == nullptr && props_count > 0) || components_data == nullptr || name == nullptr) {
     return ZX_ERR_INVALID_ARGS;
   }
   if (components_count > fuchsia_device_manager_COMPONENTS_MAX) {
@@ -952,40 +987,32 @@ zx_status_t devhost_device_add_composite(const fbl::RefPtr<zx_device_t>& dev, co
     return ZX_ERR_IO_REFUSED;
   }
 
+  ::fidl::Array<fuchsia::device::manager::DeviceComponent, fuchsia_device_manager_COMPONENTS_MAX> components;
+
   // Ideally we could perform the entire serialization with a single
   // allocation, but for now we allocate this (potentially large) array on
   // the heap.  The array is extra-large because of the use of FIDL array
   // types instead of vector types, to get around the SimpleLayout
   // restrictions.
-  std::unique_ptr<fuchsia_device_manager_DeviceComponent[]> fidl_components(
-      new fuchsia_device_manager_DeviceComponent[fuchsia_device_manager_COMPONENTS_MAX]());
   for (size_t i = 0; i < components_count; ++i) {
-    auto& component = fidl_components[i];
-    component.parts_count = components[i].parts_count;
-    if (component.parts_count > fuchsia_device_manager_DEVICE_COMPONENT_PARTS_MAX) {
-      return ZX_ERR_INVALID_ARGS;
-    }
+    auto& component = components_data[i];
     for (size_t j = 0; j < component.parts_count; ++j) {
-      auto& part = fidl_components[i].parts[j];
-      part.match_program_count = components[i].parts[j].instruction_count;
-      if (part.match_program_count >
-          fuchsia_device_manager_DEVICE_COMPONENT_PART_INSTRUCTIONS_MAX) {
-        return ZX_ERR_INVALID_ARGS;
+      auto& part = components[i].parts[j];
+      for (size_t k = 0; k < part.match_program_count; ++k) {
+        memcpy(&part.match_program[k], components_data[i].parts[j].match_program, sizeof(part.match_program[k]));
       }
-
-      static_assert(sizeof(components[i].parts[j].match_program[0]) ==
-                    sizeof(part.match_program[0]));
-      memcpy(part.match_program, components[i].parts[j].match_program,
-             sizeof(part.match_program[0]) * part.match_program_count);
     }
   }
 
   log_rpc(dev, "create-composite");
   zx_status_t call_status;
   static_assert(sizeof(props[0]) == sizeof(uint64_t));
-  zx_status_t status = fuchsia_device_manager_CoordinatorAddCompositeDevice(
-      rpc.get(), name, strlen(name), reinterpret_cast<const uint64_t*>(props), props_count,
-      fidl_components.get(), static_cast<uint32_t>(components_count), coresident_device_index,
+  zx_status_t status = fuchsia::device::manager::Coordinator::Call::AddCompositeDevice(
+      zx::unowned_channel(rpc.get()), ::fidl::StringView(strlen(name), name),
+      ::fidl::VectorView(props_count, reinterpret_cast<uint64_t*>(const_cast<zx_device_prop*>(props))),
+      components,
+      static_cast<uint32_t>(components_count),
+      coresident_device_index,
       &call_status);
   log_rpc_result("create-composite", status, call_status);
   if (status != ZX_OK) {
