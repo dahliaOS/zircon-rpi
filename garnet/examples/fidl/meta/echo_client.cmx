@@ -4,5 +4,6 @@
    },
    "sandbox": {
        "services": [ "fuchsia.sys.Launcher", "fidl.examples.echo.Echo" ]
-   }
+   },
+   "runner": "fuchsia-pkg://fuchsia.com/wasm_runner#meta/wasm_runner.cmx"
 }
