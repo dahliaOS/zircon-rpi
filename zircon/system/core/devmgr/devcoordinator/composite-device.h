@@ -70,7 +70,13 @@ class CompositeDeviceComponent {
     }
   };
 
- private:
+  // Used for embedding this component device's components' list indicating that device
+  // bound to this component.
+  struct DeviceNode {
+      static fbl::DoublyLinkedListNodeState<CompositeDeviceComponent*>&
+              node_state(CompositeDeviceComponent& obj) { return obj.device_node_; }
+  };
+private:
   // The CompositeDevice that this is a part of
   CompositeDevice* const composite_;
 
@@ -88,6 +94,7 @@ class CompositeDeviceComponent {
   fbl::RefPtr<Device> component_device_ = nullptr;
 
   fbl::DoublyLinkedListNodeState<std::unique_ptr<CompositeDeviceComponent>> node_;
+  fbl::DoublyLinkedListNodeState<CompositeDeviceComponent*> device_node_;
 };
 
 // A device composed of other devices.
