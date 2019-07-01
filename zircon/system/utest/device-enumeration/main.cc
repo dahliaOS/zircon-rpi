@@ -125,7 +125,7 @@ TEST_F(DeviceEnumerationTest, AstroTest) {
     static const char* kDevicePaths[] = {
         "sys/platform/aml-bus",
         "sys/platform/05:03:1/aml-axg-gpio",
-        "sys/platform/00:00:13/hid-buttons/hid-device-000",
+        "astro-buttons/hid-buttons",
         "sys/platform/05:00:2/aml-i2c",
         "sys/platform/05:03:17/aml-gpu",
         "sys/platform/05:00:18/aml-usb-phy-v2",
@@ -149,8 +149,6 @@ TEST_F(DeviceEnumerationTest, AstroTest) {
         "sys/platform/05:00:f/aml-raw_nand/nand/zircon-b/skip-block",
         "sys/platform/05:00:f/aml-raw_nand/nand/zircon-a/skip-block",
         "sys/platform/05:00:f/aml-raw_nand/nand/zircon-r/skip-block",
-        "sys/platform/05:00:f/aml-raw_nand/nand/fvm/ftl/block/fvm/blobfs-p-1/block",
-        "sys/platform/05:00:f/aml-raw_nand/nand/fvm/ftl/block/fvm/minfs-p-2/block/zxcrypt/unsealed/block",
         "sys/platform/05:00:f/aml-raw_nand/nand/sys-config/skip-block",
         "sys/platform/05:00:f/aml-raw_nand/nand/migration/skip-block",
         "sys/platform/05:00:7/aml-sd-emmc/sdmmc",
