@@ -72,6 +72,7 @@ base_package_labels += [
   "//src/sys/appmgr:appmgr_global_data_allowlist",
   "//src/sys/appmgr:appmgr_scheme_config",
   "//src/sys/timekeeper",
+  "//src/sys/wasm_runner:wasm_runner",
   "//third_party/openssh-portable/fuchsia/developer-keys:ssh_config",
 ]
 

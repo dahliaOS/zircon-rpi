@@ -1,0 +1,11 @@
+{
+    "program": {
+        "binary": "bin/wasm_runner"
+    },
+    "sandbox": {
+        "services": [
+            "fuchsia.sys.Environment",
+            "fuchsia.sys.Loader"
+        ]
+    }
+}

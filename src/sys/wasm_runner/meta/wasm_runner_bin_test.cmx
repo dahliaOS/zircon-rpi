@@ -1,0 +1,6 @@
+{
+    "program": {
+        "binary": "test/wasm_runner_bin_test"
+    },
+    "sandbox": {}
+}
