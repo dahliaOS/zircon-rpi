@@ -60,35 +60,6 @@ struct TestFacet {
     system_services: Vec<String>,
 }
 
-// TODO(jamesr): Use serde to validate and deserialize the facet directly.
-// See //garnet/bin/cmc/src/validate.rs for reference.
-fn test_facet(meta: &serde_json::Value) -> Result<TestFacet, Error> {
-    let facets = meta.get("facets").ok_or_else(|| format_err!("no facets"))?;
-    if !facets.is_object() {
-        bail!("facet not an object");
-    }
-    let fuchsia_test_facet = match facets.get("fuchsia.test") {
-        Some(v) => v,
-        None => bail!("no fuchsia.test facet"),
-    };
-    if !fuchsia_test_facet.is_object() {
-        bail!("fuchsia.test facet not an object");
-    }
-    let component_under_test = match fuchsia_test_facet.get("component_under_test") {
-        Some(v) => v,
-        None => bail!("no component_under_test definition in fuchsia.test facet"),
-    };
-    let component_under_test = component_under_test
-        .as_str()
-        .ok_or_else(|| format_err!("component_under_test in fuchsia.test facet not a string"))?
-        .to_string();
-    Ok(TestFacet {
-        component_under_test: component_under_test,
-        injected_services: Vec::new(),
-        system_services: Vec::new(),
-    })
-}
-
 async fn run_runner_server(mut stream: RunnerRequestStream) -> Result<(), Error> {
     while let Some(RunnerRequest::StartComponent {
         package,
@@ -116,11 +87,6 @@ async fn run_runner_server(mut stream: RunnerRequestStream) -> Result<(), Error>
 
         fx_log_info!("Found metadata: {:#?}", meta);
 
-        let _f = test_facet(&meta)?;
-
-        //TODO(jamesr): Configure realm based on |f| then instantiate and watch
-        //|f.component_under_test| within that realm.
-
         control_handle.shutdown();
     }
     Ok(())
@@ -133,7 +99,7 @@ enum IncomingServices {
 
 #[fasync::run_singlethreaded]
 async fn main() -> Result<(), Error> {
-    fuchsia_syslog::init_with_tags(&["component_test_runner"])?;
+    fuchsia_syslog::init_with_tags(&["wasm_runner"])?;
 
     let mut fs = ServiceFs::new_local();
     fs.dir("svc").add_fidl_service(IncomingServices::Runner);
