@@ -2,38 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <ddk/binding.h>
 #include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/metadata.h>
 #include <ddk/metadata/buttons.h>
 #include <ddk/platform-defs.h>
+#include <fbl/algorithm.h>
 
 #include <soc/aml-s905d2/s905d2-gpio.h>
 #include <soc/aml-s905d2/s905d2-hw.h>
 
 #include "astro.h"
+#include "astro-gpios.h"
 
 namespace astro {
-
-static const pbus_gpio_t astro_buttons_gpios[] = {
-    {
-        // Volume up.
-        .gpio = S905D2_GPIOZ(5),
-    },
-    {
-        // Volume down.
-        .gpio = S905D2_GPIOZ(6),
-    },
-    {
-        // Both Volume up and down pressed.
-        .gpio = S905D2_GPIOAO(10),
-    },
-    {
-        // Mic privacy switch.
-        .gpio = S905D2_GPIOZ(2),
-
-    },
-};
 
 // clang-format off
 static const buttons_button_config_t buttons[] = {
@@ -64,24 +47,65 @@ static const pbus_metadata_t available_buttons_metadata[] = {
     }
 };
 
+static const zx_bind_inst_t root_match[] = {
+    BI_MATCH(),
+};
+static const zx_bind_inst_t volume_up_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
+    BI_MATCH_IF(EQ, BIND_GPIO_PIN, GPIO_VOLUME_UP),
+};
+static const zx_bind_inst_t volume_down_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
+    BI_MATCH_IF(EQ, BIND_GPIO_PIN, GPIO_VOLUME_DOWN),
+};
+static const zx_bind_inst_t volume_both_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
+    BI_MATCH_IF(EQ, BIND_GPIO_PIN, GPIO_VOLUME_BOTH),
+};
+static const zx_bind_inst_t mic_privacy_match[] = {
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_GPIO),
+    BI_MATCH_IF(EQ, BIND_GPIO_PIN, GPIO_MIC_PRIVACY),
+};
+static const device_component_part_t volume_up_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(volume_up_match), volume_up_match },
+};
+static const device_component_part_t volume_down_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(volume_down_match), volume_down_match },
+};
+static const device_component_part_t volume_both_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(volume_both_match), volume_both_match },
+};
+static const device_component_part_t mic_privacy_component[] = {
+    { fbl::count_of(root_match), root_match },
+    { fbl::count_of(mic_privacy_match), mic_privacy_match },
+};
+static const device_component_t components[] = {
+    { fbl::count_of(volume_up_component), volume_up_component },
+    { fbl::count_of(volume_down_component), volume_down_component },
+    { fbl::count_of(volume_both_component), volume_both_component },
+    { fbl::count_of(mic_privacy_component), mic_privacy_component },
+};
+
 static pbus_dev_t astro_buttons_dev = []() {
     pbus_dev_t dev;
     dev.name = "astro-buttons";
     dev.vid = PDEV_VID_GENERIC;
     dev.pid = PDEV_PID_GENERIC;
     dev.did = PDEV_DID_HID_BUTTONS;
-    dev.gpio_list = astro_buttons_gpios;
-    dev.gpio_count = countof(astro_buttons_gpios);
     dev.metadata_list = available_buttons_metadata;
-    dev.metadata_count = countof(available_buttons_metadata);
+    dev.metadata_count = fbl::count_of(available_buttons_metadata);
     return dev;
 }();
 
 zx_status_t Astro::ButtonsInit() {
 
-    zx_status_t status = pbus_.DeviceAdd(&astro_buttons_dev);
+    zx_status_t status = pbus_.CompositeDeviceAdd(&astro_buttons_dev, components,
+                                                  fbl::count_of(components), UINT32_MAX);
     if (status != ZX_OK) {
-        zxlogf(ERROR, "%s: DeviceAdd failed: %d\n", __func__, status);
+        zxlogf(ERROR, "%s: CompositeDeviceAdd failed: %d\n", __func__, status);
         return status;
     }
 

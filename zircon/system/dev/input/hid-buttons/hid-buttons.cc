@@ -12,8 +12,7 @@
 #include <ddk/debug.h>
 #include <ddk/metadata.h>
 #include <ddk/platform-defs.h>
-#include <ddk/protocol/platform/bus.h>
-#include <ddk/protocol/platform/device.h>
+#include <ddktl/protocol/composite.h>
 #include <fbl/algorithm.h>
 #include <fbl/auto_call.h>
 #include <fbl/auto_lock.h>
@@ -237,13 +236,6 @@ zx_status_t HidButtonsDevice::Bind() {
         return status;
     }
 
-    pdev_protocol_t pdev;
-    status = device_get_protocol(parent_, ZX_PROTOCOL_PDEV, &pdev);
-    if (status != ZX_OK) {
-        zxlogf(ERROR, "%s device_get_protocol failed %d\n", __FUNCTION__, status);
-        return status;
-    }
-
     // Get buttons metadata.
     size_t actual = 0;
     status = device_get_metadata_size(parent_, DEVICE_METADATA_BUTTONS_BUTTONS, &actual);
@@ -312,6 +304,25 @@ zx_status_t HidButtonsDevice::Bind() {
         }
     }
 
+    // Get the GPIOs.
+    ddk::CompositeProtocolClient composite(parent_);
+    if (!composite.is_valid()) {
+        zxlogf(ERROR, "HidButtonsDevice: Could not get composite protocol\n");
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    // component 0 is platform device, only used for passing metadata.
+    auto component_count = composite.GetComponentCount();
+    if (component_count != n_gpios + 1) {
+        zxlogf(ERROR, "%s Could not get composite protocol\n", __FUNCTION__);
+        return ZX_ERR_INTERNAL;
+    }
+    zx_device_t* components[component_count];
+    composite.GetComponents(components, component_count, &actual);
+    if (actual != component_count) {
+        return ZX_ERR_INTERNAL;
+    }
+
     // Prepare the GPIOs.
     gpios_ = fbl::Array(new (&ac) Gpio[n_gpios], n_gpios);
     if (!ac.check()) {
@@ -319,11 +330,9 @@ zx_status_t HidButtonsDevice::Bind() {
     }
     for (uint32_t i = 0; i < gpios_.size(); ++i) {
         gpios_[i].config = gpios_configs[i];
-        size_t actual;
-        status = PdevGetGpioProtocol(&pdev, i, &gpios_[i].gpio,
-                                     sizeof(gpios_[i].gpio), &actual);
-        if (status != ZX_OK || actual != sizeof(gpios_[i].gpio)) {
-            zxlogf(ERROR, "%s pdev_get_protocol failed %d\n", __FUNCTION__, status);
+        status = GetGpioProtocol(components[i + 1], i, &gpios_[i].gpio);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "%s device_get_protocol failed %d\n", __FUNCTION__, status);
             return ZX_ERR_NOT_SUPPORTED;
         }
         status = gpio_set_alt_function(&gpios_[i].gpio, 0); // 0 means function GPIO.
@@ -411,7 +420,8 @@ static constexpr zx_driver_ops_t hid_buttons_driver_ops = []() {
 } // namespace buttons
 
 // clang-format off
-ZIRCON_DRIVER_BEGIN(hid_buttons, buttons::hid_buttons_driver_ops, "zircon", "0.1", 3)
+ZIRCON_DRIVER_BEGIN(hid_buttons, buttons::hid_buttons_driver_ops, "zircon", "0.1", 4)
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_COMPOSITE),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_GENERIC),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_PID, PDEV_PID_GENERIC),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_HID_BUTTONS),

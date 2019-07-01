@@ -125,7 +125,7 @@ TEST_F(DeviceEnumerationTest, AstroTest) {
     static const char* kDevicePaths[] = {
         "sys/platform/astro",
         "sys/platform/05:03:1/aml-axg-gpio",
-        "sys/platform/00:00:13/hid-buttons/hid-device-000",
+        "astro-buttons/hid-buttons",
         "sys/platform/05:00:2/aml-i2c",
         "sys/platform/05:03:17/aml-gpu",
         "sys/platform/05:00:18/aml-usb-phy-v2",

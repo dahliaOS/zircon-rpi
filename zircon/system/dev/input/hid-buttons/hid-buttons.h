@@ -6,7 +6,6 @@
 
 #include <ddk/metadata/buttons.h>
 #include <ddk/protocol/gpio.h>
-#include <ddk/protocol/platform/device.h>
 #include <ddktl/device.h>
 #include <ddktl/protocol/hidbus.h>
 #include <fbl/array.h>
@@ -70,11 +69,8 @@ private:
     zx_status_t ConfigureInterrupt(uint32_t idx, uint64_t int_port);
     bool MatrixScan(uint32_t row, uint32_t col, zx_duration_t delay);
     // To be overwritten in unit testing.
-    virtual zx_status_t PdevGetGpioProtocol(const pdev_protocol_t* proto, uint32_t index,
-                                            void* out_protocol_buffer, size_t out_protocol_size,
-                                            size_t* out_protocol_actual) {
-        return pdev_get_protocol(proto, ZX_PROTOCOL_GPIO, index, out_protocol_buffer,
-                                 out_protocol_size, out_protocol_actual);
+    virtual zx_status_t GetGpioProtocol(zx_device_t* device, uint32_t index, void* out_protocol) {
+        return device_get_protocol(device, ZX_PROTOCOL_GPIO, out_protocol);
     }
 
     thrd_t thread_;
