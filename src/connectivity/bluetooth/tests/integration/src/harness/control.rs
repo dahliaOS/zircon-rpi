@@ -139,13 +139,13 @@ pub mod control_expectation {
         let expected_host = Some(id);
         Predicate::new(
             move |state: &ControlState| -> bool { state.active_host == expected_host },
-            Some(&msg),
+            msg,
         )
     }
 
     pub fn host_not_present(id: String) -> Predicate<ControlState> {
         let msg = format!("bt-host {} is no longer present", id);
-        Predicate::new(move |state: &ControlState| !state.hosts.contains_key(&id), Some(&msg))
+        Predicate::new(move |state: &ControlState| !state.hosts.contains_key(&id), msg)
     }
 
     pub fn peer_exists(p: Predicate<RemoteDevice>) -> Predicate<ControlState> {
@@ -184,13 +184,12 @@ pub async fn activate_fake_host(
     let state = control
         .when_satisfied(
             Predicate::<ControlState>::new(
-                move |control| {
-                    let added_fake_hosts = control.hosts.iter().filter(|(id, host)| {
-                        host.address == FAKE_HCI_ADDRESS && !initial_hosts_.contains(id)
-                    });
-                    added_fake_hosts.count() > 0
-                },
-                Some("Fake Host Added"),
+                move |control| control
+                    .hosts
+                    .iter()
+                    .any(|(id, host)| host.address == FAKE_HCI_ADDRESS
+                        && !initial_hosts_.contains(id)),
+                "At least one fake bt-host device added",
             ),
             control_timeout(),
         )

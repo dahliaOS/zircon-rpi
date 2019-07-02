@@ -13,6 +13,7 @@ pub mod assigned_numbers;
 /// Bluetooth Error type
 pub mod error;
 /// Tools for writing asynchronous expectations in tests
+#[macro_use]
 pub mod expectation;
 /// Utility for interacting with the bt-hci-emulator driver
 pub mod hci_emulator;

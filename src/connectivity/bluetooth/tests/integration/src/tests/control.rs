@@ -30,20 +30,19 @@ pub async fn set_active_host(control: ControlHarness) -> Result<(), Error> {
     let fake_hci_0 = Emulator::create_and_publish("bt-hci-integration-control-0").await?;
     let fake_hci_1 = Emulator::create_and_publish("bt-hci-integration-control-1").await?;
 
-    let state = control
-        .when_satisfied(
-            Predicate::<ControlState>::new(
-                move |control| {
-                    let added_fake_hosts = control.hosts.iter().filter(|(id, host)| {
-                        host.address == FAKE_HCI_ADDRESS && !initial_hosts_.contains(id)
-                    });
-                    added_fake_hosts.count() > 1
-                },
-                Some("Both Fake Hosts Added"),
-            ),
-            control_timeout(),
-        )
-        .await?;
+    let state = control.when_satisfied(
+        Predicate::<ControlState>::new(
+            move |control| {
+                let added_fake_hosts = control.hosts.iter().filter(|(id, host)| {
+                    host.address == FAKE_HCI_ADDRESS && !initial_hosts_.contains(id)
+                });
+                added_fake_hosts.count() > 1
+            },
+            "Both Fake Hosts Added"
+        ),
+        control_timeout()
+    )
+    .await?;
 
     let fake_hosts: Vec<String> = state
         .hosts

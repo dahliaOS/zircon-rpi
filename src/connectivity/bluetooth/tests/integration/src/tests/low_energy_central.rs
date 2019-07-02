@@ -18,41 +18,26 @@ mod central_expectation {
     use fuchsia_bluetooth::types::le::RemoteDevice;
 
     pub fn scan_enabled() -> Predicate<CentralState> {
-        Predicate::new(
-            |state: &CentralState| -> bool {
-                !state.scan_state_changes.is_empty()
-                    && state.scan_state_changes.last() == Some(&ScanStateChange::ScanEnabled)
-            },
-            Some("Scan was enabled"),
-        )
+        Predicate::equal(Some(ScanStateChange::ScanEnabled))
+          .over_value(|state: &CentralState| state.scan_state_changes.last().cloned(), ".scan_state_changes.last()")
     }
     pub fn scan_disabled() -> Predicate<CentralState> {
-        Predicate::new(
-            |state: &CentralState| -> bool {
-                !state.scan_state_changes.is_empty()
-                    && state.scan_state_changes.last() == Some(&ScanStateChange::ScanDisabled)
-            },
-            Some("Scan was disabled"),
-        )
+        Predicate::equal(Some(ScanStateChange::ScanDisabled))
+          .over_value(|state: &CentralState| state.scan_state_changes.last().cloned(), ".scan_state_changes.last()")
     }
     pub fn device_found(expected_name: &str) -> Predicate<CentralState> {
         let expected_name = expected_name.to_string();
-        let msg = format!("Peer '{}' has been discovered", expected_name);
-        let has_expected_name = move |peer: &RemoteDevice| -> bool {
-            peer.advertising_data
-                .as_ref()
-                .and_then(|ad| ad.name.as_ref())
-                .iter()
-                .any(|&name| name == &expected_name)
-        };
-
-        Predicate::new(
-            move |state: &CentralState| -> bool {
-                !state.remote_devices.is_empty()
-                    && state.remote_devices.iter().any(&has_expected_name)
+        let has_expected_name = Predicate::equal(Some(expected_name))
+            .over_value(|peer: &RemoteDevice| {
+                peer.advertising_data
+                    .as_ref()
+                    .and_then(|ad| ad.name.as_ref().cloned())
             },
-            Some(&msg),
-        )
+            ".advertising_data.name"
+            );
+
+        Predicate::any(has_expected_name).over(|state: &CentralState| { &state.remote_devices }, ".remote_devices")
+
     }
 }
 
@@ -76,12 +61,11 @@ async fn start_scan(central: &CentralHarness) -> Result<(), Error> {
 
 pub async fn enable_scan(central: CentralHarness) -> Result<(), Error> {
     start_scan(&central).await?;
-    let _ = central
-        .when_satisfied(
-            central_expectation::scan_enabled().and(central_expectation::device_found("Fake")),
-            scan_timeout(),
-        )
-        .await?;
+    let _ = central.when_satisfied(
+        central_expectation::scan_enabled().and(central_expectation::device_found("Fake2")),
+        scan_timeout()
+    )
+    .await?;
     Ok(())
 }
 

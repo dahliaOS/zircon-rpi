@@ -135,12 +135,12 @@ where
         expectation: Predicate<T::State>,
         timeout: zx::Duration,
     ) -> FutureObj<Result<Self::State, Error>> {
-        let msg = expectation.describe();
+        let msg = expectation.description();
         FutureObj::new(Box::pin(
             ExpectationFuture::new(self.clone(), expectation)
                 .map(|s| Ok(s))
                 .on_timeout(timeout.after_now(), move || {
-                    Err(format_err!("Timed out waiting for expectation: {}", msg))
+                    Err(format_err!("Timed out waiting for expectation: {:?}", msg))
                 }),
         ))
     }

@@ -20,7 +20,7 @@
 
 use {fidl_fuchsia_bluetooth_le as fidl, std::fmt};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RemoteDevice {
     pub identifier: String,
     pub connectable: bool,
@@ -28,7 +28,7 @@ pub struct RemoteDevice {
     pub advertising_data: Option<AdvertisingData>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AdvertisingData {
     pub name: Option<String>,
     pub tx_power_level: Option<i8>,
@@ -40,13 +40,13 @@ pub struct AdvertisingData {
     pub uris: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ServiceDataEntry {
     pub uuid: String,
     pub data: Vec<u8>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ManufacturerSpecificDataEntry {
     pub company_id: u16,
     pub data: Vec<u8>,
