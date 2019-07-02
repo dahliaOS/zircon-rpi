@@ -135,7 +135,7 @@ where
         expectation: Predicate<T::State>,
         timeout: zx::Duration,
     ) -> FutureObj<Result<Self::State, Error>> {
-        let msg = expectation.description();
+        let msg = format!("{:?}", expectation);
         FutureObj::new(Box::pin(
             ExpectationFuture::new(self.clone(), expectation)
                 .map(|s| Ok(s))
