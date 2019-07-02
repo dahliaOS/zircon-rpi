@@ -589,10 +589,32 @@ static ACPI_STATUS acpi_ns_walk_callback(ACPI_HANDLE object, uint32_t nesting_le
     // TODO: This is a temporary workaround until we have full ACPI device
     // enumeration. If this is the I2C1 bus, we run _PS0 so the controller
     // is active.
-    if (!memcmp(&info->Name, "I2C1", 4)) {
-        acpi_status = AcpiEvaluateObject(object, (char*)"_PS0", NULL, NULL);
+    if (!memcmp(&info->Name, "I2C0", 4)) {
+        ACPI_BUFFER buffer = {
+            .Length = ACPI_ALLOCATE_BUFFER,
+            .Pointer = NULL,
+        };
+        acpi_status = AcpiEvaluateObject(object, (char*)"H00A._PR0", NULL, &buffer);
         if (acpi_status != AE_OK) {
-            zxlogf(ERROR, "acpi: acpi error 0x%x in I2C1._PS0\n", acpi_status);
+            zxlogf(ERROR, "acpi: acpi error in I2C0._PR0: 0x%x\n", acpi_status);
+        } else {
+            ACPI_OBJECT* pkg = buffer.Pointer;
+            for (unsigned i = 0; i < pkg->Package.Count; i++) {
+                ACPI_OBJECT* ref = &pkg->Package.Elements[i];
+                if (ref->Type != ACPI_TYPE_LOCAL_REFERENCE) {
+                    zxlogf(ERROR, "acpi: Ignoring wrong type 0x%x\n", ref->Type);
+                } else {
+                    zxlogf(INFO, "acpi: calling _ON on %u\n", i);
+                    acpi_status = AcpiEvaluateObject(ref->Reference.Handle, (char*)"_ON", NULL, NULL);
+                    if (acpi_status != AE_OK) {
+                        zxlogf(ERROR, "acpi: acpi error 0x%x in I2C0._PR0._ON\n", acpi_status);
+                    }
+                }
+            }
+            if (acpi_status == AE_OK) {
+                zxlogf(INFO, "acpi: the _PR0 voodoo is done\n");
+            }
+            AcpiOsFree(buffer.Pointer);
         }
 
     // Attach the NHLT table as metadata on the HDA device.
