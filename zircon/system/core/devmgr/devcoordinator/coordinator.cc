@@ -574,7 +574,7 @@ zx_status_t Coordinator::AddDevice(const fbl::RefPtr<Device>& parent, zx::channe
   if (component_driver_ != nullptr && dev->libname() == component_driver_->libname) {
     for (auto& cur_component : dev->parent()->components()) {
       if (cur_component.component_device() == nullptr) {
-        // Pick the first component that does not have a device added by the componnet
+        // Pick the first component that does not have a device added by the component
         // driver.
         cur_component.set_component_device(dev);
         status = cur_component.composite()->TryAssemble();

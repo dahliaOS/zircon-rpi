@@ -34,34 +34,34 @@ class SuspendTask;
 // clang-format off
 
 // This device is never destroyed
-#define DEV_CTX_IMMORTAL      0x01
+#define DEV_CTX_IMMORTAL           0x01
 
 // This device requires that children are created in a
 // new devhost attached to a proxy device
-#define DEV_CTX_MUST_ISOLATE  0x02
+#define DEV_CTX_MUST_ISOLATE       0x02
 
 // This device may be bound multiple times
-#define DEV_CTX_MULTI_BIND    0x04
+#define DEV_CTX_MULTI_BIND         0x04
+
+// This device is bound and not eligible for binding
+// again until unbound.  Not allowed on MULTI_BIND ctx.
+#define DEV_CTX_BOUND              0x08
+
+// Device has been remove()'d
+#define DEV_CTX_DEAD               0x10
 
 // This device is a component of a composite device and
 // can be part of multiple composite devices.
 #define DEV_CTX_MULTI_COMPOSITE    0x20
 
-// This device is bound and not eligible for binding
-// again until unbound.  Not allowed on MULTI_BIND ctx.
-#define DEV_CTX_BOUND         0x08
-
-// Device has been remove()'d
-#define DEV_CTX_DEAD          0x10
-
 // Device is a proxy -- its "parent" is the device it's
 // a proxy to.
-#define DEV_CTX_PROXY         0x40
+#define DEV_CTX_PROXY              0x40
 
 // Device is not visible in devfs or bindable.
 // Devices may be created in this state, but may not
 // return to this state once made visible.
-#define DEV_CTX_INVISIBLE     0x80
+#define DEV_CTX_INVISIBLE          0x80
 
 // Signals used on the test event
 #define TEST_BIND_DONE_SIGNAL ZX_USER_SIGNAL_0
@@ -283,6 +283,15 @@ struct Device : public fbl::RefCounted<Device>, public AsyncLoopRefCountedRpcHan
   uint32_t protocol_id() const { return protocol_id_; }
 
   bool is_bindable() const { return !(flags & (DEV_CTX_BOUND | DEV_CTX_DEAD | DEV_CTX_INVISIBLE)); }
+  bool is_comosite_bindable() const {
+    if (flags & (DEV_CTX_DEAD | DEV_CTX_INVISIBLE)) {
+      return false;
+    }
+    if (flags & DEV_CTX_BOUND && !(flags & DEV_CTX_MULTI_COMPOSITE)) {
+      return false;
+    }
+    return true;
+  }
 
   void push_component(CompositeDeviceComponent* component) { components_.push_back(component); }
   bool is_components_empty() { return components_.is_empty(); }

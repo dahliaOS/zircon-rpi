@@ -24,7 +24,8 @@ using namespace devmgr;
 // LibDriver Device Interface
 
 #define ALLOWED_FLAGS \
-  (DEVICE_ADD_NON_BINDABLE | DEVICE_ADD_INSTANCE | DEVICE_ADD_MUST_ISOLATE | DEVICE_ADD_INVISIBLE)
+  (DEVICE_ADD_NON_BINDABLE | DEVICE_ADD_INSTANCE | \
+   DEVICE_ADD_MUST_ISOLATE | DEVICE_ADD_INVISIBLE | DEVICE_ADD_MULTI_BIND_ALLOWED)
 
 __EXPORT zx_status_t device_add_from_driver(zx_driver_t* drv, zx_device_t* parent,
                                             device_add_args_t* args, zx_device_t** out) {
