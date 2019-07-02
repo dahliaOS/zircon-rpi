@@ -1,4 +1,4 @@
-use crate::over;
+use crate::{assert_satisfies, over};
 use crate::expectation::*;
 use crate::expectation::Predicate as P;
 use fidl_fuchsia_bluetooth_control::{Appearance, RemoteDevice, TechnologyType};
@@ -105,17 +105,15 @@ fn predicate_not_correct_fails() {
 }
 
 #[test]
-fn over_simple_incorrect_predicate_fail() -> Result<(),AssertionText> {
-    let predicate = P::equal(Some("INCORRECT_NAME".to_string()))
-        .over(|p: &RemoteDevice| &p.name, ".name");
-    predicate.assert_satisfied(&test_peer())
+fn over_simple_incorrect_predicate_fail() {
+    let predicate = over!(RemoteDevice:name, P::equal(Some("INCORRECT_NAME".to_string())));
+    assert_satisfies!(&test_peer(), predicate);
 }
 
 #[test]
-fn over_simple_incorrect_not_predicate_fail() -> Result<(),AssertionText> {
-    let p = P::not(P::equal(Some(TEST_PEER_NAME.to_string())));
-    let predicate = p.over(|p: &RemoteDevice| &p.name, ".name");
-    predicate.assert_satisfied(&test_peer())
+fn over_simple_incorrect_not_predicate_fail() {
+    let predicate = over!(RemoteDevice:name, P::not_equal(Some(TEST_PEER_NAME.to_string())));
+    assert_satisfies!(&test_peer(), predicate)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -130,7 +128,7 @@ struct Group {
 }
 
 #[test]
-fn persons() -> Result<(),AssertionText> {
+fn persons() {
     let test_group = Group {
         persons: vec![Person{ name: "Larry".to_string(), age: 40 },
                       Person{ name: "Sergei".to_string(), age: 41 }]
@@ -143,7 +141,8 @@ fn persons() -> Result<(),AssertionText> {
                 .and(
                 over!(Person:age, P::new(|age: &u64| *age < 50, "< 50")))));
 
-    predicate.assert_satisfied(&test_group)
+    assert_satisfies!(&test_group, predicate);
 }
 
 // TODO(nickpollard) - Add tests to validate display and falsification formatting
+//  e.g. test that the output from a failed expectation equals some golden example

@@ -44,7 +44,6 @@ fn show_debug<T: Debug>(t: &T) -> String {
 /// Function to compare two `T`s
 type Comparison<T> = Arc<dyn Fn(&T, &T) -> bool + Send + Sync + 'static>;
 /// Function to show a representation of a given `T`
-// TODO(nickpollard) - use DocBuilder
 type Show<T> = Arc<dyn Fn(&T) -> String + Send + Sync + 'static>;
 
 /// A Boolean predicate on type `T`. Predicate functions are a boolean algebra
@@ -112,9 +111,7 @@ pub trait IsAny<T> {
 impl<T: 'static, Elem: 'static> IsAny<T> for Predicate<Elem>
 where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
-        doc.text("ANY")
-            .append(doc.newline())
-            .append(self.describe(doc).nest(2))
+        doc.text("ANY").append(doc.space().append(self.describe(doc)).nest(2)).group()
     }
     fn falsify_any<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
         if t.into_iter().any(|el| self.satisfied(el)) {
@@ -137,26 +134,18 @@ pub trait IsAll<T> {
 impl<T: 'static, Elem: Debug + 'static> IsAll<T> for Predicate<Elem>
 where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
-        doc.text("ALL")
-            .append(doc.newline())
-            .append(self.describe(doc).nest(2))
+        doc.text("ALL").append(doc.space().append(self.describe(doc)).nest(2)).group()
     }
     fn falsify_all<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
-        let failures = t.into_iter()
+        t.into_iter()
             .filter_map(|i| self.falsify(i, doc).map(|falsification| {
                 doc.text("ELEM").append(doc.space())
                     .append(doc.text(show_debug(i)).nest(2)).append(doc.space())
-                    .append(doc.text("FAILS:")).append(doc.space())
-                    .append(falsification.nest(2))
+                    .append(doc.text("FAILS")).append(doc.space())
+                    .append(falsification.group().nest(2)).group()
             }))
             .take(MAX_ITER_FALSIFICATIONS)
-            .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.unwrap_or(doc.nil()).append(falsification)));
-
-        let desc = self.describe(&doc);
-        // TODO(nickpollard) - Is this explanation message correct?
-        failures.map(|msg| {
-            doc.text("FAILED").append(desc).append(doc.text("DUE TO")).append(msg)
-        })
+            .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.unwrap_or(doc.nil()).append(falsification)))
     }
 }
 
@@ -167,22 +156,18 @@ enum OverPred<T, U> {
 
 impl<T, U> IsOver<T> for OverPred<T, U> {
     fn describe<'a>(&self, doc: &'a BoxAllocator) -> DocBuilder<'a> {
-        match self {
-            OverPred::ByRef(pred, _, path)  => doc.text(path.clone()).append(doc.space()).append(pred.describe(doc)),
-            OverPred::ByValue(pred, _, path) => doc.text(path.clone()).append(doc.space()).append(pred.describe(doc)),
-        }
+        let (pred, path) = match self {
+            OverPred::ByRef(pred, _, path)  => (pred, path),
+            OverPred::ByValue(pred, _, path) => (pred, path),
+        };
+        doc.as_string(path).append(doc.space()).append(pred.describe(doc)).group()
     }
     fn falsify_over<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
-        match self {
-            OverPred::ByRef(pred, project, path) => {
-                pred.falsify((project)(t), doc)
-                .map(|falsification| doc.text(path.to_string()).append(doc.space()).append(falsification))
-            },
-            OverPred::ByValue(pred, project, path) => {
-                pred.falsify(&(project)(t), doc)
-                .map(|falsification| doc.text(path.to_string()).append(doc.space()).append(falsification))
-            },
-        }
+        let (d, path) = match self {
+            OverPred::ByRef(pred, project, path) => (pred.falsify((project)(t), doc), path),
+            OverPred::ByValue(pred, project, path) => (pred.falsify(&(project)(t), doc), path),
+        };
+        d.map(|falsification| doc.as_string(path).append(doc.space().append(falsification).nest(2)).group())
     }
 }
 
@@ -191,7 +176,7 @@ impl<T: PartialEq + Debug + 'static> Predicate<T> {
         Predicate::Equal(Arc::new(t), Arc::new(T::eq), Arc::new(show_debug))
     }
     pub fn not_equal(t: T) -> Predicate<T> {
-        Predicate::Equal(Arc::new(t), Arc::new(T::eq), Arc::new(show_debug))
+        Predicate::Equal(Arc::new(t), Arc::new(T::eq), Arc::new(show_debug)).not()
     }
 }
 
@@ -199,21 +184,21 @@ impl<T> Predicate<T> {
     pub fn describe<'a>(&self, doc: &'a BoxAllocator) -> DocBuilder<'a> {
         match self {
             Predicate::Equal(expected, _, repr) =>
-                doc.text("EQUAL").append(doc.space()).append(doc.text(repr(expected))),
+                doc.text("==").append(doc.space()).append(doc.text(repr(expected))).group(),
             Predicate::And(left, right) =>
-                parens(doc, left.describe(doc)).nest(2)
-                .append(doc.newline())
+                parens(doc, left.describe(doc))
+                .append(doc.space())
                 .append(doc.text("AND"))
-                .append(doc.newline())
-                .append(parens(doc, right.describe(doc)).nest(2)),
+                .append(doc.space())
+                .append(parens(doc, right.describe(doc))).group(),
             Predicate::Or(left, right) =>
                 parens(doc, left.describe(doc)).nest(2)
-                .append(doc.newline())
+                .append(doc.space())
                 .append(doc.text("OR"))
-                .append(doc.newline())
-                .append(parens(doc, right.describe(doc)).nest(2)),
-            Predicate::Not(inner) => doc.text("NOT").append(inner.describe(doc).nest(2)),
-            Predicate::Predicate(_, desc) => doc.text(desc.clone()),
+                .append(doc.space())
+                .append(parens(doc, right.describe(doc)).nest(2)).group(),
+            Predicate::Not(inner) => doc.text("NOT").append(doc.space().append(inner.describe(doc)).nest(2)).group(),
+            Predicate::Predicate(_, desc) => doc.as_string(desc).group(),
             Predicate::Over(over) => over.describe(doc),
             Predicate::Any(any) => any.describe(doc),
             Predicate::All(all) => all.describe(doc),
@@ -243,10 +228,10 @@ impl<T> Predicate<T> {
             Predicate::Not(inner) => {
                 match inner.falsify(t, doc) {
                     Some(_) => None,
-                    None => Some(doc.text("NOT").append(doc.space()).append(inner.describe(doc)))
+                    None => Some(doc.text("NOT").append(doc.space().append(inner.describe(doc)).nest(2)).group())
                 }
             },
-            Predicate::Predicate(pred, desc) => if pred(t) { None } else { Some(doc.text(desc.to_string())) },
+            Predicate::Predicate(pred, desc) => if pred(t) { None } else { Some(doc.as_string(desc)) },
             Predicate::Over(over) => over.falsify_over(t, &BoxAllocator),
             Predicate::Any(any) => any.falsify_any(t, &BoxAllocator),
             Predicate::All(all) => all.falsify_all(t, &BoxAllocator),
@@ -268,10 +253,10 @@ impl<T> Predicate<T> {
         let doc = BoxAllocator;
         match self.falsify(t, &doc) {
             Some(falsification) => {
-                let d = doc.text("FAILED EXPECTATION").append(doc.space())
-                            .append(self.describe(&doc).nest(2)).append(doc.space())
-                            .append(doc.text("FALSIFIED BY")).append(doc.space())
-                            .append(falsification.nest(2));
+                let d = doc.text("FAILED EXPECTATION")
+                            .append(doc.newline().append(self.describe(&doc)).nest(2))
+                            .append(doc.newline().append(doc.text("FALSIFIED BY")))
+                            .append(doc.newline().append(falsification).nest(2));
                 Err(AssertionText(d.1.pretty(80).to_string()))
             },
             None => Ok(()),
@@ -335,15 +320,17 @@ impl<U: Send + Sync + 'static> Predicate<U> {
 }
 
 #[macro_export]
-macro_rules! focus {
-    ($type:ty : $selector:tt) => {
-        (|var: &$type| &var.$selector, stringify!($selector).to_string())
+macro_rules! over {
+    ($type:ty : $selector:tt, $pred:expr) => {
+        $pred.over(|var: &$type| &var.$selector, format!(".{}", stringify!($selector)))
     }
 }
 
 #[macro_export]
-macro_rules! over {
-    ($type:ty : $selector:tt, $pred:expr) => {
-        $pred.over(|var: &$type| &var.$selector, stringify!($selector).to_string())
+macro_rules! assert_satisfies {
+    ($subject:expr, $pred:expr) => {
+        if let Err(msg) = $pred.assert_satisfied($subject) {
+            panic!(msg.0)
+        }
     }
 }
