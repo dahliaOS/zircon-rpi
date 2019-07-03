@@ -21,7 +21,7 @@ pub mod peer;
 pub mod test;
 
 /// A String whose `Debug` implementation pretty-prints
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct AssertionText(String);
 
 impl fmt::Debug for AssertionText {
@@ -108,7 +108,7 @@ pub trait IsAny<T> {
     fn falsify_any<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>>;
 }
 
-impl<T: 'static, Elem: 'static> IsAny<T> for Predicate<Elem>
+impl<T: 'static, Elem: Debug + 'static> IsAny<T> for Predicate<Elem>
 where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
         doc.text("ANY").append(doc.space().append(self.describe(doc)).nest(2)).group()
@@ -118,9 +118,14 @@ where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
             None
         } else {
             t.into_iter()
-                .filter_map(|i| self.falsify(i, doc))
+                .filter_map(|el| self.falsify(el, doc).map(|falsification| {
+                    doc.text("ELEM")
+                        .append(doc.space().append(doc.text(show_debug(el))).nest(2))
+                        .append(doc.space().append(doc.text("FAILS")))
+                        .append(doc.space().append(falsification.group().nest(2)).append(doc.text(","))).group()
+                }))
                 .take(MAX_ITER_FALSIFICATIONS)
-                .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.unwrap_or(doc.nil()).append(falsification)))
+                .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
         }
     }
 }
@@ -138,14 +143,14 @@ where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     }
     fn falsify_all<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
         t.into_iter()
-            .filter_map(|i| self.falsify(i, doc).map(|falsification| {
-                doc.text("ELEM").append(doc.space())
-                    .append(doc.text(show_debug(i)).nest(2)).append(doc.space())
-                    .append(doc.text("FAILS")).append(doc.space())
-                    .append(falsification.group().nest(2)).group()
+            .filter_map(|el| self.falsify(el, doc).map(|falsification| {
+                doc.text("ELEM")
+                    .append(doc.space().append(doc.text(show_debug(el))).nest(2))
+                    .append(doc.space().append(doc.text("FAILS")))
+                    .append(doc.space().append(falsification.group().nest(2)).append(doc.text(","))).group()
             }))
             .take(MAX_ITER_FALSIFICATIONS)
-            .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.unwrap_or(doc.nil()).append(falsification)))
+            .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
     }
 }
 
@@ -216,7 +221,11 @@ impl<T> Predicate<T> {
             },
             Predicate::And(left, right) => {
                 match (left.falsify(t, doc), right.falsify(t, doc)) {
-                    (Some(l), Some(r)) => Some(l.append(r)),
+                    (Some(l), Some(r)) => {
+                        // TODO(nickpollard) - improve? indent? parens?
+                        // Also improve falsification for fn predicates and nots (at least not equals?)
+                        Some(l.append(doc.space()).append(doc.text("AND")).append(doc.space()).append(r).group())
+                    },
                     (Some(l), None) => Some(l),
                     (None, Some(r)) => Some(r),
                     (None, None) => None

@@ -83,19 +83,19 @@ fn predicate_or_both_false_fails() {
 #[test]
 fn predicate_or_one_or_more_true_succeeds() {
     let predicate = correct_name().or(correct_address());
-    assert!(predicate.satisfied(&test_peer()));
+    assert_satisfies!(&test_peer(), predicate);
 
     let predicate = incorrect_name().or(correct_address());
-    assert!(predicate.satisfied(&test_peer()));
+    assert_satisfies!(&test_peer(), predicate);
 
     let predicate = correct_name().or(incorrect_address());
-    assert!(predicate.satisfied(&test_peer()));
+    assert_satisfies!(&test_peer(), predicate);
 }
 
 #[test]
 fn predicate_not_incorrect_succeeds() {
     let predicate = incorrect_name().not();
-    assert!(predicate.satisfied(&test_peer()));
+    assert_satisfies!(&test_peer(), predicate);
 }
 
 #[test]
@@ -105,15 +105,32 @@ fn predicate_not_correct_fails() {
 }
 
 #[test]
-fn over_simple_incorrect_predicate_fail() {
+fn incorrect_over_predicate_fails() {
     let predicate = over!(RemoteDevice:name, P::equal(Some("INCORRECT_NAME".to_string())));
-    assert_satisfies!(&test_peer(), predicate);
+
+    //assert_satisfies!(&test_peer(), predicate);
+    let expected_msg = vec![
+        "FAILED EXPECTATION",
+        "  .name == Some(\"INCORRECT_NAME\")",
+        "FALSIFIED BY",
+        "  .name Some(\"TestPeer\") != Some(\"INCORRECT_NAME\")"
+    ].join("\n");
+
+    assert_eq!(predicate.assert_satisfied(&test_peer()), Err(AssertionText(expected_msg)))
 }
 
 #[test]
-fn over_simple_incorrect_not_predicate_fail() {
+fn incorrect_not_predicate_fails() {
     let predicate = over!(RemoteDevice:name, P::not_equal(Some(TEST_PEER_NAME.to_string())));
-    assert_satisfies!(&test_peer(), predicate)
+
+    let expected_msg = vec![
+        "FAILED EXPECTATION",
+        "  .name NOT == Some(\"TestPeer\")",
+        "FALSIFIED BY",
+        "  .name NOT == Some(\"TestPeer\")"
+    ].join("\n");
+
+    assert_eq!(predicate.assert_satisfied(&test_peer()), Err(AssertionText(expected_msg)))
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -128,21 +145,55 @@ struct Group {
 }
 
 #[test]
-fn persons() {
+fn incorrect_compound_all_predicate_fails() {
     let test_group = Group {
-        persons: vec![Person{ name: "Larry".to_string(), age: 40 },
-                      Person{ name: "Sergei".to_string(), age: 41 }]
+        persons: vec![Person{ name: "Alice".to_string(), age: 40 },
+                      Person{ name: "Bob".to_string(), age: 41 }]
     };
 
     let predicate =
         over!(Group:persons,
             P::all(
-                over!(Person:name, P::not_equal("Sergei".to_string()))
+                over!(Person:name, P::not_equal("Bob".to_string()))
                 .and(
                 over!(Person:age, P::new(|age: &u64| *age < 50, "< 50")))));
 
-    assert_satisfies!(&test_group, predicate);
+    let expected_msg = vec![
+        "FAILED EXPECTATION",
+        "  .persons ALL (.name NOT == \"Bob\") AND (.age < 50)",
+        "FALSIFIED BY",
+        "  .persons ELEM Person { name: \"Bob\", age: 41 } FAILS .name NOT == \"Bob\","
+    ].join("\n");
+
+    assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
 }
 
-// TODO(nickpollard) - Add tests to validate display and falsification formatting
-//  e.g. test that the output from a failed expectation equals some golden example
+#[test]
+fn incorrect_compound_any_predicate_fails() {
+    let test_group = Group {
+        persons: vec![Person{ name: "Alice".to_string(), age: 40 },
+                      Person{ name: "Bob".to_string(), age: 41 },
+                      Person{ name: "Bob".to_string(), age: 39 }]
+    };
+
+    let predicate =
+        over!(Group:persons,
+            P::any(
+                over!(Person:name, P::not_equal("Bob".to_string()))
+                .and(
+                over!(Person:age, P::new(|age: &u64| *age > 40, "> 40")))));
+
+    assert_satisfies!(&test_group, predicate);
+
+    /*
+
+    let expected_msg = vec![
+        "FAILED EXPECTATION",
+        "  .persons ALL (.name NOT == \"Bob\") AND (.age < 50)",
+        "FALSIFIED BY",
+        "  .persons ELEM Person { name: \"Bob\", age: 41 } FAILS .name NOT == \"Bob\""
+    ].join("\n");
+
+    assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
+    */
+}
