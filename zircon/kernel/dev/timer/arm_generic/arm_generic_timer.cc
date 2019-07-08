@@ -206,6 +206,12 @@ void platform_shutdown_timer(void) {
   mask_interrupt(timer_irq);
 }
 
+bool platform_usermode_can_access_tick_registers(void) {
+  // We always use the ARM generic timer for the tick counter, and these
+  // registers are accessible from usermode.
+  return true;
+}
+
 template <bool AllowDebugPrint = false>
 static inline affine::Ratio arm_generic_timer_compute_conversion_factors(uint32_t cntfrq) {
   affine::Ratio cntpct_to_nsec = {ZX_SEC(1), cntfrq};

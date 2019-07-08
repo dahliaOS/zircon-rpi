@@ -19,7 +19,7 @@ extern "C" {
 // the public names so as to avoid PLT entries.
 #include <zircon/syscall-vdso-definitions.h>
 
-__LOCAL decltype(zx_ticks_get) CODE_soft_ticks_get;
+__LOCAL decltype(zx_clock_get_monotonic) CODE_clock_get_monotonic_via_kernel_ticks;
 
 }
 
