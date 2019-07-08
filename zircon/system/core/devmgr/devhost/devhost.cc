@@ -616,7 +616,7 @@ zx_status_t devhost_add(const fbl::RefPtr<zx_device_t>& parent,
   char buffer[512];
   const char* path = mkdevpath(parent, buffer, sizeof(buffer));
   log(RPC_OUT, "devhost[%s] add '%s'\n", path, child->name);
-
+  printf("MINE MINE devhost_add START\n");
   bool add_invisible = child->flags & DEV_FLAG_INVISIBLE;
   fuchsia_device_manager_AddDeviceConfig add_device_config = 0;
 

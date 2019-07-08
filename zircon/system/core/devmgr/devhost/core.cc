@@ -338,7 +338,7 @@ zx_status_t devhost_device_add(const fbl::RefPtr<zx_device_t>& dev,
       dev->flags |= DEV_FLAG_DEAD | DEV_FLAG_VERY_DEAD;
     }
   });
-
+  printf("MINE MINE devhost_device_add START\n");
   zx_status_t status;
   if ((status = device_validate(dev)) < 0) {
     return status;

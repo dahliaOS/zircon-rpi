@@ -32,6 +32,7 @@ __EXPORT zx_status_t device_add_from_driver(zx_driver_t* drv, zx_device_t* paren
   zx_status_t r;
   fbl::RefPtr<zx_device_t> dev;
 
+  printf("MINE MINE device_add_from_driver START\n");
   if (!parent) {
     return ZX_ERR_INVALID_ARGS;
   }
