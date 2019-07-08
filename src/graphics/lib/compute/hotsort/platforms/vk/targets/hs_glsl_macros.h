@@ -13,25 +13,34 @@
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_shuffle : require
 
+//
+//
+//
+
 #if HS_KEY_DWORDS == 2
 #extension GL_ARB_gpu_shader_int64 : require
 #endif
 
 //
-// Define the type based on key and val sizes
+// DEFINE THE TYPE BASED ON KEY AND VAL SIZES
+//
+// FIXME(allanmac): Be aware that the 64-bit key size will be updated to
+// use uvec2 values on certain platforms.
 //
 
-#if HS_KEY_DWORDS == 1
-#if HS_VAL_DWORDS == 0
-#define HS_KEY_TYPE uint
-#define HS_KEY_VAL_MAX HS_KEY_TYPE(-1)
+// clang-format off
+#if   HS_KEY_DWORDS == 1
+#if   HS_VAL_DWORDS == 0
+#define HS_KEY_TYPE      uint
+#define HS_KEY_VAL_MAX   HS_KEY_TYPE(-1)
 #endif
-#elif HS_KEY_DWORDS == 2  // FIXME -- some targets will use uint2
-#if HS_VAL_DWORDS == 0
-#define HS_KEY_TYPE uint64_t  // GL_ARB_gpu_shader_int64
-#define HS_KEY_VAL_MAX HS_KEY_TYPE(-1L)
+#elif HS_KEY_DWORDS == 2
+#if   HS_VAL_DWORDS == 0
+#define HS_KEY_TYPE      uint64_t  // GL_ARB_gpu_shader_int64
+#define HS_KEY_VAL_MAX   HS_KEY_TYPE(-1L)
 #endif
 #endif
+// clang-format on
 
 //
 // FYI, restrict shouldn't have any impact on these kernels and
@@ -58,49 +67,94 @@
   }
 
 //
-// These can be overidden
+//
 //
 
+// clang-format off
+#define HS_BUFFER_2(name_) buffer _##name_
+#define HS_BUFFER(name_)   HS_BUFFER_2(name_)
+// clang-format on
+
+//
+// IS HOTSORT CONFIGURED TO SORT IN PLACE?
+//
+
+#if HS_IS_IN_PLACE
+
+//
+// BS KERNEL PROTO OPERATES ON ONE BUFFER
+//
+
+// clang-format off
 #ifndef HS_KV_IN
-#define HS_KV_IN kv_in
+#define HS_KV_IN                   kv_inout // can be overriden
 #endif
+#define HS_KV_IN_LOAD(_idx)        HS_KV_IN[_idx]
+#define HS_KV_IN_STORE(_idx, _kv)  HS_KV_IN[_idx]  = _kv
 
 #ifndef HS_KV_OUT
-#define HS_KV_OUT kv_out
+#define HS_KV_OUT                  kv_inout // can be overriden
 #endif
-
-//
-//
-//
-
-#define HS_KV_IN_LOAD(_idx) HS_KV_IN[_idx]
-#define HS_KV_OUT_LOAD(_idx) HS_KV_OUT[_idx]
-
-#define HS_KV_IN_STORE(_idx, _kv) HS_KV_IN[_idx] = _kv
+#define HS_KV_OUT_LOAD(_idx)       HS_KV_OUT[_idx]
 #define HS_KV_OUT_STORE(_idx, _kv) HS_KV_OUT[_idx] = _kv
+// clang-format on
 
-//
-// KERNEL PROTOS
-//
+#define HS_KV_INOUT kv_inout
 
 #define HS_BS_KERNEL_PROTO(slab_count, slab_count_ru_log2)                                         \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS * slab_count, 1, 1);                                      \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) writeonly buffer _kv_out                       \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) HS_BUFFER(HS_KV_INOUT)                         \
+  {                                                                                                \
+    HS_KEY_TYPE HS_KV_INOUT[];                                                                     \
+  };                                                                                               \
+  HS_GLSL_PUSH();                                                                                  \
+  void main()
+
+#else  // NOT IN PLACE
+
+//
+// BS KERNEL PROTO OPERATES ON TWO BUFFERS
+//
+
+// clang-format off
+#ifndef HS_KV_IN
+#define HS_KV_IN                   kv_in  // can be overriden
+#endif
+#define HS_KV_IN_LOAD(_idx)        HS_KV_IN[_idx]
+#define HS_KV_IN_STORE(_idx, _kv)  HS_KV_IN[_idx]  = _kv
+
+#ifndef HS_KV_OUT
+#define HS_KV_OUT                  kv_out // can be overriden
+#endif
+#define HS_KV_OUT_LOAD(_idx)       HS_KV_OUT[_idx]
+#define HS_KV_OUT_STORE(_idx, _kv) HS_KV_OUT[_idx] = _kv
+// clang-format on
+
+#define HS_BS_KERNEL_PROTO(slab_count, slab_count_ru_log2)                                         \
+  HS_GLSL_SUBGROUP_SIZE()                                                                          \
+  HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS * slab_count, 1, 1);                                      \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) writeonly HS_BUFFER(HS_KV_OUT)                 \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
-  HS_GLSL_BINDING(HS_KV_IN_SET, HS_KV_IN_BINDING) readonly buffer _kv_in                           \
+  HS_GLSL_BINDING(HS_KV_IN_SET, HS_KV_IN_BINDING) readonly HS_BUFFER(HS_KV_IN)                     \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_IN[];                                                                        \
   };                                                                                               \
   HS_GLSL_PUSH();                                                                                  \
   void main()
 
+#endif
+
+//
+// REMAINING KERNEL PROTOS ONLY OPERATE ON ONE BUFFER
+//
+
 #define HS_BC_KERNEL_PROTO(slab_count, slab_count_log2)                                            \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS * slab_count, 1, 1);                                      \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) buffer _kv_out                                 \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) HS_BUFFER(HS_KV_OUT)                           \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
@@ -110,7 +164,7 @@
 #define HS_FM_KERNEL_PROTO(s, r)                                                                   \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS, 1, 1);                                                   \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) buffer _kv_out                                 \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) HS_BUFFER(HS_KV_OUT)                           \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
@@ -120,7 +174,7 @@
 #define HS_HM_KERNEL_PROTO(s)                                                                      \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS, 1, 1);                                                   \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) buffer _kv_out                                 \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) HS_BUFFER(HS_KV_OUT)                           \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
@@ -130,7 +184,7 @@
 #define HS_FILL_IN_KERNEL_PROTO()                                                                  \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS, 1, 1);                                                   \
-  HS_GLSL_BINDING(HS_KV_IN_SET, HS_KV_IN_BINDING) writeonly buffer _kv_in                          \
+  HS_GLSL_BINDING(HS_KV_IN_SET, HS_KV_IN_BINDING) writeonly HS_BUFFER(HS_KV_IN)                    \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_IN[];                                                                        \
   };                                                                                               \
@@ -140,7 +194,7 @@
 #define HS_FILL_OUT_KERNEL_PROTO()                                                                 \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS, 1, 1);                                                   \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) writeonly buffer _kv_out                       \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) writeonly HS_BUFFER(HS_KV_OUT)                 \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
@@ -150,7 +204,7 @@
 #define HS_TRANSPOSE_KERNEL_PROTO()                                                                \
   HS_GLSL_SUBGROUP_SIZE()                                                                          \
   HS_GLSL_WORKGROUP_SIZE(HS_SLAB_THREADS, 1, 1);                                                   \
-  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) buffer _kv_out                                 \
+  HS_GLSL_BINDING(HS_KV_OUT_SET, HS_KV_OUT_BINDING) HS_BUFFER(HS_KV_OUT)                           \
   {                                                                                                \
     HS_KEY_TYPE HS_KV_OUT[];                                                                       \
   };                                                                                               \
@@ -183,13 +237,15 @@
 // for 8-byte key-vals.
 //
 
+// clang-format off
 #if (HS_KEY_DWORDS == 1)
-#define HS_SHUFFLE_CAST_TO(v) v
+#define HS_SHUFFLE_CAST_TO(v)   v
 #define HS_SHUFFLE_CAST_FROM(v) v
 #elif (HS_KEY_DWORDS == 2)
-#define HS_SHUFFLE_CAST_TO(v) uint64BitsToDouble(v)
+#define HS_SHUFFLE_CAST_TO(v)   uint64BitsToDouble(v)
 #define HS_SHUFFLE_CAST_FROM(v) doubleBitsToUint64(v)
 #endif
+// clang-format on
 
 #define HS_SUBGROUP_SHUFFLE(v, i) HS_SHUFFLE_CAST_FROM(subgroupShuffle(HS_SHUFFLE_CAST_TO(v), i))
 #define HS_SUBGROUP_SHUFFLE_XOR(v, m)                                                              \
@@ -203,12 +259,6 @@
 // SLAB GLOBAL
 //
 
-//
-// In early versions of Vulkan 1.1, subgroup sizes weren't necessarily
-// known in advance -- at least on Intel GEN.
-//
-// Assume that a Vulkan API fix is forthcoming.
-//
 #define HS_SLAB_GLOBAL_BASE()                                                                      \
   const uint gmem_base = (gl_GlobalInvocationID.x & ~(HS_SLAB_THREADS - 1)) * HS_SLAB_HEIGHT
 
@@ -240,9 +290,14 @@
 //
 //
 
-#define HS_SLAB_GLOBAL_LOAD_IN(_row_idx) HS_KV_IN_LOAD(gmem_in_idx + HS_SLAB_THREADS * _row_idx)
-
+// clang-format off
+#define HS_SLAB_GLOBAL_LOAD_IN(_row_idx)  HS_KV_IN_LOAD( gmem_in_idx  + HS_SLAB_THREADS * _row_idx)
 #define HS_SLAB_GLOBAL_LOAD_OUT(_row_idx) HS_KV_OUT_LOAD(gmem_out_idx + HS_SLAB_THREADS * _row_idx)
+// clang-format on
+
+//
+//
+//
 
 #define HS_SLAB_GLOBAL_STORE_OUT(_row_idx, _kv)                                                    \
   HS_KV_OUT_STORE((gmem_out_idx + HS_SLAB_THREADS * _row_idx), _kv)
@@ -277,6 +332,7 @@
 
 #define HS_BC_MERGE_H_PREAMBLE(slab_count)                                                         \
   const uint gmem_l_idx =                                                                          \
+    kv_offset_out +                                                                                \
     (gl_GlobalInvocationID.x & ~(HS_SLAB_THREADS * slab_count - 1)) * HS_SLAB_HEIGHT +             \
     gl_LocalInvocationID.x;                                                                        \
   const uint smem_l_idx = HS_SUBGROUP_ID() * (HS_SLAB_THREADS * slab_count) + HS_SUBGROUP_LANE_ID()
@@ -438,7 +494,7 @@
   const uint span_idx    = gl_WorkGroupID.y;                                                       \
   const uint span_stride = gl_NumWorkGroups.x * gl_WorkGroupSize.x;                                \
   const uint span_size   = span_stride * half_span * 2;                                            \
-  const uint span_base   = span_idx * span_size;                                                   \
+  const uint span_base   = kv_offset_out + span_idx * span_size;                                   \
   const uint span_off    = gl_GlobalInvocationID.x;                                                \
   const uint span_l      = span_base + span_off
 
@@ -450,17 +506,15 @@
 //
 //
 
-#define HS_XM_GLOBAL_L(stride_idx) (span_l + span_stride * stride_idx)
-
-#define HS_XM_GLOBAL_LOAD_L(stride_idx) HS_KV_OUT_LOAD(HS_XM_GLOBAL_L(stride_idx))
-
+// clang-format off
+#define HS_XM_GLOBAL_L(stride_idx)            (span_l + span_stride * stride_idx)
+#define HS_XM_GLOBAL_LOAD_L(stride_idx)       HS_KV_OUT_LOAD(HS_XM_GLOBAL_L(stride_idx))
 #define HS_XM_GLOBAL_STORE_L(stride_idx, reg) HS_KV_OUT_STORE(HS_XM_GLOBAL_L(stride_idx), reg)
 
-#define HS_FM_GLOBAL_R(stride_idx) (span_r + span_stride * stride_idx)
-
-#define HS_FM_GLOBAL_LOAD_R(stride_idx) HS_KV_OUT_LOAD(HS_FM_GLOBAL_R(stride_idx))
-
+#define HS_FM_GLOBAL_R(stride_idx)            (span_r + span_stride * stride_idx)
+#define HS_FM_GLOBAL_LOAD_R(stride_idx)       HS_KV_OUT_LOAD(HS_FM_GLOBAL_R(stride_idx))
 #define HS_FM_GLOBAL_STORE_R(stride_idx, reg) HS_KV_OUT_STORE(HS_FM_GLOBAL_R(stride_idx), reg)
+// clang-format on
 
 //
 // TODO/OPTIMIZATION:
@@ -529,9 +583,11 @@
 // slab and eventually transpose and store the slab in linear order.
 //
 
-#define HS_TRANSPOSE_REG(prefix, row) prefix##row
+// clang-format off
+#define HS_TRANSPOSE_REG(prefix, row)  prefix##row
 #define HS_TRANSPOSE_DECL(prefix, row) const HS_KEY_TYPE HS_TRANSPOSE_REG(prefix, row)
-#define HS_TRANSPOSE_PRED(level) is_lo_##level
+#define HS_TRANSPOSE_PRED(level)       is_lo_##level
+// clang-format on
 
 #define HS_TRANSPOSE_TMP_REG(prefix_curr, row_ll, row_ur) prefix_curr##row_ll##_##row_ur
 

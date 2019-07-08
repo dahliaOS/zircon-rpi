@@ -20,9 +20,7 @@ rustc_library("spinel-rs") {
     #       to run the tests.
     # "//src/graphics/lib/compute/spinel",
   ]
-  features = [
-    "spinel-null"
-  ]
+  features = [ "spinel-null" ]
 }
 
 package("spinel-rs-tests") {

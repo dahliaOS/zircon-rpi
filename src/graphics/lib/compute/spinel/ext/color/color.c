@@ -11,7 +11,7 @@
 #include <math.h>
 
 //
-// CONVERT FROM 0xAARRGGBB WORD ORDER INTO f32[4]
+// CONVERT FROM 0xAARRGGBB WORD ORDER INTO f32[4]{r,g,b,a}
 //
 
 void
@@ -26,10 +26,7 @@ color_rgb32_to_rgba_f32(float rgba[4], const uint32_t rgb, const float opacity)
 void
 color_argb32_to_rgba_f32(float rgba[4], const uint32_t argb)
 {
-  rgba[2] = (float)(argb & 0xFF) / 255.0f;        // b
-  rgba[1] = (float)(argb >> 8 & 0xFF) / 255.0f;   // g
-  rgba[0] = (float)(argb >> 16 & 0xFF) / 255.0f;  // r
-  rgba[3] = (float)(argb >> 24 & 0xFF) / 255.0f;  // a
+  color_rgb32_to_rgba_f32(rgba, argb, (float)(argb >> 24 & 0xFF) / 255.0f);
 }
 
 //
@@ -108,13 +105,13 @@ lerpf(float const a, float const b, float const t)
 //
 
 void
-color_linear_lerp_rgba_f32(float       rgba_m[4],
+color_linear_lerp_rgba_f32(float       rgba_c[4],
                            float const rgba_a[4],
                            float const rgba_b[4],
                            float const t)
 {
   for (int32_t ii = 0; ii < 4; ii++)
-    rgba_m[ii] = lerpf(rgba_a[ii], rgba_b[ii], t);
+    rgba_c[ii] = lerpf(rgba_a[ii], rgba_b[ii], t);
 }
 
 //

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_H_
-#define SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_H_
+#ifndef SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_H_
+#define SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_H_
 
 //
 //
@@ -51,7 +51,7 @@ struct spn_vk_context_create_info
   uint32_t                         handle_count;
 };
 
-spn_result
+spn_result_t
 spn_vk_context_create(struct spn_vk_environment * const               environment,
                       struct spn_vk_context_create_info const * const create_info,
                       spn_context_t * const                           context);
@@ -68,4 +68,4 @@ spn_vk_context_create(struct spn_vk_environment * const               environmen
 //
 //
 
-#endif  // SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_H_
+#endif  // SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_H_

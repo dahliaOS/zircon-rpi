@@ -20,6 +20,16 @@
 struct spn_device;
 
 //
+// REMOVEME(allanmac): DEBUG ONLY
+//
+
+void
+spn_device_block_pool_debug_snap(struct spn_device * const device, VkCommandBuffer cb);
+
+void
+spn_device_block_pool_debug_print(struct spn_device * const device);
+
+//
 //
 //
 

@@ -11,11 +11,10 @@
 #include <stdlib.h>
 
 #include "block_pool.h"
-#include "cb_pool.h"
 #include "common/vk/vk_assert.h"
 #include "composition_impl.h"
 #include "context.h"
-#include "fence_pool.h"
+#include "dispatch.h"
 #include "handle_pool.h"
 #include "hotsort/platforms/vk/hotsort_vk.h"
 #include "path_builder_impl.h"
@@ -34,44 +33,10 @@ uint64_t
 spn_device_wait_nsecs(struct spn_device * const device)
 {
   //
-  // FIXME -- make this part of config
+  // FIXME(allanmac): Eventually get rid of this but in the meantime
+  // make this part of a target's config.
   //
   return 1000UL * 1000UL * 250UL;  // 250 msecs.
-}
-
-//
-// acquire a command buffer and begin
-//
-
-VkCommandBuffer
-spn_device_cb_acquire_begin(struct spn_device * const device)
-{
-  VkCommandBuffer cb = spn_device_cb_pool_acquire(device);
-
-  VkCommandBufferBeginInfo const cbbi = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                                          .pNext = NULL,
-                                          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-                                          .pInheritanceInfo = NULL };
-
-  vk(BeginCommandBuffer(cb, &cbbi));
-
-  return cb;
-}
-
-//
-//
-//
-
-VkFence
-spn_device_cb_end_fence_acquire(struct spn_device * const    device,
-                                VkCommandBuffer const        cb,
-                                spn_fence_complete_pfn const pfn,
-                                void * const                 pfn_payload,
-                                size_t const                 pfn_payload_size)
-{
-  vk(EndCommandBuffer(cb));
-
-  return spn_device_fence_pool_acquire(device, cb, pfn, pfn_payload, pfn_payload_size);
 }
 
 //
@@ -81,6 +46,9 @@ spn_device_cb_end_fence_acquire(struct spn_device * const    device,
 void
 spn_device_lost(struct spn_device * const device)
 {
+  //
+  // FIXME(allanmac): Properly shutting down Spinel is WIP.
+  //
   exit(-1);
 }
 
@@ -88,7 +56,7 @@ spn_device_lost(struct spn_device * const device)
 //
 //
 
-spn_result
+spn_result_t
 spn_device_reset(struct spn_device * const device)
 {
   return SPN_ERROR_NOT_IMPLEMENTED;
@@ -98,7 +66,7 @@ spn_device_reset(struct spn_device * const device)
 //
 //
 
-static spn_result
+static spn_result_t
 spn_device_create(struct spn_vk_environment * const               environment,
                   struct spn_vk_context_create_info const * const create_info,
                   struct spn_context * const                      context)
@@ -141,59 +109,65 @@ spn_device_create(struct spn_vk_environment * const               environment,
                                  config->allocator.host.temp.size,
                                  config->allocator.host.temp.alignment);
 
-  spn_allocator_device_perm_create(
-    &device->allocator.device.perm.local,
-    environment,
+  VkMemoryPropertyFlagBits const mpfb_local = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-
+  VkBufferUsageFlags const usage_local =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-      VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |  // vkCmdDispatchIndirect()
-      VK_BUFFER_USAGE_TRANSFER_SRC_BIT |     // <-- notice SRC bit
-      VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    0,
-    NULL);
+    VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |  // vkCmdDispatchIndirect()
+    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |     // <-- notice SRC bit
+    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-  spn_allocator_device_perm_create(
-    &device->allocator.device.perm.copyback,
-    environment,
+  spn_allocator_device_perm_create(&device->allocator.device.perm.local,
+                                   environment,
+                                   mpfb_local,
+                                   usage_local,
+                                   0,
+                                   NULL);
 
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-
-    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-
-    0,
-    NULL);
-
-  spn_allocator_device_perm_create(
-    &device->allocator.device.perm.coherent,
-    environment,
-
+  VkMemoryPropertyFlagBits const mpfb_copyback =
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,  // FIXME -- target configurable
+    VK_MEMORY_PROPERTY_HOST_CACHED_BIT;  // copyback is cached and read-only;
 
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+  VkBufferUsageFlags const usage_copyback = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-    0,
-    NULL);
+  spn_allocator_device_perm_create(&device->allocator.device.perm.copyback,
+                                   environment,
+                                   mpfb_copyback,
+                                   usage_copyback,
+                                   0,
+                                   NULL);
+
+  VkMemoryPropertyFlagBits const mpfb_coherent =
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;  // FIXME(allanmac): this is target configurable
+
+  VkBufferUsageFlags const usage_coherent =
+    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+  spn_allocator_device_perm_create(&device->allocator.device.perm.coherent,
+                                   environment,
+                                   mpfb_coherent,
+                                   usage_coherent,
+                                   0,
+                                   NULL);
 
   spn_allocator_device_temp_create(&device->allocator.device.temp.local,
                                    &device->allocator.host.perm,
                                    &device->allocator.device.perm.local,
                                    environment,
-                                   128,
-                                   32 * 1024 * 1024);
+                                   config->allocator.device.temp.subbufs,
+                                   config->allocator.device.temp.size);
 
-  spn_device_queue_pool_create(device,
-                               1);  // FIXME - verify performance - this is a simplistic pool
-
-  spn_device_cb_pool_create(device);  // FIXME - verify performance - this is a simplistic pool
-
-  spn_device_fence_pool_create(device, config->fence_pool.size);
+  // FIXME(allanmac): verify performance - this is a placeholder implementation
+  spn_device_queue_pool_create(device, 1);
 
   spn_device_handle_pool_create(device, create_info->handle_count);
 
-  spn_device_block_pool_create(device, create_info->block_pool_size, create_info->handle_count);
+  spn_device_dispatch_create(device);
+
+  spn_device_block_pool_create(device,
+                               create_info->block_pool_size,
+                               spn_device_handle_pool_get_allocated_handle_count(device));
 
   return SPN_SUCCESS;
 }
@@ -202,11 +176,11 @@ spn_device_create(struct spn_vk_environment * const               environment,
 //
 //
 
-static spn_result
+static spn_result_t
 spn_device_dispose(struct spn_device * const device)
 {
   //
-  // FIXME -- do we want to use spn_device_lost() ?
+  // FIXME(allanmac): do we want to use spn_device_lost()?
   //
 
   // drain all in-flight completions
@@ -214,13 +188,11 @@ spn_device_dispose(struct spn_device * const device)
 
   // shut down each major module in reverse order
   spn_device_block_pool_dispose(device);
+  spn_device_dispatch_dispose(device);
   spn_device_handle_pool_dispose(device);
-  spn_device_fence_pool_dispose(device);
-  spn_device_cb_pool_dispose(device);
   spn_device_queue_pool_dispose(device);
 
   spn_allocator_device_temp_dispose(&device->allocator.device.temp.local, device->environment);
-
   spn_allocator_device_perm_dispose(&device->allocator.device.perm.coherent, device->environment);
   spn_allocator_device_perm_dispose(&device->allocator.device.perm.copyback, device->environment);
   spn_allocator_device_perm_dispose(&device->allocator.device.perm.local, device->environment);
@@ -242,7 +214,7 @@ spn_device_dispose(struct spn_device * const device)
 //
 //
 
-spn_result
+spn_result_t
 spn_vk_context_create(struct spn_vk_environment * const               environment,
                       struct spn_vk_context_create_info const * const create_info,
                       spn_context_t * const                           context)
@@ -253,6 +225,7 @@ spn_vk_context_create(struct spn_vk_environment * const               environmen
   (*context)->reset          = spn_device_reset;
   (*context)->yield          = spn_device_yield;
   (*context)->wait           = spn_device_wait;
+  (*context)->drain          = spn_device_drain;
   (*context)->path_builder   = spn_path_builder_impl_create;
   (*context)->path_retain    = spn_device_handle_pool_validate_retain_h_paths;
   (*context)->path_release   = spn_device_handle_pool_validate_release_h_paths;

@@ -128,7 +128,7 @@ spn_suballocator_dispose(struct spn_suballocator * const        suballocator,
 void
 spn_suballocator_subbuf_alloc(struct spn_suballocator * const suballocator,
                               struct spn_device * const       device,
-                              spn_result (*const wait)(struct spn_device * const device),
+                              spn_result_t (*const wait)(struct spn_device * const device),
                               uint64_t const          size,
                               spn_subbuf_id_t * const subbuf_id,
                               uint64_t * const        subbuf_origin,

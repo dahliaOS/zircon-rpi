@@ -14,6 +14,9 @@ graphics_compute_vulkan_executable("hotsort_vk_bench") {
     "main.c",
     "sort.cc",
   ]
+  if (current_toolchain == host_toolchain) {
+    defines = [ "HOTSORT_VK_SHADER_INFO_AMD_STATISTICS" ]
+  }
   deps = [
     ":hs_amd_gcn3_u32",
     ":hs_amd_gcn3_u64",

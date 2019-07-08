@@ -30,9 +30,10 @@ vk_shader_info_amd_statistics(VkDevice           device,
   if (vkGetShaderInfoAMD == NULL)
     return;
 
-  fprintf(stdout,
-          "                                   PHY   PHY  AVAIL AVAIL\n"
-          "VGPRs SGPRs LDS_MAX LDS/WG  SPILL VGPRs SGPRs VGPRs SGPRs  WORKGROUP_SIZE  NAME\n");
+  fprintf(
+    stdout,
+    "                                   PHY   PHY  AVAIL AVAIL\n"
+    "VGPRs SGPRs LDS_MAX LDS/WG  SPILL VGPRs SGPRs VGPRs SGPRs  WORKGROUP_SIZE              NAME\n");
 
   for (uint32_t ii = 0; ii < count; ii++)
     {

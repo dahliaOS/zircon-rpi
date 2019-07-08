@@ -52,8 +52,8 @@ struct spn_vk_target;
 // If you want to see what's happening here with all of the descriptor
 // layout expansions, run target.c through the preprocessor:
 //
-// clang -I %VULKAN_SDK%\include -I ..\.. -I ..\..\.. -E  spn_vk.c | clang-format > spn_vk_clang.c
-// cl    -I %VULKAN_SDK%\include -I ..\.. -I ..\..\.. -EP spn_vk.c | clang-format > spn_vk_msvc.c
+// clang -I $VULKAN_SDK/include  -I ../.. -I ../../.. -I ../../include/spinel -E  spn_vk.c | clang-format > spn_vk_clang.c
+// cl    -I %VULKAN_SDK%\include -I ..\.. -I ..\..\.. -I ..\..\include\spinel -EP spn_vk.c | clang-format > spn_vk_msvc.c
 //
 
 //
@@ -149,7 +149,10 @@ SPN_VK_GLSL_DS_EXPAND()
 //
 
 #define SPN_VK_BUFFER_OFFSETOF(_ds_id, _name, _member)                                             \
-  OFFSET_OF_MACRO(SPN_VK_BUFFER_NAME(_ds_id, _name), _member)
+  OFFSETOF_MACRO(SPN_VK_BUFFER_NAME(_ds_id, _name), _member)
+
+#define SPN_VK_BUFFER_MEMBER_SIZE(_ds_id, _name, _member)                                          \
+  MEMBER_SIZE_MACRO(SPN_VK_BUFFER_NAME(_ds_id, _name), _member)
 
 //
 // Define host-side pipeline push constant structures

@@ -46,13 +46,6 @@ struct spn_vk_target_config
   } allocator;
 
   //
-  // max submitted command buffers
-  //
-  struct {
-    uint32_t     size;
-  } fence_pool;
-
-  //
   // target subgroup size
   //
   uint32_t       subgroup_size_log2;
@@ -72,26 +65,34 @@ struct spn_vk_target_config
   } block_pool;
 
   struct {                    // FIXME -- put ring host_coherent allocation flags here
-    uint32_t     ring_size;   // number of blocks & cmds in ring
-    uint32_t     eager_size;  // number of blocks that will force an eager launch
+    struct {
+    uint32_t     dispatches;  // number of in-flight dispatches
+    uint32_t     ring;        // number of blocks & cmds in ring
+    uint32_t     eager;       // number of blocks that will force an eager launch
+    } size;
   } path_builder;
 
   struct {
     struct {
-      struct {
-                              // FIXME -- put ring host_coherent and device_local allocation flags here
+      struct {                // FIXME -- put ring host_coherent agnd device_local allocation flags here
         uint32_t h;           // index of host   vk allocator
         uint32_t d;           // index of device vk allocator
       } rings;
     } vk;
 
     struct {
+      uint32_t   dispatches;  // number of in-flight dispatches
       uint32_t   ring;        // number of commands in ring
       uint32_t   eager;       // number of commands that will force an eager launch
       uint32_t   cohort;      // max number of rasters in ring
       uint32_t   cmds;        // max number of rast cmds that can be emitted by FILLS_EXPAND
       uint32_t   ttrks;       // max number of ttrks that can be emitted by RASTERIZE_XXX
     } size;
+
+    struct {
+      uint32_t   rows;
+    } fills_scan;
+
   } raster_builder;
 
   struct {
@@ -110,6 +111,7 @@ struct spn_vk_target_config
     } vk;
 
     struct {
+      uint32_t   dispatches;  // number of in-flight dispatches
       uint32_t   ring;        // number of commands in ring
       uint32_t   eager;       // number of commands that will force an eager launch
       uint32_t   cmds;        // max number of place cmds in the composition

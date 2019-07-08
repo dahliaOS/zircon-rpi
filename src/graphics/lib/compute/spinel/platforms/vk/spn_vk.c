@@ -12,6 +12,19 @@
 
 #include "common/macros.h"
 #include "common/vk/vk_assert.h"
+
+//
+//
+//
+
+#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
+#include "common/vk/vk_shader_info_amd.h"
+#endif
+
+//
+//
+//
+
 #include "device.h"
 #include "spn_vk_target.h"
 
@@ -635,7 +648,7 @@ spn_vk_create(struct spn_vk_environment * const  environment,
 
 #endif
 
-#ifdef SPN_VK_PIPELINE_NAMES_DEFINE
+#if 0 && defined (SPN_VK_PIPELINE_NAMES_DEFINE )
 #define SPN_PLCI_DEBUG(_p_idx)                                                                     \
   fprintf(stdout,                                                                                  \
           "plci.setLayoutCount[%-38s] = %2u  (%s)\n",                                              \
@@ -687,20 +700,78 @@ spn_vk_create(struct spn_vk_environment * const  environment,
   SPN_VK_P_EXPAND();
 
   //
-  // create all the compute pipelines by reusing this info
+  // Prepare to create compute pipelines
   //
+
+  //
+  // Enable locally until the
+  // third_party/vulkan_loader_and_validation_layers is in sync with
+  // third_party/mesa.
+  //
+#ifndef VK_EXT_subgroup_size_control
+
+#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT 1000225000
+#define VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT 1000225001
+
+#define VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT 0x00000001
+#define VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT 0x00000002
+
+#define VK_EXT_subgroup_size_control 1
+#define VK_EXT_SUBGROUP_SIZE_CONTROL_SPEC_VERSION 1
+#define VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME "VK_EXT_subgroup_size_control"
+
+#if 0  // unused
+  typedef struct VkPhysicalDeviceSubgroupSizeControlPropertiesEXT
+  {
+    VkStructureType    sType;
+    void *             pNext;
+    uint32_t           minSubgroupSize;
+    uint32_t           maxSubgroupSize;
+    uint32_t           maxComputeWorkgroupSubgroups;
+    VkShaderStageFlags requiredSubgroupSizeStages;
+  } VkPhysicalDeviceSubgroupSizeControlPropertiesEXT;
+#endif
+
+  typedef struct VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT
+  {
+    VkStructureType sType;
+    void *          pNext;
+    uint32_t        requiredSubgroupSize;
+  } VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT;
+
+#endif
+
+  //
+  // Set the subgroup size to what we expected when we built the
+  // HotSort target
+  //
+#ifdef VK_EXT_subgroup_size_control
+  VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT const rssci[] = {
+    { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT,
+      .pNext = NULL,
+      .requiredSubgroupSize = 1u << instance->config.subgroup_size_log2 }
+  };
+#else
+  void *     rssci                = NULL;
+#endif
+
   VkComputePipelineCreateInfo cpci = {
     .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
     .pNext = NULL,
-    .flags = VK_PIPELINE_CREATE_DISPATCH_BASE,  // | VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT,
-    .stage = { .sType               = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-               .pNext               = NULL,
-               .flags               = 0,
+    .flags = 0,
+
+    .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+               .pNext = rssci,
+#ifdef VK_EXT_subgroup_size_control
+               .flags = VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT,
+#else
+               .flags = 0,
+#endif
                .stage               = VK_SHADER_STAGE_COMPUTE_BIT,
                .module              = VK_NULL_HANDLE,
                .pName               = "main",
                .pSpecializationInfo = NULL },
-    // .layout             = VK_NULL_HANDLE, // instance->pl.layout.vout_vin,
+
     .basePipelineHandle = VK_NULL_HANDLE,
     .basePipelineIndex  = 0
   };
@@ -801,7 +872,7 @@ spn_vk_create(struct spn_vk_environment * const  environment,
   {                                                                                                \
     while (instance->dutdp._ds_id.rem == 0)                                                        \
       {                                                                                            \
-        spn_device_wait(device);                                                                   \
+        SPN_DEVICE_WAIT(device);                                                                   \
       }                                                                                            \
     ds->idx = instance->dutdp._ds_id.pool[--instance->dutdp._ds_id.rem];                           \
   }                                                                                                \
@@ -915,7 +986,7 @@ spn_vk_pl_hotsort(struct spn_vk const * const instance)
 {
   // Both SPN_VK_P_ID_SEGMENT_TTRK and SPN_VK_P_ID_SEGMENT_TTCK
   // pipelines have compatible pipeline layouts
-  return instance->pl.named.SPN_VK_P_ID_SEGMENT_TTRK;
+  return instance->pl.named.SPN_VK_P_ID_SEGMENT_TTCK;
 }
 
 //

@@ -16,6 +16,9 @@ source_set("vk") {
     "hotsort_vk.c",
     "hotsort_vk.h",
   ]
+  if (current_toolchain == host_toolchain) {
+    defines = [ "HOTSORT_VK_SHADER_INFO_AMD_STATISTICS" ]
+  }
   deps = [
     "${graphics_compute_dir}/common",
     "${graphics_compute_dir}/common/vk",

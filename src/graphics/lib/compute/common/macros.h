@@ -17,11 +17,11 @@
 //
 
 #define ARRAY_LENGTH_MACRO(x)   (sizeof(x)/sizeof(x[0]))
-#define OFFSET_OF_MACRO(t,m)    ((size_t)&(((t*)0)->m))
+#define OFFSETOF_MACRO(t,m)     ((size_t)&(((t*)0)->m))
 #define MEMBER_SIZE_MACRO(t,m)  sizeof(((t*)0)->m)
 
 //
-// FIXME
+// FIXME(allanmac):
 //
 // Consider providing typed min/max() functions:
 //
@@ -80,7 +80,7 @@
   ((((pb4)[0])<<24) | (((pb4)[1])<<16) | (((pb4)[2])<< 8) | (pb4)[3])
 
 //
-// FIXME -- get rid of network order counts in target_config.
+// FIXME(allanmac): get rid of network order counts in target_config.
 // It will be OK to assume little-endian.
 //
 

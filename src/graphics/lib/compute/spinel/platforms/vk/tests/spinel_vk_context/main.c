@@ -17,6 +17,24 @@
 //
 //
 
+#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
+#include "common/vk/vk_shader_info_amd.h"
+#endif
+
+//
+// Define a platform-specific prefix
+//
+
+#ifdef __Fuchsia__
+#define VK_PIPELINE_CACHE_PREFIX_STRING "/cache/."
+#else
+#define VK_PIPELINE_CACHE_PREFIX_STRING "."
+#endif
+
+//
+//
+//
+
 int
 main(int argc, char const * argv[])
 {
@@ -121,21 +139,24 @@ main(int argc, char const * argv[])
 
   for (uint32_t ii = 0; ii < pd_count; ii++)
     {
-      vkGetPhysicalDeviceProperties(pds[ii], &pdp);
+      VkPhysicalDeviceProperties pdp_tmp;
 
-      bool const is_match = (pdp.vendorID == vendor_id) && (pdp.deviceID == device_id);
+      vkGetPhysicalDeviceProperties(pds[ii], &pdp_tmp);
+
+      bool const is_match = (pdp_tmp.vendorID == vendor_id) && (pdp_tmp.deviceID == device_id);
 
       if (is_match)
         {
+          pdp            = pdp_tmp;
           environment.pd = pds[ii];
         }
 
       fprintf(stdout,
               "%c %X : %X : %s\n",
               is_match ? '*' : ' ',
-              pdp.vendorID,
-              pdp.deviceID,
-              pdp.deviceName);
+              pdp_tmp.vendorID,
+              pdp_tmp.deviceID,
+              pdp_tmp.deviceName);
     }
 
   if (environment.pd == VK_NULL_HANDLE)
@@ -181,18 +202,21 @@ main(int argc, char const * argv[])
                                        .pQueuePriorities = qp };
 
   //
-  // enable AMD shader info extension?
+  // clumsily enable AMD GCN shader info extension
   //
-#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
   char const * const device_enabled_extensions[] = {
-    // VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME,
-    VK_AMD_SHADER_INFO_EXTENSION_NAME,
-  };
-  uint32_t const device_enabled_extension_count =
-    ARRAY_LENGTH_MACRO(device_enabled_extensions) - ((pdp.vendor_id != 0x1002) ? 1 : 0);
+#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
+    VK_AMD_SHADER_INFO_EXTENSION_NAME
 #else
-  char const * const device_enabled_extensions[]    = {};
-  uint32_t const     device_enabled_extension_count = 0;
+    NULL
+#endif
+  };
+
+  uint32_t device_enabled_extension_count = 0;
+
+#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
+  if (pdp.vendorID == 0x1002)
+    device_enabled_extension_count = 1;
 #endif
 
   //
@@ -231,14 +255,17 @@ main(int argc, char const * argv[])
   //
   // create the pipeline cache
   //
-  vk(_pipeline_cache_create(environment.d, NULL, ".vk_cache", &environment.pc));
+  vk(_pipeline_cache_create(environment.d,
+                            NULL,
+                            VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
+                            &environment.pc));
 
   //
   // find spinel target
   //
   struct spn_vk_context_create_info create_info = {
-    .block_pool_size = 17 << 20,  // 128 MiB
-    .handle_count    = 1 << 17,   // 128K handles
+    .block_pool_size = 1 << 26,  // 64 MB
+    .handle_count    = 1 << 17,  // 128K handles
   };
 
   char error_message[256];
@@ -268,7 +295,10 @@ main(int argc, char const * argv[])
   //
   // dispose of Vulkan resources
   //
-  vk(_pipeline_cache_destroy(environment.d, NULL, ".vk_cache", environment.pc));
+  vk(_pipeline_cache_destroy(environment.d,
+                             NULL,
+                             VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
+                             environment.pc));
 
   vkDestroyDevice(environment.d, NULL);
 

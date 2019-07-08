@@ -118,22 +118,25 @@ hotsort_vk_release(VkDevice                            device,
 // applied to the input and output buffers.
 //
 //   Input:
-//     count      : input number of key-vals
+//     count      : Input number of key-vals
 //
 //   Output:
-//     padded_in  : adjusted number of input key-vals
-//     padded_out : adjusted number of output key-vals
+//
+//     slabs_in   : Number of slabs for input key-vals
+//     padded_in  : Padded number of input key-vals
+//     padded_out : Padded number of output key-vals
 //
 // Instead of implicitly padding the buffers, HotSort requires this
 // explicit step to support use cases like:
 //
-//   - writing past the end of the input buffer
-//   - dynamically allocating an output buffer
+//   - Dynamically allocating an output buffer
+//   - Avoiding writing past the end of the input buffer
 //
 
 void
 hotsort_vk_pad(struct hotsort_vk const * const hs,
                uint32_t const                  count,
+               uint32_t * const                slabs_in,
                uint32_t * const                padded_in,
                uint32_t * const                padded_out);
 

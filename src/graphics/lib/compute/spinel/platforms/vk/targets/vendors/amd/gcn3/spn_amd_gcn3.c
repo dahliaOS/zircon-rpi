@@ -49,11 +49,13 @@ static struct spn_vk_target const target =
           .size             = 8 << 20, // 8 MBytes
           .alignment        = 16       // 16 byte alignment
         }
+      },
+      .device = {
+        .temp = {
+          .subbufs          = 256,      // 256 subbufs
+          .size             = 32 << 20, // 32 MBytes
+        }
       }
-    },
-
-    .fence_pool = {
-      .size                 = 2,       // ~16-256 "in-flight" submits
     },
 
     .subgroup_size_log2     = SPN_DEVICE_SUBGROUP_SIZE_LOG2,
@@ -70,8 +72,11 @@ static struct spn_vk_target const target =
     },
 
     .path_builder = {
-      .ring_size            = 16384,
-      .eager_size           = 4096
+      .size = {
+        .dispatches         = 32,
+        .ring               = 16384,
+        .eager              = 4096
+      }
     },
 
     .raster_builder = {
@@ -82,11 +87,15 @@ static struct spn_vk_target const target =
         }
       },
       .size = {
+        .dispatches         = 32,
         .ring               = 8192,
         .eager              = 1024,
         .cohort             = SPN_KERNEL_RASTERS_ALLOC_METAS_SIZE, // FIXME -- change name
         .cmds               = 1 << 18,
         .ttrks              = 1 << 20
+      },
+      .fills_scan = {
+        .rows               = SPN_KERNEL_FILLS_SCAN_ROWS
       }
     },
 
@@ -105,6 +114,7 @@ static struct spn_vk_target const target =
         }
       },
       .size = {
+        .dispatches         = 32,
         .ring               = 8192,
         .eager              = 1024,
         .cmds               = 1 << 18,
@@ -116,30 +126,35 @@ static struct spn_vk_target const target =
     //
     // capture target-specific number of sets and extent sizes
     //
+#define SPN_DS_WAG_COUNT  255
+
     .ds = {
       .block_pool = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
       .paths_copy = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
       .rasterize = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
-      .rasterize_post = {
-        .sets = 1
+      .ttrks = {
+        .sets = SPN_DS_WAG_COUNT
+      },
+      .raster_ids = {
+        .sets = SPN_DS_WAG_COUNT
       },
       .ttcks = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
       .place = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
       .styling = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       },
       .surface = {
-        .sets = 1
+        .sets = SPN_DS_WAG_COUNT
       }
     },
 

@@ -124,7 +124,7 @@ void main()
 
   // FIXME -- this is dynamically determined and won't be a push
   // constant and can be found in prim.counts[3]
-  if (sid >= count)
+  if (sid >= cmd_count)
     return; // empty subgroup
 #endif
 

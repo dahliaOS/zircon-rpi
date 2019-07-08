@@ -24,6 +24,15 @@
 //
 //
 
+#if defined(HOTSORT_VK_SHADER_INFO_AMD_STATISTICS) ||                                              \
+  defined(HOTSORT_VK_SHADER_INFO_AMD_DISASSEMBLY)
+#include "common/vk/vk_shader_info_amd.h"
+#endif
+
+//
+//
+//
+
 #include "hotsort_vk.h"
 
 //
@@ -42,6 +51,16 @@
 //
 
 #include "targets/hotsort_vk_target.h"
+
+//
+// Define a platform-specific prefix
+//
+
+#ifdef __Fuchsia__
+#define VK_PIPELINE_CACHE_PREFIX_STRING "/cache/."
+#else
+#define VK_PIPELINE_CACHE_PREFIX_STRING "."
+#endif
 
 //
 //
@@ -536,7 +555,11 @@ main(int argc, char const * argv[])
 
   if (key_val_words == 2)
     {
-      device_features.shaderInt64 = true;
+      device_features.shaderInt64   = true;
+      device_features.shaderFloat64 = true;
+      // FIXME(allanmac): we don't need to cast to a float64 once the
+      // subgroup extension is updated to support u64 types or we move
+      // to a uvec2 intermediate rep for u64.
     }
 
   VkDeviceCreateInfo const device_info = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -566,7 +589,7 @@ main(int argc, char const * argv[])
   //
   VkPipelineCache pc;
 
-  vk_pipeline_cache_create(device, NULL, ".vk_cache", &pc);
+  vk_pipeline_cache_create(device, NULL, VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache", &pc);
 
   //
   // create a descriptor set pool
@@ -673,12 +696,14 @@ main(int argc, char const * argv[])
   //
   // create a query pool for benchmarking
   //
+#define QUERY_POOL_QUERY_COUNT 4
+
   static VkQueryPoolCreateInfo const query_pool_info = { .sType =
                                                            VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
                                                          .pNext      = NULL,
                                                          .flags      = 0,
                                                          .queryType  = VK_QUERY_TYPE_TIMESTAMP,
-                                                         .queryCount = 4,
+                                                         .queryCount = QUERY_POOL_QUERY_COUNT,
                                                          .pipelineStatistics = 0 };
 
   VkQueryPool query_pool;
@@ -688,9 +713,9 @@ main(int argc, char const * argv[])
   //
   // create two big buffers -- buffer_out_count is always the largest
   //
-  uint32_t buffer_in_count, buffer_out_count;
+  uint32_t slabs_in, buffer_in_count, buffer_out_count;
 
-  hotsort_vk_pad(hs, count_hi, &buffer_in_count, &buffer_out_count);
+  hotsort_vk_pad(hs, count_hi, &slabs_in, &buffer_in_count, &buffer_out_count);
 
   size_t const buffer_out_size = buffer_out_count * key_val_words * sizeof(uint32_t);
 
@@ -886,9 +911,9 @@ main(int argc, char const * argv[])
       //
       // size the vin and vout arrays
       //
-      uint32_t count_padded_in, count_padded_out;
+      uint32_t slabs_in, count_padded_in, count_padded_out;
 
-      hotsort_vk_pad(hs, count, &count_padded_in, &count_padded_out);
+      hotsort_vk_pad(hs, count, &slabs_in, &count_padded_in, &count_padded_out);
 
       //
       // initialize vin with 'count' random keys
@@ -914,6 +939,11 @@ main(int argc, char const * argv[])
       // build the sorting command buffer
       //
       vkBeginCommandBuffer(cb, &cb_begin_info);
+
+      //
+      // reset the query pool
+      //
+      vkCmdResetQueryPool(cb, query_pool, 0, QUERY_POOL_QUERY_COUNT);
 
       //
       // starting timestamp
@@ -1139,7 +1169,10 @@ main(int argc, char const * argv[])
   vkFreeCommandBuffers(device, cmd_pool, 1, &cb);
   vkDestroyCommandPool(device, cmd_pool, NULL);
 
-  vk_pipeline_cache_destroy(device, NULL, ".vk_cache", pc);
+  //
+  // save the pipeline cache
+  //
+  vk_pipeline_cache_destroy(device, NULL, VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache", pc);
 
   vkDestroyDevice(device, NULL);
 

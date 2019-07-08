@@ -10,10 +10,13 @@
 
 #include "block_pool.h"
 #include "common/vk/vk_assert.h"
+#include "common/vk/vk_barrier.h"
 #include "composition_impl.h"
 #include "device.h"
+#include "dispatch.h"
 #include "queue_pool.h"
 #include "spinel.h"
+#include "spinel_assert.h"
 #include "spinel_vk_types.h"
 #include "spn_vk_target.h"
 #include "styling_impl.h"
@@ -22,10 +25,11 @@
 //
 //
 
+#include <stdio.h>
 #include <string.h>
 
 //
-//
+// Used to probe the type
 //
 
 struct spn_render_submit_ext_base
@@ -35,22 +39,14 @@ struct spn_render_submit_ext_base
 };
 
 //
-//
-//
-
-#define SPN_RI_MAX_SUBMIT_INFO_WAIT_COUNT 8
-
-//
-//
-//
-
-//
 // A callback is only invoked if a H2D copy is required.
 //
 
-struct spn_ri_buffer_complete_payload
+struct spn_ri_complete_payload
 {
-  struct spn_vk * instance;
+  struct spn_device *      device;
+  struct spn_composition * composition;
+  struct spn_styling *     styling;
 
   struct
   {
@@ -60,56 +56,102 @@ struct spn_ri_buffer_complete_payload
   } ds;
 };
 
+//
+//
+//
+
 static void
-spn_ri_buffer_complete(void * pfn_payload)
+spn_ri_complete(void * pfn_payload)
 {
-  //
-  // FENCE_POOL INVARIANT:
-  //
-  // COMPLETION ROUTINE MUST MAKE LOCAL COPIES OF PAYLOAD BEFORE ANY
-  // POTENTIAL INVOCATION OF SPN_DEVICE_YIELD/WAIT/DRAIN()
-  //
-  struct spn_ri_buffer_complete_payload const * const payload  = pfn_payload;
-  struct spn_vk * const                               instance = payload->instance;
+  struct spn_ri_complete_payload const * const payload  = pfn_payload;
+  struct spn_vk * const                        instance = payload->device->instance;
 
   // release descriptor sets
   spn_vk_ds_release_ttcks(instance, payload->ds.ttcks);
   spn_vk_ds_release_styling(instance, payload->ds.styling);
   spn_vk_ds_release_surface(instance, payload->ds.surface);
+
+  // release locks on composition and styling
+  spn_composition_post_render(payload->composition);
+  spn_styling_post_render(payload->styling);
+
+#if 1
+  spn_device_block_pool_debug_print(payload->device);
+
+  printf("%s\n", __func__);
+
+  // exit(EXIT_SUCCESS);
+#endif
+}
+
+//
+// DEBUG: remove when bootstrapping is complete
+//
+
+static void
+spn_ri_debug_buffer_copy(struct spn_render_submit_ext_vk_buffer_copy const * const ext,
+                         VkDescriptorBufferInfo const * const                      src,
+                         VkCommandBuffer                                           cb)
+{
+  if (ext == NULL)
+    return;
+
+  if (ext->type != SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER_COPY)
+    return;
+
+  //
+  // copy the surface to the buffer
+  //
+  vk_barrier_compute_w_to_transfer_r(cb);
+
+  VkDeviceSize const ranges = MIN_MACRO(VkDeviceSize, src->range, ext->dst.range);
+  VkDeviceSize const size   = MIN_MACRO(VkDeviceSize, ranges, ext->dst_size);
+
+  VkBufferCopy const copy[] = {
+    { .srcOffset = src->offset, .dstOffset = ext->dst.offset, .size = size }
+  };
+
+  vkCmdCopyBuffer(cb, src->buffer, ext->dst.buffer, 1, copy);
 }
 
 //
 //
 //
 
-spn_result
-spn_ri_buffer(struct spn_device * const device, spn_render_submit_t const * const submit)
+static spn_result_t
+spn_ri_submit_buffer(struct spn_device * const device, spn_render_submit_t const * const submit)
 {
-  struct spn_render_submit_ext_vk_buffer const * const ext = submit->ext;
+  struct spn_render_submit_ext_vk_buffer * const ext = submit->ext;
 
   //
-  // For now, we're capping the number of semaphores we can wait for
-  // no reason other than it makes the code simpler and avoids use
-  // of VLAs.
+  // acquire a dispatch
   //
-  if (ext->si->waitSemaphoreCount > SPN_RI_MAX_SUBMIT_INFO_WAIT_COUNT)
-    {
-      return SPN_ERROR_RENDER_EXTENSION_VK_SUBMIT_INFO_WAIT_COUNT_EXCEEDED;
-    }
+  spn_dispatch_id_t id;
+
+  spn(device_dispatch_acquire(device, SPN_DISPATCH_STAGE_RENDER, &id));
+
+  //
+  // declare that the styling and composition happen before this render
+  //
+  spn_composition_happens_before(submit->composition, id);
+
+  spn_styling_happens_before(submit->styling, id);
 
   //
   // get a cb
   //
-  VkCommandBuffer cb = spn_device_cb_acquire_begin(device);
+  VkCommandBuffer cb = spn_device_dispatch_get_cb(device, id);
 
   //
-  // bind block_pool/composition/styling/surface
+  // clear the surface
   //
-  struct spn_vk * const instance = device->instance;
+  vkCmdFillBuffer(cb, ext->surface.buffer, ext->surface.offset, ext->surface.range, 0);
 
   //
   // DS: BLOCK POOL
   //
+  struct spn_vk * const instance = device->instance;
+
   spn_vk_ds_bind_render_block_pool(instance, cb, spn_device_block_pool_get_ds(device));
 
   //
@@ -117,20 +159,18 @@ spn_ri_buffer(struct spn_device * const device, spn_render_submit_t const * cons
   //
   struct spn_vk_ds_ttcks_t ds_ttcks;
 
-  spn_composition_impl_pre_render_ds(submit->composition, &ds_ttcks, cb);
+  spn_composition_pre_render_bind_ds(submit->composition, &ds_ttcks, cb);
 
   //
   // DS: STYLING
   //
   struct spn_vk_ds_styling_t ds_styling;
 
-  spn_styling_impl_pre_render_ds(submit->styling, &ds_styling, cb);
+  spn_styling_pre_render_bind_ds(submit->styling, &ds_styling, cb);
 
   //
   // DS: SURFACE
   //
-
-  // acquire surface descriptor set
   struct spn_vk_ds_surface_t ds_surface;
 
   spn_vk_ds_acquire_surface(instance, device, &ds_surface);
@@ -147,83 +187,113 @@ spn_ri_buffer(struct spn_device * const device, spn_render_submit_t const * cons
   //
   // append push constants
   //
-  struct spn_vk_push_render const push = {.tile_clip =
-                                            {
-                                              submit->tile_clip[0],
-                                              submit->tile_clip[1],
-                                              submit->tile_clip[2],
-                                              submit->tile_clip[3],
-                                            },
-                                          .surface_pitch = ext->surface_pitch};
+  struct spn_vk_push_render const push = {
+
+    .tile_clip = {
+      submit->tile_clip[0],
+      submit->tile_clip[1],
+      submit->tile_clip[2],
+      submit->tile_clip[3],
+    },
+    .surface_pitch = ext->surface_pitch
+  };
 
   spn_vk_p_push_render(instance, cb, &push);
 
   //
-  // bind pipeline
+  // PIPELINE: RENDER
   //
   spn_vk_p_bind_render(instance, cb);
 
   //
+  // wait for buffer clear to finish
+  //
+  vk_barrier_transfer_w_to_compute_r(cb);
+
+  //
   // indirect dispatch the pipeline
   //
-  spn_composition_impl_pre_render_dispatch(submit->composition, cb);
+  spn_composition_pre_render_dispatch_indirect(submit->composition, cb);
 
   //
-  // end the cb and acquire a fence
+  // DEBUG: optionally copy the buffer -- remove when bootstrapping is complete
   //
-  struct spn_ri_buffer_complete_payload payload = {
-    .instance = instance,
-    .ds       = { .ttcks = ds_ttcks, .styling = ds_styling, .surface = ds_surface }
-  };
-
-  VkFence const fence =
-    spn_device_cb_end_fence_acquire(device, cb, spn_ri_buffer_complete, &payload, sizeof(payload));
-  //
-  // acquire semaphores if still unsealed
-  //
-  uint32_t             waitSemaphoreCount = 0;
-  VkSemaphore          pWaitSemaphores[SPN_RI_MAX_SUBMIT_INFO_WAIT_COUNT + 2];
-  VkPipelineStageFlags pWaitDstStageMask[SPN_RI_MAX_SUBMIT_INFO_WAIT_COUNT + 2];
-
-  spn_composition_impl_pre_render_wait(submit->composition,
-                                       &waitSemaphoreCount,
-                                       pWaitSemaphores,
-                                       pWaitDstStageMask);
-
-  spn_styling_impl_pre_render_wait(submit->styling,
-                                   &waitSemaphoreCount,
-                                   pWaitSemaphores,
-                                   pWaitDstStageMask);
+  spn_ri_debug_buffer_copy(ext->ext, &ext->surface, cb);
 
   //
-  // if there are semaphores we need to wait on then we need to create
-  // a new submit info
+  // DEBUG
   //
-  if (waitSemaphoreCount == 0)
+#if 1
+  spn_device_block_pool_debug_snap(device, cb);
+#endif
+
+  //
+  // set the completion payload
+  //
+  struct spn_ri_complete_payload * const payload =
+    spn_device_dispatch_set_completion(device, id, spn_ri_complete, sizeof(*payload));
+
+  payload->composition = submit->composition;
+  payload->styling     = submit->styling;
+  payload->device      = device;
+  payload->ds.ttcks    = ds_ttcks;
+  payload->ds.styling  = ds_styling;
+  payload->ds.surface  = ds_surface;
+
+  //
+  // submit the dispatch
+  //
+  spn_device_dispatch_submit(device, id);
+
+  //
+  // FIXME(allanmac): the submit info dependencies will be narrowed
+  //
+#if 0
+  //
+  // boilerplate submit
+  //
+  struct VkSubmitInfo si;
+
+  struct VkSubmitInfo const * const ext_si = ext->si;
+
+  if (ext_si == NULL)
     {
-      vk(QueueSubmit(spn_device_queue_next(device), 1, ext->si, fence));
+      si.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      si.pNext                = NULL;
+      si.waitSemaphoreCount   = 0;
+      si.pWaitSemaphores      = NULL;
+      si.pWaitDstStageMask    = NULL;
+      si.commandBufferCount   = 1;
+      si.pCommandBuffers      = &cb;
+      si.signalSemaphoreCount = 0;
+      si.pSignalSemaphores    = NULL;
     }
   else
     {
-      uint32_t const count = ext->si->waitSemaphoreCount;
+      //
+      // FIXME(allanmac): it's probably reasonable to assert some limit
+      // on the max number of command buffers we're willing to accept
+      // here... especially if VLA's are not allowed.
+      //
+      uint32_t const cb_count = ext_si->commandBufferCount + 1;
 
-      memcpy(pWaitSemaphores + waitSemaphoreCount,
-             ext->si->pWaitSemaphores,
-             count * sizeof(*pWaitSemaphores));
-      memcpy(pWaitDstStageMask + waitSemaphoreCount,
-             ext->si->pWaitDstStageMask,
-             count * sizeof(*pWaitDstStageMask));
+      VkCommandBuffer cbs[cb_count];
 
-      waitSemaphoreCount += count;
+      memcpy(cbs, ext_si->pCommandBuffers, ext_si->commandBufferCount * sizeof(*cbs));
 
-      struct VkSubmitInfo si = *ext->si;
+      cbs[ext_si->commandBufferCount] = cb;
 
-      si.waitSemaphoreCount = waitSemaphoreCount;
-      si.pWaitSemaphores    = pWaitSemaphores;
-      si.pWaitDstStageMask  = pWaitDstStageMask;
-
-      vk(QueueSubmit(spn_device_queue_next(device), 1, &si, fence));
+      si.sType                = ext_si->sType;
+      si.pNext                = ext_si->pNext;
+      si.waitSemaphoreCount   = ext_si->waitSemaphoreCount;
+      si.pWaitSemaphores      = ext_si->pWaitSemaphores;
+      si.pWaitDstStageMask    = ext_si->pWaitDstStageMask;
+      si.commandBufferCount   = cb_count;
+      si.pCommandBuffers      = cbs;
+      si.signalSemaphoreCount = ext_si->signalSemaphoreCount;
+      si.pSignalSemaphores    = ext_si->pSignalSemaphores;
     }
+#endif
 
   return SPN_SUCCESS;
 }
@@ -232,24 +302,32 @@ spn_ri_buffer(struct spn_device * const device, spn_render_submit_t const * cons
 //
 //
 
-spn_result
+spn_result_t
 spn_render_impl(struct spn_device * const device, spn_render_submit_t const * const submit)
 {
-  spn_result result;
+  //
+  // seal the composition
+  //
+  {
+    spn_result_t const res_c = spn_composition_seal(submit->composition);
 
-  result = spn_composition_seal(submit->composition);
+    if (res_c)
+      {
+        return res_c;
+      }
+  }
 
-  if (result)
-    {
-      return result;
-    }
+  //
+  // seal the styling
+  //
+  {
+    spn_result_t const res_s = spn_styling_seal(submit->styling);
 
-  result = spn_styling_seal(submit->styling);
-
-  if (result)
-    {
-      return result;
-    }
+    if (res_s)
+      {
+        return res_s;
+      }
+  }
 
   //
   // walk the extension chain
@@ -264,7 +342,7 @@ spn_render_impl(struct spn_device * const device, spn_render_submit_t const * co
   switch (ext->type)
     {
       case SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER:
-        return spn_ri_buffer(device, submit);
+        return spn_ri_submit_buffer(device, submit);
 
       case SPN_RENDER_SUBMIT_EXT_TYPE_VK_IMAGE:
       default:

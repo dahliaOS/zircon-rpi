@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_TYPES_H_
-#define SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_TYPES_H_
+#ifndef SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_TYPES_H_
+#define SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_TYPES_H_
 
 //
 //
@@ -29,6 +29,7 @@ typedef enum spn_render_submit_ext_type_e
 {
   SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER,
   SPN_RENDER_SUBMIT_EXT_TYPE_VK_IMAGE,
+  SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER_COPY,
 } spn_render_submit_ext_type_e;
 
 //
@@ -57,6 +58,18 @@ typedef struct spn_render_submit_ext_vk_image
 } spn_render_submit_ext_vk_image_t;
 
 //
+// COPY THE VULKAN BUFFER AFTER RENDERING
+//
+
+typedef struct spn_render_submit_ext_vk_buffer_copy
+{
+  void *                       ext;
+  spn_render_submit_ext_type_e type;
+  VkDescriptorBufferInfo       dst;
+  VkDeviceSize                 dst_size;
+} spn_render_submit_ext_vk_buffer_copy_t;
+
+//
 //
 //
 
@@ -68,4 +81,4 @@ typedef struct spn_render_submit_ext_vk_image
 //
 //
 
-#endif  // SRC_GRAPHICS_LIB_COMPUTE_SPINEL_PLATFORMS_VK_SPINEL_VK_TYPES_H_
+#endif  // SRC_GRAPHICS_LIB_COMPUTE_SPINEL_INCLUDE_SPINEL_SPINEL_VK_TYPES_H_

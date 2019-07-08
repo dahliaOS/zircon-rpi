@@ -13,8 +13,6 @@
 
 #include "allocator_device.h"
 #include "allocator_host.h"
-#include "fence_pool.h"
-#include "spinel_types.h"
 #include "spinel_vk.h"
 
 //
@@ -33,7 +31,7 @@ struct spn_device
     struct
     {
       struct spn_allocator_host_perm perm;
-      struct spn_allocator_host_temp temp;
+      struct spn_allocator_host_temp temp;  // FIXME(allanmac): we may be able to remove this
     } host;
     struct
     {
@@ -51,10 +49,18 @@ struct spn_device
   } allocator;
 
   struct spn_queue_pool *  queue_pool;
-  struct spn_cb_pool *     cb_pool;
-  struct spn_fence_pool *  fence_pool;
   struct spn_handle_pool * handle_pool;
+  struct spn_dispatch *    dispatch;
   struct spn_block_pool *  block_pool;
+
+#if 0
+  struct
+  {
+    spn_timeline_event_t *        handle_events;
+    struct spn_timeline_paths *   paths;
+    struct spn_timeline_rasters * rasters;
+  } timeline;
+#endif
 
   //
   //
@@ -90,44 +96,43 @@ uint64_t
 spn_device_wait_nsecs(struct spn_device * const device);
 
 //
-// does this need to be here?  just grab config
-//
-
-uint32_t
-spn_device_block_pool_get_mask(struct spn_device * const device);
-
-//
-// Acquire and begin a command buffer
-//
-
-VkCommandBuffer
-spn_device_cb_acquire_begin(struct spn_device * const device);
-
-//
-// End a command buffer and acquire a fence
-//
-
-VkFence
-spn_device_cb_end_fence_acquire(struct spn_device * const    device,
-                                VkCommandBuffer const        cb,
-                                spn_fence_complete_pfn const pfn,
-                                void * const                 pfn_payload,
-                                size_t const                 pfn_payload_size);
-
-//
 // yield : if there are unsignaled fences, test if at least one fence is signaled
 // wait  : if there are unsignaled fences, wait for at least one fence to signal
 // drain : wait for all unsignaled fences -- unknown if we need this
 //
 
-spn_result
-spn_device_yield(struct spn_device * const device);
-
-spn_result
+spn_result_t
 spn_device_wait(struct spn_device * const device);
 
-spn_result
+spn_result_t
+spn_device_yield(struct spn_device * const device);
+
+spn_result_t
 spn_device_drain(struct spn_device * const device);
+
+//
+//
+//
+
+#ifndef SPN_DEVICE_WAIT_DEBUG_DISABLED
+
+spn_result_t
+spn_device_wait_verbose(struct spn_device * const device,
+                        char const * const        file_line,
+                        char const * const        func_name);
+
+#define SPN_DEVICE_WAIT(device_)                                                                   \
+  spn_device_wait_verbose(device_, __FILE__ ":" STRINGIFY_MACRO(__LINE__) ":", __func__)
+
+#else
+
+#define SPN_DEVICE_WAIT(device_) spn_device_wait(device_)
+
+#endif
+
+//
+//
+//
 
 //
 //

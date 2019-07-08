@@ -167,7 +167,7 @@ hotsort_vk_create(VkDevice                               device,
     }
 
   uint32_t const count_bc_fm_hm_fills_transpose =
-    +count_bc + count_fm[0] + count_fm[1] + count_fm[2] + count_hm[0] + count_hm[1] + count_hm[2] +
+    count_bc + count_fm[0] + count_fm[1] + count_fm[2] + count_hm[0] + count_hm[1] + count_hm[2] +
     3;  // fill_in + fill_out + transpose
 
   uint32_t const count_all = count_bs + count_bc_fm_hm_fills_transpose;
@@ -193,19 +193,78 @@ hotsort_vk_create(VkDevice                               device,
   hs->pipelines.count = count_all;
 
   //
-  // create all the compute pipelines by reusing this info
+  // Prepare to create compute pipelines
   //
+
+  //
+  // Enable locally until the
+  // third_party/vulkan_loader_and_validation_layers is in sync with
+  // third_party/mesa.
+  //
+#ifndef VK_EXT_subgroup_size_control
+
+#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT 1000225000
+#define VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT 1000225001
+
+#define VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT 0x00000001
+#define VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT 0x00000002
+
+#define VK_EXT_subgroup_size_control 1
+#define VK_EXT_SUBGROUP_SIZE_CONTROL_SPEC_VERSION 1
+#define VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME "VK_EXT_subgroup_size_control"
+
+#if 0  // unused
+  typedef struct VkPhysicalDeviceSubgroupSizeControlPropertiesEXT
+  {
+    VkStructureType    sType;
+    void *             pNext;
+    uint32_t           minSubgroupSize;
+    uint32_t           maxSubgroupSize;
+    uint32_t           maxComputeWorkgroupSubgroups;
+    VkShaderStageFlags requiredSubgroupSizeStages;
+  } VkPhysicalDeviceSubgroupSizeControlPropertiesEXT;
+#endif
+
+  typedef struct VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT
+  {
+    VkStructureType sType;
+    void *          pNext;
+    uint32_t        requiredSubgroupSize;
+  } VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT;
+
+#endif
+
+  //
+  // Set the subgroup size to what we expected when we built the
+  // HotSort target
+  //
+#ifdef VK_EXT_subgroup_size_control
+  VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT const rssci[] = {
+    { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT,
+      .pNext = NULL,
+      .requiredSubgroupSize = 1u << target->config.slab.threads_log2 }
+  };
+#else
+  void * rssci = NULL;
+#endif
+
   VkComputePipelineCreateInfo cpci = {
-    .sType              = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-    .pNext              = NULL,
-    .flags              = VK_PIPELINE_CREATE_DISPATCH_BASE,
-    .stage              = { .sType               = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-               .pNext               = NULL,
-               .flags               = 0,
+    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+    .pNext = NULL,
+    .flags = VK_PIPELINE_CREATE_DISPATCH_BASE,
+
+    .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+               .pNext = rssci,
+#ifdef VK_EXT_subgroup_size_control
+               .flags = VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT,
+#else
+               .flags = 0,
+#endif
                .stage               = VK_SHADER_STAGE_COMPUTE_BIT,
                .module              = VK_NULL_HANDLE,
                .pName               = "main",
                .pSpecializationInfo = NULL },
+
     .layout             = pipeline_layout,
     .basePipelineHandle = VK_NULL_HANDLE,
     .basePipelineIndex  = 0
@@ -226,6 +285,13 @@ hotsort_vk_create(VkDevice                               device,
                                     .codeSize = 0,
                                     .pCode    = NULL };
 
+  //
+  // Create a pipeline from each module
+  //
+  // FIXME(allanmac): an alternative layout would list the module
+  // locations in the header enabling use of a parallelized pipeline
+  // creation instruction.
+  //
   uint32_t const * modules = target->modules;
 
   for (uint32_t ii = 0; ii < count_all; ii++)
@@ -338,6 +404,7 @@ hotsort_vk_release(VkDevice                            device,
 void
 hotsort_vk_pad(struct hotsort_vk const * const hs,
                uint32_t const                  count,
+               uint32_t * const                slabs_in,
                uint32_t * const                padded_in,
                uint32_t * const                padded_out)
 {
@@ -351,6 +418,7 @@ hotsort_vk_pad(struct hotsort_vk const * const hs,
   uint32_t const slabs_ru_rem_ru =
     MIN_MACRO(uint32_t, pow2_ru_u32(slabs_ru_rem), hs->config.block.slabs);
 
+  *slabs_in   = slabs_ru;
   *padded_in  = (block_slabs + slabs_ru_rem_ru) * hs->slab_keys;
   *padded_out = *padded_in;
 
@@ -646,12 +714,17 @@ hotsort_vk_sort(VkCommandBuffer                            cb,
   //
   // pre-sort fill?
   //
+  // Note: If there is either 0 or 1 key then there is nothing to do after padding the slab.
+  //
   if (is_pre_sort_reqd)
     {
       uint32_t const from_slab = count / hs->slab_keys;
       uint32_t const to_slab   = padded_pre_sort / hs->slab_keys;
 
       hs_cmd_fill_in(cb, hs, from_slab, to_slab);
+
+      if (count <= 1)
+        return;
 
       vk_barrier_compute_w_to_compute_r(cb);
     }

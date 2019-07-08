@@ -6,8 +6,8 @@
 // COLOR UTILITIES
 //
 
-#ifndef SRC_GRAPHICS_LIB_COMPUTE_COLOR_COLOR_H_
-#define SRC_GRAPHICS_LIB_COMPUTE_COLOR_COLOR_H_
+#ifndef SRC_GRAPHICS_LIB_COMPUTE_SPINEL_EXT_COLOR_COLOR_H_
+#define SRC_GRAPHICS_LIB_COMPUTE_SPINEL_EXT_COLOR_COLOR_H_
 
 //
 //
@@ -70,7 +70,7 @@ color_linear_to_srgb_rgb_f32(float rgb[3]);
 //
 
 void
-color_linear_lerp_rgba_f32(float       rgba_m[4],
+color_linear_lerp_rgba_f32(float       rgba_c[4],
                            float const rgba_a[4],
                            float const rgba_b[4],
                            float const t);
@@ -87,4 +87,4 @@ color_linear_lerp_rgba_f32(float       rgba_m[4],
 //
 //
 
-#endif  // SRC_GRAPHICS_LIB_COMPUTE_COLOR_COLOR_H_
+#endif  // SRC_GRAPHICS_LIB_COMPUTE_SPINEL_EXT_COLOR_COLOR_H_
