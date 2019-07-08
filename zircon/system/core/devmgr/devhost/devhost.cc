@@ -648,12 +648,14 @@ zx_status_t devhost_add(const fbl::RefPtr<zx_device_t>& parent,
   static_assert(sizeof(zx_device_prop_t) == sizeof(uint64_t));
   uint64_t device_id = 0;
   if (add_invisible) {
+    printf("MINE MINE Add invisible device\n");
     status = fuchsia_device_manager_CoordinatorAddDeviceInvisible(
         rpc.get(), hsend.release(), reinterpret_cast<const uint64_t*>(props), prop_count,
         child->name, strlen(child->name), child->protocol_id, child->driver->libname().data(),
         child->driver->libname().size(), proxy_args, proxy_args_len, client_remote.release(),
         &call_status, &device_id);
   } else {
+    printf("MINE MINE Adding normal device and sending add_device_config as %d for dev:%s\n", add_device_config, child->name);
     status = fuchsia_device_manager_CoordinatorAddDevice(
         rpc.get(), hsend.release(), reinterpret_cast<const uint64_t*>(props), prop_count,
         child->name, strlen(child->name), child->protocol_id, child->driver->libname().data(),
@@ -661,9 +663,11 @@ zx_status_t devhost_add(const fbl::RefPtr<zx_device_t>& parent,
         client_remote.release(), &call_status, &device_id);
   }
   if (status != ZX_OK) {
+    printf("MINE MINE Adding normal device failed for dev:%s stauts :%d\n", child->name, status);
     log(ERROR, "devhost[%s] add '%s': rpc sending failed: %d\n", path, child->name, status);
     return status;
   } else if (call_status != ZX_OK) {
+    printf("MINE MINE Adding normal device failed for dev:%s call_stauts :%d\n", child->name, call_status);
     log(ERROR, "devhost[%s] add '%s': rpc failed: %d\n", path, child->name, call_status);
     return call_status;
   }

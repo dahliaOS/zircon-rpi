@@ -37,7 +37,7 @@ protected:
 
 // This test checks what happens when only one topological properties is
 // specified
-TEST_F(DeviceAddTest, OneTopologicalProperty) {
+TEST_F(DeviceAddTest, DISABLED_OneTopologicalProperty) {
     std::unique_ptr<RootMockDevice> root_device;
     std::unique_ptr<MockDevice> child_device;
 
@@ -71,7 +71,7 @@ TEST_F(DeviceAddTest, TooManyTopologicalProperties) {
 
 // This test checks what happens when the same topological property is
 // specified twice
-TEST_F(DeviceAddTest, TooManyTopologicalPropertiesDuplicated) {
+TEST_F(DeviceAddTest, DISABLED_TooManyTopologicalPropertiesDuplicated) {
     std::unique_ptr<RootMockDevice> root_device;
     std::unique_ptr<MockDevice> child_device;
 

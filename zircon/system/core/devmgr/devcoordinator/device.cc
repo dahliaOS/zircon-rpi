@@ -721,6 +721,7 @@ static zx_status_t fidl_AddDevice(void* ctx, zx_handle_t raw_rpc, const uint64_t
                                   size_t driver_path_size, const char* args_data, size_t args_size,
                                   fuchsia_device_manager_AddDeviceConfig device_add_config,
                                   zx_handle_t raw_client_remote, fidl_txn_t* txn) {
+  printf("MINE MINE fidl_AddDevice: AddDevice BEFORE\n");
   auto parent = fbl::WrapRefPtr(static_cast<Device*>(ctx));
   zx::channel rpc(raw_rpc);
   fbl::StringPiece name(name_data, name_size);
@@ -729,7 +730,6 @@ static zx_status_t fidl_AddDevice(void* ctx, zx_handle_t raw_rpc, const uint64_t
   zx::channel client_remote(raw_client_remote);
 
   fbl::RefPtr<Device> device;
-  printf("MINE MINE fidl_AddDevice: AddDevice BEFORE\n");
   zx_status_t status = parent->coordinator->AddDevice(
       parent, std::move(rpc), props_data, props_count, name, protocol_id, driver_path, args, false,
       std::move(client_remote), &device);
