@@ -233,7 +233,9 @@ static void acpi_battery_release(void* ctx) {
     atomic_store(&dev->shutdown, true);
     thrd_join(dev->poll_thread, NULL);
 
+    /*
     AcpiRemoveNotifyHandler(dev->acpi_handle, ACPI_DEVICE_NOTIFY, acpi_battery_notify);
+    */
     if (dev->bst_buffer.Length != ACPI_ALLOCATE_BUFFER) {
         AcpiOsFree(dev->bst_buffer.Pointer);
     }
@@ -343,7 +345,7 @@ static int acpi_battery_poll_thread(void* arg) {
         zx_nanosleep(zx_deadline_after(ZX_MSEC(1000)));
     }
 out:
-    zxlogf(TRACE, "acpi-battery: poll thread exiting\n");
+    zxlogf(ERROR, "acpi-battery: poll thread exiting\n");
     return 0;
 }
 
@@ -393,6 +395,7 @@ zx_status_t battery_init(zx_device_t* parent, ACPI_HANDLE acpi_handle) {
     call_BST(dev);
 
     // install acpi event handler
+    /*
     ACPI_STATUS acpi_status = AcpiInstallNotifyHandler(acpi_handle, ACPI_DEVICE_NOTIFY,
                                                        acpi_battery_notify, dev);
     if (acpi_status != AE_OK) {
@@ -400,6 +403,7 @@ zx_status_t battery_init(zx_device_t* parent, ACPI_HANDLE acpi_handle) {
         acpi_battery_release(dev);
         return acpi_to_zx_status(acpi_status);
     }
+    */
 
     // deprecated - create polling thread
     int rc = thrd_create_with_name(&dev->poll_thread,
