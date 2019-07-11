@@ -1,4 +1,4 @@
-use crate::{assert_satisfies, over};
+use crate::{assert_satisfies, over, expect};
 use crate::expectation::*;
 use crate::expectation::Predicate as P;
 use fidl_fuchsia_bluetooth_control::{Appearance, RemoteDevice, TechnologyType};
@@ -43,14 +43,14 @@ fn test() -> Result<(),AssertionText> {
 
 #[test]
 fn simple_predicate_succeeds() {
-    let predicate = Predicate::equal(Some(TEST_PEER_NAME.to_string())).over(
+    let predicate = P::equal(Some(TEST_PEER_NAME.to_string())).over(
             |dev: &RemoteDevice| &dev.name,
             ".name");
     assert!(predicate.satisfied(&test_peer()));
 }
 #[test]
 fn simple_incorrect_predicate_fail() {
-    let predicate = Predicate::equal(Some(INCORRECT_PEER_NAME.to_string())).over(
+    let predicate = P::equal(Some(INCORRECT_PEER_NAME.to_string())).over(
             |dev: &RemoteDevice| &dev.name,
             ".name");
     assert!(!predicate.satisfied(&test_peer()));
@@ -108,11 +108,10 @@ fn predicate_not_correct_fails() {
 fn incorrect_over_predicate_fails() {
     let predicate = over!(RemoteDevice:name, P::equal(Some("INCORRECT_NAME".to_string())));
 
-    //assert_satisfies!(&test_peer(), predicate);
     let expected_msg = vec![
         "FAILED EXPECTATION",
         "  .name == Some(\"INCORRECT_NAME\")",
-        "FALSIFIED BY",
+        "BECAUSE",
         "  .name Some(\"TestPeer\") != Some(\"INCORRECT_NAME\")"
     ].join("\n");
 
@@ -126,8 +125,8 @@ fn incorrect_not_predicate_fails() {
     let expected_msg = vec![
         "FAILED EXPECTATION",
         "  .name NOT == Some(\"TestPeer\")",
-        "FALSIFIED BY",
-        "  .name NOT == Some(\"TestPeer\")"
+        "BECAUSE",
+        "  .name Some(\"TestPeer\") == Some(\"TestPeer\")"
     ].join("\n");
 
     assert_eq!(predicate.assert_satisfied(&test_peer()), Err(AssertionText(expected_msg)))
@@ -156,13 +155,36 @@ fn incorrect_compound_all_predicate_fails() {
             P::all(
                 over!(Person:name, P::not_equal("Bob".to_string()))
                 .and(
-                over!(Person:age, P::new(|age: &u64| *age < 50, "< 50")))));
+                over!(Person:age, P::predicate(|age: &u64| *age < 50, "< 50")))));
+
+    /*
+    let predicate =
+        over!(Group => persons,
+            all(
+                over!(Person => name, not_equal("Bob".to_string()))
+                .and(
+                over!(Person => age, satisfies(|age: &u64| *age < 50, "< 50")))));
+
+
+    let predicate =
+        fields!(Group, persons => all( fields!(Person,
+                                        name => not_equal("Bob".to_string()),
+                                        age => satisfies(|age| *age < 50, "<50"),
+                                      )))
+    */
+
+    let predicate =
+        expect!(Group, persons => P::all( expect!(name => P::not_equal("Bob".to_string()))
+                                             .and( expect!(age => P::predicate(|a| a < 50, "< 50")))));
+
+                            //and!( name => not_equal("Bob".to_string()),
+                                  //age => satisfies(|age| *age < 50, "<50"))))
 
     let expected_msg = vec![
         "FAILED EXPECTATION",
         "  .persons ALL (.name NOT == \"Bob\") AND (.age < 50)",
-        "FALSIFIED BY",
-        "  .persons ELEM Person { name: \"Bob\", age: 41 } FAILS .name NOT == \"Bob\","
+        "BECAUSE",
+        "  .persons ELEM Person { name: \"Bob\", age: 41 } BECAUSE .name \"Bob\" == \"Bob\","
     ].join("\n");
 
     assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
@@ -181,19 +203,17 @@ fn incorrect_compound_any_predicate_fails() {
             P::any(
                 over!(Person:name, P::not_equal("Bob".to_string()))
                 .and(
-                over!(Person:age, P::new(|age: &u64| *age > 40, "> 40")))));
-
-    assert_satisfies!(&test_group, predicate);
-
-    /*
+                over!(Person:age, P::predicate(|age: &u64| *age > 40, "> 40")))));
 
     let expected_msg = vec![
         "FAILED EXPECTATION",
-        "  .persons ALL (.name NOT == \"Bob\") AND (.age < 50)",
-        "FALSIFIED BY",
-        "  .persons ELEM Person { name: \"Bob\", age: 41 } FAILS .name NOT == \"Bob\""
+        "  .persons ANY (.name NOT == \"Bob\") AND (.age > 40)",
+        "BECAUSE",
+        "  .persons",
+        "    ELEM Person { name: \"Alice\", age: 40 } BECAUSE .age NOT > 40,",
+        "    ELEM Person { name: \"Bob\", age: 41 } BECAUSE .name \"Bob\" == \"Bob\",",
+        "    ELEM Person { name: \"Bob\", age: 39 } BECAUSE (.name \"Bob\" == \"Bob\") AND (.age NOT > 40),"
     ].join("\n");
 
     assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
-    */
 }

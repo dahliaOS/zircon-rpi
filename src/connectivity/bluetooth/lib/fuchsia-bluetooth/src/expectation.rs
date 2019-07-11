@@ -88,7 +88,7 @@ impl<T> Clone for Predicate<T> {
 
 impl<T> Debug for Predicate<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.describe(&BoxAllocator).1.pretty(80).fmt(f)
+        self.describe(&BoxAllocator).1.pretty(100).fmt(f)
     }
 }
 
@@ -117,13 +117,9 @@ where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
         if t.into_iter().any(|el| self.satisfied(el)) {
             None
         } else {
+            // All are falsifications, so display all (up to MAX_ITER_FALSIFICATIONS)
             t.into_iter()
-                .filter_map(|el| self.falsify(el, doc).map(|falsification| {
-                    doc.text("ELEM")
-                        .append(doc.space().append(doc.text(show_debug(el))).nest(2))
-                        .append(doc.space().append(doc.text("FAILS")))
-                        .append(doc.space().append(falsification.group().nest(2)).append(doc.text(","))).group()
-                }))
+                .filter_map(|el| falsify_elem(&self, el, doc))
                 .take(MAX_ITER_FALSIFICATIONS)
                 .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
         }
@@ -136,6 +132,15 @@ pub trait IsAll<T> {
     fn falsify_all<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>>;
 }
 
+fn falsify_elem<'d, T: Debug>(pred: &Predicate<T>, el: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
+    pred.falsify(el, doc).map(|falsification| {
+        doc.text("ELEM")
+            .append(doc.space().append(doc.text(show_debug(el))).nest(2))
+            .append(doc.space().append(doc.text("BECAUSE")))
+            .append(doc.space().append(falsification.group()).nest(2)).append(doc.text(",")).group()
+    })
+}
+
 impl<T: 'static, Elem: Debug + 'static> IsAll<T> for Predicate<Elem>
 where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
@@ -143,12 +148,7 @@ where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
     }
     fn falsify_all<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
         t.into_iter()
-            .filter_map(|el| self.falsify(el, doc).map(|falsification| {
-                doc.text("ELEM")
-                    .append(doc.space().append(doc.text(show_debug(el))).nest(2))
-                    .append(doc.space().append(doc.text("FAILS")))
-                    .append(doc.space().append(falsification.group().nest(2)).append(doc.text(","))).group()
-            }))
+            .filter_map(|el| falsify_elem(&self, el, doc))
             .take(MAX_ITER_FALSIFICATIONS)
             .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
     }
@@ -176,6 +176,22 @@ impl<T, U> IsOver<T> for OverPred<T, U> {
     }
 }
 
+// Shortcut implementations that rely on `Debug` to provide usable output on falsification
+// If you wish to create predicates for `?Debug` types, use the `Predicate` or `Equal` constructors
+// directly.
+impl<T: Debug + 'static> Predicate<T> {
+    pub fn predicate<F, S>(f: F, label: S) -> Predicate<T>
+    where
+        F: Fn(&T) -> bool + Send + Sync + 'static,
+        S: Into<String>
+    {
+        // Also improve falsification for fn predicates and nots (at least not equals?)
+        //   TODO - fn predicates can default to requiring `Debug`
+        // TODO(nickpollard) - what am I doing here?
+        // Need to store the debug instance somewhere?
+        Predicate::Predicate(Arc::new(f), label.into())
+    }
+}
 impl<T: PartialEq + Debug + 'static> Predicate<T> {
     pub fn equal(t: T) -> Predicate<T> {
         Predicate::Equal(Arc::new(t), Arc::new(T::eq), Arc::new(show_debug))
@@ -216,16 +232,12 @@ impl<T> Predicate<T> {
                 if are_eq(expected, t) {
                     None
                 } else {
-                    Some(doc.text(repr(t)).append(doc.space()).append(doc.text("!=")).append(doc.space()).append(doc.text(repr(expected))))
+                    Some(doc.text(repr(t)).append(doc.space()).append(doc.text("!=")).append(doc.space()).append(doc.text(repr(expected))).group())
                 }
             },
             Predicate::And(left, right) => {
                 match (left.falsify(t, doc), right.falsify(t, doc)) {
-                    (Some(l), Some(r)) => {
-                        // TODO(nickpollard) - improve? indent? parens?
-                        // Also improve falsification for fn predicates and nots (at least not equals?)
-                        Some(l.append(doc.space()).append(doc.text("AND")).append(doc.space()).append(r).group())
-                    },
+                    (Some(l), Some(r)) => Some(parens(doc, l).append(doc.space()).append(doc.text("AND")).append(doc.space()).append(parens(doc, r)).group()),
                     (Some(l), None) => Some(l),
                     (None, Some(r)) => Some(r),
                     (None, None) => None
@@ -237,10 +249,15 @@ impl<T> Predicate<T> {
             Predicate::Not(inner) => {
                 match inner.falsify(t, doc) {
                     Some(_) => None,
-                    None => Some(doc.text("NOT").append(doc.space().append(inner.describe(doc)).nest(2)).group())
+                    None => {
+                        match &**inner {
+                            Predicate::Equal(expected, _, repr) => Some(doc.text(repr(t)).append(doc.space()).append(doc.text("==")).append(doc.space()).append(doc.text(repr(&expected)))),
+                            _ => Some(doc.text("NOT").append(doc.space().append(inner.describe(doc)).nest(2)).group()),
+                        }
+                    }
                 }
             },
-            Predicate::Predicate(pred, desc) => if pred(t) { None } else { Some(doc.as_string(desc)) },
+            Predicate::Predicate(pred, desc) => if pred(t) { None } else { Some(doc.text("NOT").append(doc.space().append(doc.as_string(desc)).nest(2))) },
             Predicate::Over(over) => over.falsify_over(t, &BoxAllocator),
             Predicate::Any(any) => any.falsify_any(t, &BoxAllocator),
             Predicate::All(all) => all.falsify_all(t, &BoxAllocator),
@@ -264,9 +281,9 @@ impl<T> Predicate<T> {
             Some(falsification) => {
                 let d = doc.text("FAILED EXPECTATION")
                             .append(doc.newline().append(self.describe(&doc)).nest(2))
-                            .append(doc.newline().append(doc.text("FALSIFIED BY")))
+                            .append(doc.newline().append(doc.text("BECAUSE")))
                             .append(doc.newline().append(falsification).nest(2));
-                Err(AssertionText(d.1.pretty(80).to_string()))
+                Err(AssertionText(d.1.pretty(100).to_string()))
             },
             None => Ok(()),
         }
@@ -279,13 +296,6 @@ impl<T> Predicate<T> {
     }
     pub fn not(self) -> Predicate<T> {
         Predicate::Not(Box::new(self))
-    }
-    pub fn new<F, S>(f: F, label: S) -> Predicate<T>
-    where
-        F: Fn(&T) -> bool + Send + Sync + 'static,
-        S: Into<String>
-    {
-        Predicate::Predicate(Arc::new(f), label.into())
     }
 }
 
@@ -333,6 +343,18 @@ macro_rules! over {
     ($type:ty : $selector:tt, $pred:expr) => {
         $pred.over(|var: &$type| &var.$selector, format!(".{}", stringify!($selector)))
     }
+}
+
+//expect!(Group, persons => P::all( expect!(name, not_equal("Bob".to_string()))
+//                                     .and( expect!(age, satisfies(|a| a < 50, "< 50"))))
+#[macro_export]
+macro_rules! expect {
+    ($selector:tt => $pred:expr) => {
+        $pred.over(|v| &v.$selector, format!(".{}", stringify!($selector)))
+    };
+    ($type:ty, $selector:tt => $pred:expr) => {
+        $pred.over(|var: &$type| &var.$selector, format!(".{}", stringify!($selector)))
+    };
 }
 
 #[macro_export]

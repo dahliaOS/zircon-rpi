@@ -10,25 +10,25 @@ pub fn name(expected_name: &str) -> Predicate<RemoteDevice> {
 }
 pub fn address(expected_address: &str) -> Predicate<RemoteDevice> {
     let address = expected_address.to_string();
-    Predicate::<RemoteDevice>::new(
+    Predicate::<RemoteDevice>::predicate(
         move |peer| peer.address == address,
         format!("address == {}", expected_address),
     )
 }
 pub fn technology(tech: TechnologyType) -> Predicate<RemoteDevice> {
-    Predicate::<RemoteDevice>::new(
+    Predicate::<RemoteDevice>::predicate(
         move |peer| peer.technology == tech,
         format!("technology == {:?}", tech),
     )
 }
 pub fn connected(connected: bool) -> Predicate<RemoteDevice> {
-    Predicate::<RemoteDevice>::new(
+    Predicate::<RemoteDevice>::predicate(
         move |peer| peer.connected == connected,
         format!("connected == {}", connected),
     )
 }
 pub fn bonded(bonded: bool) -> Predicate<RemoteDevice> {
-    Predicate::<RemoteDevice>::new(
+    Predicate::<RemoteDevice>::predicate(
         move |peer| peer.bonded == bonded,
         format!("bonded == {}", bonded),
     )

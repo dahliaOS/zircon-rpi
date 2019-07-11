@@ -6,13 +6,13 @@ use fidl_fuchsia_bluetooth_control::AdapterState;
 
 pub fn name(expected_name: &str) -> Predicate<AdapterState> {
     let name = Some(expected_name.to_string());
-    Predicate::<AdapterState>::new(
+    Predicate::<AdapterState>::predicate(
         move |host_driver| host_driver.local_name == name,
         format!("name == {}", expected_name),
     )
 }
 pub fn discovering(discovering: bool) -> Predicate<AdapterState> {
-    Predicate::<AdapterState>::new(
+    Predicate::<AdapterState>::predicate(
         move |host_driver| {
             host_driver.discovering == Some(Box::new(Bool { value: discovering }))
         },
@@ -20,7 +20,7 @@ pub fn discovering(discovering: bool) -> Predicate<AdapterState> {
     )
 }
 pub fn discoverable(discoverable: bool) -> Predicate<AdapterState> {
-    Predicate::<AdapterState>::new(
+    Predicate::<AdapterState>::predicate(
         move |host_driver| {
             host_driver.discoverable == Some(Box::new(Bool { value: discoverable }))
         },

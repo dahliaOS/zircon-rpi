@@ -26,6 +26,7 @@ pub fn control_timeout() -> Duration {
     10.seconds()
 }
 
+#[derive(Debug)]
 pub struct ControlState {
     /// Current hosts
     pub hosts: HashMap<String, AdapterInfo>,
@@ -137,7 +138,7 @@ pub mod control_expectation {
     pub fn active_host_is(id: String) -> Predicate<ControlState> {
         let msg = format!("active bt-host is {}", id);
         let expected_host = Some(id);
-        Predicate::new(
+        Predicate::predicate(
             move |state: &ControlState| -> bool { state.active_host == expected_host },
             msg,
         )
@@ -145,7 +146,7 @@ pub mod control_expectation {
 
     pub fn host_not_present(id: String) -> Predicate<ControlState> {
         let msg = format!("bt-host {} is no longer present", id);
-        Predicate::new(move |state: &ControlState| !state.hosts.contains_key(&id), msg)
+        Predicate::predicate(move |state: &ControlState| !state.hosts.contains_key(&id), msg)
     }
 
     pub fn peer_exists(p: Predicate<RemoteDevice>) -> Predicate<ControlState> {
@@ -181,9 +182,8 @@ pub async fn activate_fake_host(
 
     let hci = Emulator::create_and_publish(name).await?;
 
-    let state = control
-        .when_satisfied(
-            Predicate::<ControlState>::new(
+        let control_state = control.when_satisfied(
+            Predicate::<ControlState>::predicate(
                 move |control| control
                     .hosts
                     .iter()
