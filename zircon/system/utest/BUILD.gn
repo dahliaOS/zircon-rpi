@@ -203,6 +203,7 @@ if (current_cpu != "") {
       "hypervisor",
       "int-types",
       "kcounter",
+      "kernel-clocks",
       "kernel-unittests",
       "log",
       "logger",

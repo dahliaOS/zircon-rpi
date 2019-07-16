@@ -53,6 +53,12 @@ struct zx_smc_result_t {};
 [extern]
 struct zx_system_powerctl_arg_t {};
 
+[extern]
+struct zx_clock_details_t {};
+
+[extern]
+struct zx_clock_update_args_t {};
+
 // TODO(banjo): These are here to make the front end happy, but the abigen
 // backend special cases them to keep their original name, and make them just
 // passed "by value" as basic types.
@@ -67,9 +73,11 @@ protocol Api {
     //
     //
 
+    // TODO(johngro): deprecate and remove this
     /// Acquire the current time.
     clock_get(zx.clock clock_id) -> (zx.status status, zx.time out);
 
+    // TODO(johngro): deprecate and remove this
     /// Acquire the current time.
     clock_get_new(zx.clock clock_id) -> (zx.status status, zx.time out);
 
@@ -95,6 +103,7 @@ protocol Api {
     [vdsocall]
     deadline_after(zx.duration nanoseconds) -> (zx.time time);
 
+    // TODO(johngro): deprecate and remove this
     [rights="handle must have resource kind ZX_RSRC_KIND_ROOT."]
     clock_adjust(handle<resource> handle, zx.clock clock_id, int64 offset) -> (zx.status status);
 
@@ -116,6 +125,26 @@ protocol Api {
     // to be used by application code.
     [internal]
     clock_get_monotonic_via_kernel() -> (zx.time time);
+
+    /// Create a new clock object.
+    [rights="None.",
+     argtype="out handle_acquire"]
+    clock_create(uint32 options) -> (zx.status status, handle<clock> out);
+
+    /// Perform a basic read of the clock.
+    [rights="handle must be of type ZX_OBJ_TYPE_CLOCK and have ZX_RIGHT_READ."]
+    clock_read(handle<clock> handle) -> (zx.status status, zx.time now);
+
+    /// Fetch all of the low level details of the clock's current status.
+    [rights="handle must be of type ZX_OBJ_TYPE_CLOCK and have ZX_RIGHT_READ.",
+     argtype="details OUT"]
+    clock_get_details(handle<clock> handle, array<zx_clock_details_t>:1 details) ->
+        (zx.status status);
+
+    /// Make adjustments to the clock.
+    [rights="handle must be of type ZX_OBJ_TYPE_CLOCK and have ZX_RIGHT_WRITE.",
+     argtype="args IN"]
+    clock_update(handle<clock> handle, array<zx_clock_update_args_t>:1 args) -> (zx.status status);
 
     //
     //
@@ -1302,7 +1331,6 @@ protocol Api {
     pager_supply_pages(handle<pager> pager, handle<vmo> pager_vmo, uint64 offset, uint64 length,
                        handle<vmo> aux_vmo, uint64 aux_offset) ->
         (zx.status status);
-
 
     //
     //
