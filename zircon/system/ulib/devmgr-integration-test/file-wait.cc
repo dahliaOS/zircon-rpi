@@ -59,6 +59,7 @@ zx_status_t WaitForFile2(const fbl::unique_fd& rootdir, const fbl::unique_fd& di
     zx_status_t status = fdio_watch_directory(dir.get(), watch_func, ZX_TIME_INFINITE,
                                               const_cast<char*>(file));
     if (status != ZX_ERR_STOP) {
+        printf("WaitForFile2 ERROR: status = %d\n", status);
         return status;
     }
     out->reset(openat(rootdir.get(), full_path, O_RDWR));
@@ -92,6 +93,7 @@ zx_status_t RecursiveWaitForFileHelper(const fbl::unique_fd& rootdir, const fbl:
 
 // Waits for the relative |path| starting in |dir| to appear, and opens it.
 zx_status_t RecursiveWaitForFile(const fbl::unique_fd& dir, const char* path, fbl::unique_fd* out) {
+        printf("RecursiveWaitForFile %s\n", path);
     char path_copy[PATH_MAX];
     if (strlen(path) >= sizeof(path_copy)) {
         return ZX_ERR_INVALID_ARGS;

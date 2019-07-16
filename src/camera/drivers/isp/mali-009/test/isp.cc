@@ -51,11 +51,11 @@ class IspTest : public zxtest::Test {
 };
 
 void IspTest::SetUp() {
-  fbl::unique_fd devfs_root(open("/dev", O_RDWR));
+  fbl::unique_fd devfs_root(open("/dev/class/isp-device-test", O_RDONLY));
   ASSERT_TRUE(devfs_root);
 
   zx_status_t status = devmgr_integration_test::RecursiveWaitForFile(
-      devfs_root, "class/isp-device-test/000", &fd_);
+      devfs_root, "000", &fd_);
   ASSERT_EQ(ZX_OK, status);
 
   status = fdio_get_service_handle(fd_.get(), &handle_);
