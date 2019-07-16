@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <zxtest/zxtest.h>
 
+#include <iostream>
+
 namespace {
 
 // bool IsBoardName(const char* requested_board_name) {
@@ -53,12 +55,19 @@ class IspTest : public zxtest::Test {
 void IspTest::SetUp() {
   fbl::unique_fd devfs_root(open("/dev/class/isp-device-test", O_RDONLY));
   ASSERT_TRUE(devfs_root);
+  std::cout << "Opened devfs root. now openning 000" <<std::endl;
+  // fd_.reset(openat(devfs_root.get(), "000", O_RDONLY));
+  // std::cout << "Opened 000" <<std::endl;
 
+  // ASSERT_TRUE(fd_);
   zx_status_t status = devmgr_integration_test::RecursiveWaitForFile(
       devfs_root, "000", &fd_);
   ASSERT_EQ(ZX_OK, status);
 
+  // zx_status_t status;
+  std::cout << "Getting Service Handle" <<std::endl;
   status = fdio_get_service_handle(fd_.get(), &handle_);
+  std::cout << "Got Service Handle" <<std::endl;
   ASSERT_EQ(ZX_OK, status);
 }
 
@@ -69,8 +78,7 @@ TEST_F(IspTest, BasicConnectionTest) {
       fuchsia_camera_test_IspTesterRunTests(handle_, &out_status, &report);
   ASSERT_EQ(ZX_OK, status);
   ASSERT_EQ(ZX_OK, out_status);
-  EXPECT_EQ(1, report.test_count);
-  EXPECT_EQ(1, report.success_count);
+  EXPECT_EQ(report.success_count, report.test_count);
   EXPECT_EQ(0, report.failure_count);
 }
 
