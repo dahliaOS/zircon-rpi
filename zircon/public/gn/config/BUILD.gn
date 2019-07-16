@@ -129,7 +129,7 @@ config("compiler") {
 
     if (current_cpu == "arm64") {
       # Generate code for the fairly generic cortex-a53.
-      compiler_flags += [ "-mcpu=cortex-a53" ]
+      compiler_flags += [ "-mcpu=cortex-a53", "-march=armv8.1-a" ]
 
       # x18 is reserved in the Fuchsia userland ABI so it can be used
       # for things like -fsanitize=shadow-call-stack.  In the kernel,
