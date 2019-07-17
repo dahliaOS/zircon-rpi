@@ -79,7 +79,6 @@ impl<N: DriverNotify> Inner<N> {
         let mut state = self.state.lock();
         let ret = self.driver_state.get_avail(state.next);
         if ret.is_some() {
-            // TODO: worry about events
             state.next = state.next.wrapping_add(1);
         }
         drop(state);
@@ -188,7 +187,7 @@ pub enum Desc<'a> {
 pub struct MemoryNotFound{addr: usize, len: u32}
 
 impl<'a> Desc<'a> {
-    pub fn new<M: DriverMem>(desc: &'static ring::Desc, mem: &M) -> Result<Desc<'a>, MemoryNotFound> {
+    pub fn new<M: DriverMem>(desc: &'a ring::Desc, mem: &M) -> Result<Desc<'a>, MemoryNotFound> {
         let (addr, len) = desc.data();
         let addr = addr as usize;
         let slice = mem.translate(DriverAddr(addr), len).ok_or(MemoryNotFound{addr, len})?;
@@ -206,9 +205,29 @@ impl<'a> Desc<'a> {
     }
 }
 
+enum RawDesc<'a> {
+    Direct(Desc<'a>),
+    Indirect(&'a [ring::Desc]),
+}
+
+impl<'a> RawDesc<'a> {
+    fn new<M: DriverMem>(desc: &'a ring::Desc, mem: &M) -> Result<RawDesc<'a>, MemoryNotFound> {
+        if !desc.is_indirect() {
+            return Desc::new(desc, mem).map(|x| RawDesc::Direct(x));
+        }
+        let (addr, len) = desc.data();
+        let addr = addr as usize;
+        // TODO: validate addr alignment and len multiple
+        let slice = mem.translate(DriverAddr(addr), len).ok_or(MemoryNotFound{addr, len})?;
+        let slice = unsafe{std::slice::from_raw_parts(slice.as_ptr() as *const ring::Desc, len as usize / std::mem::size_of::<ring::Desc>())};
+        Ok(RawDesc::Indirect(slice))
+    }
+}
+
 pub struct DescChainIter<'a, N: DriverNotify, M> {
     queue: Queue<N>,
-    desc: Option<u16>,
+    indirect: Option<(&'a [ring::Desc], u16)>,
+    direct: Option<u16>,
     mem: &'a M,
     chain: &'a mut DescChain<N>,
 }
@@ -216,11 +235,30 @@ pub struct DescChainIter<'a, N: DriverNotify, M> {
 impl<'a, N: DriverNotify, M: DriverMem> Iterator for DescChainIter<'a, N, M> {
     type Item = Result<Desc<'a>, MemoryNotFound>;
 
+    // TODO: more potential errors instead of just suddenly having a None.
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(ret) = self.desc {
-            let desc = self.queue.0.driver_state.get_desc(ret);
-            self.desc = desc.clone().and_then(|d| d.next());
-            desc.map(|d| Desc::new(d, self.mem))
+        if let Some((indirect_table, desc_index)) = self.indirect {
+            if let Some(desc) = indirect_table.get(desc_index as usize) {
+                self.indirect = desc.next().map(|d| (indirect_table, d));
+                return Some(Desc::new(desc, self.mem))
+            }
+            // Consider this the end of the indirect chain and fall through to the next direct block
+            self.indirect = None;
+        }
+        if let Some(desc_index) = self.direct {
+            let raw_desc = self.queue.0.driver_state.get_desc(desc_index)?;
+            self.direct = raw_desc.next();
+            match RawDesc::new(raw_desc, self.mem) {
+                Err(e) => Some(Err(e)),
+                Ok(RawDesc::Direct(desc)) => Some(Ok(desc)),
+                Ok(RawDesc::Indirect(indirect)) => {
+                    // This only fails if len was 0, which would indicate an invalid descriptor
+                    // chain and so we'll just return a None.
+                    let raw_desc = indirect.get(0)?;
+                    self.indirect = raw_desc.next().map(|d| (indirect, d));
+                    Some(Desc::new(raw_desc, self.mem))
+                },
+            }
         } else {
             None
         }
@@ -237,7 +275,7 @@ impl<'a, N: DriverNotify, M: DriverMem> DescChainIter<'a, N, M> {
     /// be a memory race.
     /// TODO: err won't this allow for two iterators to return writable descriptors?
     pub unsafe fn clone(&self) -> DescChainIter<'a, N, M> {
-        DescChainIter {queue: self.queue.clone(), desc: self.desc, mem: self.mem, chain:
+        DescChainIter {queue: self.queue.clone(), indirect: self.indirect, direct: self.direct, mem: self.mem, chain:
             &mut*(self.chain as *const DescChain<N> as *mut DescChain<N>)
         }
     }
@@ -253,7 +291,8 @@ impl<N: DriverNotify> DescChain<N> {
     pub fn iter<'a, M: DriverMem>(&'a mut self, mem: &'a M) -> DescChainIter<'a, N, M> {
         DescChainIter {
             queue: self.queue.clone(),
-            desc: Some(self.first_desc),
+            indirect: None,
+            direct: Some(self.first_desc),
             chain: self,
             mem,
         }

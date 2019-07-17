@@ -4,6 +4,7 @@
 
 //! Write virtio devices in rust :)
 
+#![allow(warnings)]
 #[macro_use] extern crate failure;
 
 pub mod ring;
