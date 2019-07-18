@@ -62,6 +62,9 @@ class DmaManager {
   // frame_available_callback.
   void OnFrameWritten();
 
+  // Prints status registers. Used for debugging.
+  void PrintStatus(ddk::MmioBuffer *mmio);
+
  private:
   bool enabled_ = false;
   ddk::MmioView isp_mmio_local_;
@@ -82,6 +85,10 @@ class DmaManager {
   auto GetUvActiveDim();
   auto GetPrimaryLineOffset();
   auto GetUvLineOffset();
+  auto GetPrimaryFrameCount();
+  auto GetUvFrameCount();
+  auto GetPrimaryFailures();
+  auto GetUvFailures();
 
   // Writes the dma format to the registers
   void WriteFormat();
