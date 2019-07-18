@@ -230,7 +230,7 @@ void ArmIspDevice::IspLoadSeq_settings() {
 
   IspGlobalMonitor_Failures::Get()
       .ReadFrom(&isp_mmio_)
-      .set_fr_y_dma_wfifo_fail_full(0x1)
+      .set_fr_y_dma_wfifo_fail_full(0)
       .set_fr_y_dma_wfifo_fail_empty(0)
       .set_fr_uv_dma_wfifo_fail_full(0)
       .set_fr_uv_dma_wfifo_fail_empty(0)

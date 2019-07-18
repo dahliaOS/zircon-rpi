@@ -90,6 +90,32 @@ void ArmIspDevice::PowerUpIsp() {
                       HHI_MIPI_ISP_CLK_CNTL);
 }
 
+void ArmIspDevice::HandleDmaError() {
+
+    printf("Reading dma alarm\n");
+    IspGlobalMonitor_ClearError::Get()
+        .ReadFrom(&isp_mmio_)
+        .set_output_dma_clr_alarm(1)
+        .set_temper_dma_clr_alarm(1)
+        .WriteTo(&isp_mmio_);
+
+    // Now read the alarms:
+    auto dma_alarm =
+        IspGlobalMonitor_Failures::Get().ReadFrom(&isp_mmio_);
+    dma_alarm.PrintAlarms();
+
+    printf("Dma statuses:\n");
+    full_resolution_dma_->PrintStatus(&isp_mmio_);
+    downscaled_dma_->PrintStatus(&isp_mmio_);
+   
+    printf("Clearing dma alarm\n");
+    IspGlobalMonitor_ClearError::Get()
+        .ReadFrom(&isp_mmio_)
+        .set_output_dma_clr_alarm(0)
+        .set_temper_dma_clr_alarm(0)
+        .WriteTo(&isp_mmio_);
+}
+
 // Interrupt handler for the ISP.
 int ArmIspDevice::IspIrqHandler() {
   zxlogf(INFO, "%s start\n", __func__);
@@ -97,6 +123,7 @@ int ArmIspDevice::IspIrqHandler() {
 
   while (running_.load()) {
     status = isp_irq_.wait(NULL);
+    printf("%s: came out of wait, status = %d\n", __func__, (int)status);
     if (status != ZX_OK) {
       return status;
     }
@@ -127,13 +154,19 @@ int ArmIspDevice::IspIrqHandler() {
 
 
     if (irq_status.has_errors()) {
-      zxlogf(ERROR, "%s ISP Error Occured, resetting ISP", __func__);
+      zxlogf(ERROR, "%s ISP Error Occured, resetting ISP\n", __func__);
+      printf("%s ISP Error Occured, resetting ISP\n", __func__);
       // TODO(braval) : Handle error case here
+      if (irq_status.dma_error_interrupt()) {
+         HandleDmaError();
+      }
       continue;
     }
 
     // Currently only handling Frame Start Interrupt.
     if (irq_status.isp_start()) {
+
+    printf("%s: irq_status.isp_start()\n", __func__);
       // Frame Start Interrupt
       auto current_config = IspGlobal_Config4::Get().ReadFrom(&isp_mmio_);
       if (current_config.is_pong()) {
@@ -175,7 +208,11 @@ int ArmIspDevice::IspIrqHandler() {
           sync_completion_signal(&frame_processing_signal_);
         }
       }
+    } else {
+    printf("%s: irq_status was an unsupported status!\n", __func__);
+    irq_status.PrintStatus();
     }
+
   }
   return status;
 }
@@ -309,7 +346,7 @@ zx_status_t ArmIspDevice::InitIsp() {
 
   // Start frame processing thread
   auto frame_processing_func = [](void* arg) -> int {
-    return static_cast<ArmIspDevice*>(arg)->IspIrqHandler();
+    return static_cast<ArmIspDevice*>(arg)->FrameProcessingThread();
   };
 
   running_frame_processing_.store(true);
@@ -555,6 +592,7 @@ zx_status_t ArmIspDevice::ReleaseFrame(uint32_t buffer_id, stream_type_t type) {
 
 // A call to either stream type to start will get the isp to start running.
 zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
+  printf("%s\n", __func__);
   // Ignore anything that is not FullFrame or Downscaled:
   bool was_streaming = full_resolution_streaming_ || downscaled_streaming_;
   switch (type) {
@@ -707,6 +745,7 @@ int ArmIspDevice::FrameProcessingThread() {
     // Currently this is called only on the new frame signal, so we maintain
     // a variable to tell if we need to finish processing the last frame.
     if (first_frame_processed_) {
+      printf("%s First Frame Processed\n", __func__);
       first_frame_processed_ = false;
     } else {
       // Each of these calls has it's own interrupt, that it could be

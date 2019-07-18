@@ -142,6 +142,7 @@ class ArmIspDevice : public IspDeviceType,
   void PowerUpIsp();
   void IspHWReset(bool reset);
   int IspIrqHandler();
+  void HandleDmaError();
   void CopyContextInfo(uint8_t config_space, uint8_t direction);
   void CopyMeteringInfo(uint8_t config_space);
   zx_status_t SetPort(uint8_t kMode);

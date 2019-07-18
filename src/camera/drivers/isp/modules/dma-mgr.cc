@@ -92,6 +92,48 @@ auto DmaManager::GetUvActiveDim() {
   }
 }
 
+auto DmaManager::GetPrimaryFrameCount() {
+  if (stream_type_ == Stream::Downscaled) {
+    return ping::DownScaled::Primary::DmaWriter_FrameCount::Get();
+  } else {
+    return ping::FullResolution::Primary::DmaWriter_FrameCount::Get();
+  }
+}
+
+auto DmaManager::GetUvFrameCount() {
+  if (stream_type_ == Stream::Downscaled) {
+    return ping::DownScaled::Uv::DmaWriter_FrameCount::Get();
+  } else {
+    return ping::FullResolution::Uv::DmaWriter_FrameCount::Get();
+  }
+}
+
+auto DmaManager::GetPrimaryFailures() {
+  if (stream_type_ == Stream::Downscaled) {
+    return ping::DownScaled::Primary::DmaWriter_Failures::Get();
+  } else {
+    return ping::FullResolution::Primary::DmaWriter_Failures::Get();
+  }
+}
+
+auto DmaManager::GetUvFailures() {
+  if (stream_type_ == Stream::Downscaled) {
+    return ping::DownScaled::Uv::DmaWriter_Failures::Get();
+  } else {
+    return ping::FullResolution::Uv::DmaWriter_Failures::Get();
+  }
+}
+
+void DmaManager::PrintStatus(ddk::MmioBuffer *mmio) {
+    printf("%s DMA Status:\n   Primary:\n", (stream_type_ == Stream::Downscaled) ? "Downscaled" : "Full Resolution" );
+    GetPrimaryFrameCount().ReadFrom(mmio).PrintStatus();
+    GetPrimaryFailures().ReadFrom(mmio).PrintAlarms();
+    printf("   Secondary:\n");
+    GetUvFrameCount().ReadFrom(mmio).PrintStatus();
+    GetUvFailures().ReadFrom(mmio).PrintAlarms();
+}
+
+
 zx_status_t DmaManager::Start(
     fuchsia_sysmem_BufferCollectionInfo buffer_collection,
     fit::function<void(fuchsia_camera_common_FrameAvailableEvent)>
@@ -138,6 +180,7 @@ zx_status_t DmaManager::Start(
 }
 
 void DmaManager::OnPrimaryFrameWritten() {
+    printf("DmaManager::OnPrimaryFrameWritten\n");
   if (!current_format_->HasSecondaryChannel() || secondary_frame_written_) {
     secondary_frame_written_ = false;
     OnFrameWritten();
@@ -147,6 +190,7 @@ void DmaManager::OnPrimaryFrameWritten() {
 }
 
 void DmaManager::OnSecondaryFrameWritten() {
+    printf("DmaManager::OnSecondaryFrameWritten\n");
   if (primary_frame_written_) {
     primary_frame_written_ = false;
     OnFrameWritten();
@@ -169,8 +213,10 @@ void DmaManager::OnFrameWritten() {
 
 // Called as one of the later steps when a new frame arrives.
 void DmaManager::OnNewFrame() {
+    printf("DmaManager::OnNewFrame\n");
   // If we have not initialized yet with a format, just skip.
   if (!enabled_) {
+    printf("DmaManager::OnNewFrame: Not Enabled, so no newframe\n");
     return;
   }
   // 1) Get another buffer

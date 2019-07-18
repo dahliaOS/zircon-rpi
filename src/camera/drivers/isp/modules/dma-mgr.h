@@ -65,6 +65,9 @@ class DmaManager {
   // Signal that all consumers are done with this frame.
   zx_status_t ReleaseFrame(uint32_t buffer_index);
 
+  // Prints status registers. Used for debugging.
+  void PrintStatus(ddk::MmioBuffer *mmio);
+
  private:
   bool enabled_ = false;
   ddk::MmioView isp_mmio_local_;
@@ -86,6 +89,10 @@ class DmaManager {
   auto GetUvActiveDim();
   auto GetPrimaryLineOffset();
   auto GetUvLineOffset();
+  auto GetPrimaryFrameCount();
+  auto GetUvFrameCount();
+  auto GetPrimaryFailures();
+  auto GetUvFailures();
 
   // Writes the dma format to the registers
   void WriteFormat();

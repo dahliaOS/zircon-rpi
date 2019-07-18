@@ -198,8 +198,8 @@ void ArmIspDeviceTester::TestConnectStream(
 }
 
 void ArmIspDeviceTester::TestCallbacks(fuchsia_camera_test_TestReport& report) {
-  constexpr uint32_t kWidth = 1080;
-  constexpr uint32_t kHeight = 764;
+  constexpr uint32_t kWidth = 1920;
+  constexpr uint32_t kHeight = 1080;
   constexpr uint32_t kFramesToSleep = 25;
   constexpr uint32_t kNumberOfBuffers = 8;
   fuchsia_camera_common_FrameRate rate = {.frames_per_sec_numerator = 30,
