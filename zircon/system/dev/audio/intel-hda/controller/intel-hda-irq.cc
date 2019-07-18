@@ -107,6 +107,8 @@ void IntelHDAController::ProcessRIRB() {
     auto& resp = rirb_snapshot_[i];
     resp.OnReceived();  // Fixup endianness
 
+    LOG(SPEW, "RIRB received response data=0x%x ex=0x%x\n", resp.data, resp.data_ex);
+
     /* Figure out the codec this came from */
     uint32_t caddr = resp.caddr();
 

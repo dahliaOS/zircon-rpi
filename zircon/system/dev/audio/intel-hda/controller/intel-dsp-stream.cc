@@ -41,6 +41,8 @@ zx_status_t IntelDspStream::ProcessSetStreamFmt(const ihda_proto::SetStreamFmtRe
                                                 zx::channel&& ring_buffer_channel) {
   ZX_DEBUG_ASSERT(ring_buffer_channel.is_valid());
 
+  LOG(TRACE, "SetStreamFmt\n");
+
   fbl::AutoLock lock(obj_lock());
   audio_proto::StreamSetFmtResp resp = {};
   zx_status_t res = ZX_OK;
@@ -291,9 +293,10 @@ void IntelDspStream::ProcessClientRbDeactivate(const dispatcher::Channel* channe
 }
 
 zx_status_t IntelDspStream::OnActivateLocked() {
+  LOG(TRACE, "OnActivateLocked\n");
   // FIXME(yky) Hardcode supported formats.
   audio_stream_format_range_t fmt;
-  fmt.sample_formats = AUDIO_SAMPLE_FORMAT_16BIT;
+  fmt.sample_formats = AUDIO_SAMPLE_FORMAT_32BIT;
   fmt.min_frames_per_second = fmt.max_frames_per_second = 48000;
   fmt.min_channels = fmt.max_channels = 2;
   fmt.flags = ASF_RANGE_FLAG_FPS_48000_FAMILY;

@@ -422,6 +422,9 @@ zx_status_t IntelHDAStreamBase::DoSetStreamFormatLocked(dispatcher::Channel* cha
   bool found_supported_format = false;
   zx_status_t res;
 
+  DEBUG_LOG("SetStreamFormat: %uHz %hu-Ch fmt 0x%x\n", fmt.frames_per_second, fmt.channels,
+            fmt.sample_format);
+
   // Check to make sure that this channel is permitted to change formats.
   if (!privileged) {
     res = ZX_ERR_ACCESS_DENIED;
@@ -446,6 +449,8 @@ zx_status_t IntelHDAStreamBase::DoSetStreamFormatLocked(dispatcher::Channel* cha
 
   if (!found_supported_format) {
     res = ZX_ERR_NOT_SUPPORTED;
+    DEBUG_LOG("Requested format unsupported: %uHz %hu-Ch fmt 0x%x\n", fmt.frames_per_second,
+              fmt.channels, fmt.sample_format);
     goto send_fail_response;
   }
 

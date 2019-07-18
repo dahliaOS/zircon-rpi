@@ -485,9 +485,11 @@ zx_status_t IntelHDACodec::ProcessSetStreamFmt(dispatcher::Channel* channel,
                                                const ihda_proto::SetStreamFmtReq& req) {
   ZX_DEBUG_ASSERT(channel != nullptr);
 
+  LOG(TRACE, "SetStreamFmt id = %u format = 0x%04hx\n", req.stream_id, req.format);
+
   // Sanity check the requested format.
   if (!StreamFormat(req.format).SanityCheck()) {
-    LOG(TRACE, "Invalid encoded stream format 0x%04hx!\n", req.format);
+    LOG(WARN, "Invalid encoded stream format 0x%04hx!\n", req.format);
     return ZX_ERR_INVALID_ARGS;
   }
 
@@ -511,7 +513,7 @@ zx_status_t IntelHDACodec::ProcessSetStreamFmt(dispatcher::Channel* channel,
   zx::channel client_channel;
   zx_status_t res = stream->SetStreamFormat(default_domain_, req.format, &client_channel);
   if (res != ZX_OK) {
-    LOG(TRACE, "Failed to set stream format 0x%04hx for stream %hu (res %d)\n", req.format,
+    LOG(WARN, "Failed to set stream format 0x%04hx for stream %hu (res %d)\n", req.format,
         req.stream_id, res);
     return res;
   }
@@ -523,7 +525,7 @@ zx_status_t IntelHDACodec::ProcessSetStreamFmt(dispatcher::Channel* channel,
   res = channel->Write(&resp, sizeof(resp), std::move(client_channel));
 
   if (res != ZX_OK)
-    LOG(TRACE, "Failed to send stream channel back to codec driver (res %d)\n", res);
+    LOG(WARN, "Failed to send stream channel back to codec driver (res %d)\n", res);
 
   return res;
 }

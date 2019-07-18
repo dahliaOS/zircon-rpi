@@ -29,10 +29,11 @@ class Max98373 : public DeviceType,  // Not final for unit tests.
  public:
   static zx_status_t Create(zx_device_t* parent);
 
-  explicit Max98373(zx_device_t* device, const ddk::I2cChannel& i2c,
-                    const ddk::GpioProtocolClient& codec_reset)
-      : DeviceType(device), i2c_(i2c), codec_reset_(codec_reset) {}
+  explicit Max98373(zx_device_t* device, const ddk::I2cChannel& i2c)
+      : DeviceType(device), i2c_(i2c) {}
   zx_status_t Bind();
+
+  void TestLocked() __TA_REQUIRES(lock_);
 
   void DdkRelease() { delete this; }
   void DdkUnbind() {
@@ -77,7 +78,6 @@ class Max98373 : public DeviceType,  // Not final for unit tests.
 
   float current_gain_ = 0;
   ddk::I2cChannel i2c_;
-  ddk::GpioProtocolClient codec_reset_;
   thrd_t thread_;
   fbl::Mutex lock_;
 };

@@ -14,8 +14,8 @@
 // 2) Uses C/C++ functions (either template parameter packs, or c-style
 //    var-args) instead of preprocessor macros.
 
-#define VERBOSE_LOGGING 0
-#define DEBUG_LOGGING (VERBOSE_LOGGING || 0)
+#define VERBOSE_LOGGING 1
+#define DEBUG_LOGGING (VERBOSE_LOGGING || 1)
 
 #define LOG_EX(obj, ...)      \
   do {                        \

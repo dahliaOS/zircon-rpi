@@ -13,6 +13,7 @@
 #include <ddk/protocol/i2c.h>
 #include <fbl/algorithm.h>
 #include <fbl/alloc_checker.h>
+#include <zircon/time.h>
 
 namespace {
 
@@ -20,6 +21,7 @@ namespace {
 constexpr uint16_t kRegReset                   = 0x2000;
 constexpr uint16_t kRegGlobalEnable            = 0x20ff;
 constexpr uint16_t kRegPcmInterfaceFormat      = 0x2024;
+constexpr uint16_t kRegPcmInterfaceClkRatio    = 0x2026;
 constexpr uint16_t kRegPcmInterfaceSampleRate  = 0x2027;
 constexpr uint16_t kRegPcmInterfaceInput       = 0x202b;
 constexpr uint16_t kRegDigitalVol              = 0x203d;
@@ -53,39 +55,16 @@ static const dai_supported_formats_t kSupportedDaiFormats = {
     .bits_per_sample_count = countof(supported_bits_per_sample),
 };
 
-enum {
-  COMPONENT_I2C,
-  COMPONENT_RESET_GPIO,
-  COMPONENT_COUNT,
-};
-
 }  // namespace
 
 namespace audio {
 
 int Max98373::Thread() {
-  auto status = HardwareReset();
-  if (status != ZX_OK) {
-    return thrd_error;
-  }
-  status = SoftwareResetAndInitialize();
+  auto status = SoftwareResetAndInitialize();
   if (status != ZX_OK) {
     return thrd_error;
   }
   return thrd_success;
-}
-
-zx_status_t Max98373::HardwareReset() {
-  fbl::AutoLock lock(&lock_);
-  if (codec_reset_.is_valid()) {
-    codec_reset_.Write(0);
-    zx_nanosleep(zx_deadline_after(ZX_MSEC(5)));
-    codec_reset_.Write(1);
-    zx_nanosleep(zx_deadline_after(ZX_MSEC(3)));
-    return ZX_OK;
-  }
-  zxlogf(ERROR, "%s Could not hardware reset the codec\n", __FILE__);
-  return ZX_ERR_INTERNAL;
 }
 
 zx_status_t Max98373::SoftwareResetAndInitialize() {
@@ -103,7 +82,7 @@ zx_status_t Max98373::SoftwareResetAndInitialize() {
     return ZX_ERR_INTERNAL;
   }
 
-  constexpr float initial_gain = -20.f;
+  constexpr float initial_gain = -10.f;
   constexpr struct {
     uint16_t reg;
     uint8_t value;
@@ -113,6 +92,7 @@ zx_status_t Max98373::SoftwareResetAndInitialize() {
       {kRegDigitalVol, static_cast<uint8_t>(-initial_gain * 2.f)},
       {kRegPcmInterfaceInput, 0x01},       // PCM DIN enable.
       {kRegPcmInterfaceFormat, 0xc0},      // I2S 32 bits. LRCLK starts low.
+      {kRegPcmInterfaceClkRatio, 0x4},      // 64 BCLKs per LRCLK
       {kRegPcmInterfaceSampleRate, 0x08},  // 48KHz.
   };
   for (auto& i : kDefaults) {
@@ -124,12 +104,44 @@ zx_status_t Max98373::SoftwareResetAndInitialize() {
 
   initialized_ = true;
   zxlogf(INFO, "audio: codec max98373 initialized\n");
+  TestLocked();
   return status;
+}
+
+void Max98373::TestLocked() {
+  struct Command {
+    uint16_t reg;
+    uint8_t value;
+  };
+  constexpr Command kSequence1[] = {
+      {0x2025, 0x00}, // PCM Clock Cfg: PCM slave interface mode
+      {0x2040, 0x6}, // Tone gen: fs/64 @ 48KHz = 750Hz
+      {0x2043, 0x1}, // SPK enable
+  };
+  for (auto& i : kSequence1) {
+    auto status = WriteReg(i.reg, i.value);
+    if (status != ZX_OK) {
+      zxlogf(WARN, "Failed to set register 0x%x to 0x%x: %d\n", i.reg, i.value, status);
+    }
+  }
+
+  zx_nanosleep(zx_deadline_after(ZX_SEC(2)));
+
+  constexpr Command kSequence2[] = {
+      {0x2043, 0x0}, // SPK disable
+      {0x2040, 0x0}, // Tone gen disable
+  };
+  for (auto& i : kSequence2) {
+    auto status = WriteReg(i.reg, i.value);
+    if (status != ZX_OK) {
+      zxlogf(WARN, "Failed to set register 0x%x to 0x%x: %d\n", i.reg, i.value, status);
+    }
+  }
 }
 
 zx_status_t Max98373::Bind() {
   auto thunk = [](void* arg) -> int { return reinterpret_cast<Max98373*>(arg)->Thread(); };
-  int rc = thrd_create_with_name(&thread_, thunk, this, "max98373-thread");
+  int rc = thrd_create_with_name(&thread_, thunk, this, "Max98373-thread");
   if (rc != thrd_success) {
     return ZX_ERR_INTERNAL;
   }
@@ -143,32 +155,13 @@ zx_status_t Max98373::Bind() {
 void Max98373::Shutdown() { thrd_join(thread_, NULL); }
 
 zx_status_t Max98373::Create(zx_device_t* parent) {
-  composite_protocol_t composite;
-
-  auto status = device_get_protocol(parent, ZX_PROTOCOL_COMPOSITE, &composite);
-  if (status != ZX_OK) {
-    zxlogf(ERROR, "%s Could not get composite protocol\n", __FILE__);
-    return ZX_ERR_NOT_SUPPORTED;
+  auto dev = std::make_unique<Max98373>(parent, ddk::I2cChannel(parent));
+  zx_status_t st = dev->Bind();
+  if (st == ZX_OK) {
+    // devmgr is now in charge of the memory for dev
+    __UNUSED auto ptr = dev.release();
+    return st;
   }
-
-  zx_device_t* components[COMPONENT_COUNT] = {};
-  size_t actual = 0;
-  composite_get_components(&composite, components, countof(components), &actual);
-  if (actual != COMPONENT_COUNT) {
-    zxlogf(ERROR, "%s Could not get components\n", __FILE__);
-    return ZX_ERR_NOT_SUPPORTED;
-  }
-
-  fbl::AllocChecker ac;
-  auto dev = std::unique_ptr<Max98373>(
-      new (&ac) Max98373(parent, components[COMPONENT_I2C], components[COMPONENT_RESET_GPIO]));
-  status = dev->Bind();
-  if (status != ZX_OK) {
-    return status;
-  }
-
-  // devmgr is now in charge of the memory for dev.
-  dev.release();
   return ZX_OK;
 }
 
@@ -290,7 +283,7 @@ zx_status_t Max98373::WriteReg(uint16_t reg, uint8_t value) {
   write_buffer[0] = static_cast<uint8_t>((reg >> 8) & 0xff);
   write_buffer[1] = static_cast<uint8_t>((reg >> 0) & 0xff);
   write_buffer[2] = value;
-//#define TRACE_I2C
+#define TRACE_I2C
 #ifdef TRACE_I2C
   printf("%s Writing register 0x%02X to value 0x%02X\n", __FILE__, reg, value);
   auto status = i2c_.WriteSync(write_buffer, countof(write_buffer));
@@ -320,6 +313,7 @@ zx_status_t Max98373::ReadReg(uint16_t reg, uint8_t* value) {
     printf("%s Could not I2C read reg 0x%X status %d\n", __FILE__, reg, status);
     return status;
   }
+//#define TRACE_I2C
 #ifdef TRACE_I2C
   printf("%s Read register 0x%04X, value 0x%02X\n", __FILE__, reg, *value);
 #endif
@@ -338,9 +332,17 @@ static zx_driver_ops_t driver_ops = []() {
 }  // namespace audio
 
 // clang-format off
+ZIRCON_DRIVER_BEGIN(max98373, audio::driver_ops, "zircon", "0.1", 3)
+    BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_I2C),
+    BI_ABORT_IF(NE, BIND_ACPI_HID_0_3, 0x4d583938), // 'MX98'
+    BI_MATCH_IF(EQ, BIND_ACPI_HID_4_7, 0x33373300), // '373\0'
+ZIRCON_DRIVER_END(max98373)
+// clang-format on
+/*
+// clang-format off
 ZIRCON_DRIVER_BEGIN(ti_max98373, audio::driver_ops, "zircon", "0.1", 3)
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_COMPOSITE),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_MAXIM),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_MAXIM_MAX98373),
 ZIRCON_DRIVER_END(ti_max98373)
-    // clang-format on
+*/
