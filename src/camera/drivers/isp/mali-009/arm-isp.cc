@@ -104,6 +104,11 @@ int ArmIspDevice::IspIrqHandler() {
     auto irq_status =
         IspGlobalInterrupt_StatusVector::Get().ReadFrom(&isp_mmio_);
 
+    IspGlobalInterrupt_ClearVector::Get()
+      .ReadFrom(&isp_mmio_)
+      .set_reg_value(0xFFFFFFFF)
+      .WriteTo(&isp_mmio_);
+
     // Clear IRQ Vector
     IspGlobalInterrupt_Clear::Get()
         .ReadFrom(&isp_mmio_)
@@ -114,6 +119,12 @@ int ArmIspDevice::IspIrqHandler() {
         .ReadFrom(&isp_mmio_)
         .set_value(1)
         .WriteTo(&isp_mmio_);
+
+    IspGlobalInterrupt_Clear::Get()
+        .ReadFrom(&isp_mmio_)
+        .set_value(0)
+        .WriteTo(&isp_mmio_);
+
 
     if (irq_status.has_errors()) {
       zxlogf(ERROR, "%s ISP Error Occured, resetting ISP", __func__);
@@ -548,9 +559,15 @@ zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
   bool was_streaming = full_resolution_streaming_ || downscaled_streaming_;
   switch (type) {
     case STREAM_TYPE_FULL_RESOLUTION:
+      if (!full_resolution_streaming_) {
+          full_resolution_dma_->OnNewFrame();
+      }
       full_resolution_streaming_ = true;
       break;
     case STREAM_TYPE_DOWNSCALED:
+      if (!downscaled_streaming_) {
+          downscaled_dma_->OnNewFrame();
+      }
       downscaled_streaming_ = true;
       break;
     default:
@@ -559,6 +576,7 @@ zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
   }
   if (!was_streaming) {
     auto status = StartStreaming();
+    printf("StartStreaming called, status = %d\n", (int)status);
     if (status != ZX_OK) {
         full_resolution_streaming_ = false;
         downscaled_streaming_ = false;
@@ -606,7 +624,12 @@ zx_status_t ArmIspDevice::StartStreaming() {
   // Copy current context to ISP
   CopyContextInfo(kPing, kCopyToIsp);
 
-  // TODO(garratt@) Get the next bufffer
+      if (!full_resolution_streaming_) {
+          full_resolution_dma_->OnNewFrame();
+      }
+      if (!downscaled_streaming_) {
+          downscaled_dma_->OnNewFrame();
+      }
 
   CopyContextInfo(kPong, kCopyToIsp);
 
@@ -680,7 +703,7 @@ zx_status_t ArmIspDevice::IspCreateOutputStream(
 int ArmIspDevice::FrameProcessingThread() {
   while (running_frame_processing_.load()) {
     sync_completion_wait(&frame_processing_signal_, ZX_TIME_INFINITE);
-
+    printf("%s Got New Frame\n", __func__);
     // Currently this is called only on the new frame signal, so we maintain
     // a variable to tell if we need to finish processing the last frame.
     if (first_frame_processed_) {
@@ -689,19 +712,23 @@ int ArmIspDevice::FrameProcessingThread() {
       // Each of these calls has it's own interrupt, that it could be
       // attached to:
       if (full_resolution_streaming_) {
+        printf("%s Sending previous FR frame to consumer\n", __func__);
         full_resolution_dma_->OnPrimaryFrameWritten();
         full_resolution_dma_->OnSecondaryFrameWritten();
       }
       if (downscaled_streaming_) {
+        printf("%s Sending previous DS frame to consumer\n", __func__);
         downscaled_dma_->OnPrimaryFrameWritten();
         downscaled_dma_->OnSecondaryFrameWritten();
       }
     }
     // Now for the actions we should take on new frame:
     if (full_resolution_streaming_) {
+      printf("%s Loading new FR frame\n", __func__);
       full_resolution_dma_->OnNewFrame();
     }
     if (downscaled_streaming_) {
+      printf("%s Loading new DS frame\n", __func__);
       downscaled_dma_->OnNewFrame();
     }
 
