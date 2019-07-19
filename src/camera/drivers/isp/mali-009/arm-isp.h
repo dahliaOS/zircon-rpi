@@ -151,6 +151,9 @@ class ArmIspDevice : public IspDeviceType,
   zx_status_t StartStreaming();
   zx_status_t StopStreaming();
 
+  // Get the DMA Manager associated with stream type |type|.
+  DmaManager *GetStream(stream_type_t type);
+
   // Functions used by the debugging / testing interface:
   // Returns all the current registers written into a struct for analysis.
   ArmIspRegisterDump DumpRegisters();
