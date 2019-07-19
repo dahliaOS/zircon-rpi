@@ -189,6 +189,7 @@ int ArmIspDevice::IspIrqHandler() {
 
   while (running_.load()) {
     status = isp_irq_.wait(NULL);
+    printf("%s: came out of wait, status = %d\n", __func__, (int)status);
     if (status != ZX_OK) {
       return status;
     }
@@ -233,6 +234,8 @@ int ArmIspDevice::IspIrqHandler() {
 
     // Currently only handling Frame Start Interrupt.
     if (irq_status.isp_start()) {
+
+    printf("%s: irq_status.isp_start()\n", __func__);
       // Frame Start Interrupt
       auto current_config = IspGlobal_Config4::Get().ReadFrom(&isp_mmio_);
       if (current_config.is_pong()) {
@@ -274,6 +277,9 @@ int ArmIspDevice::IspIrqHandler() {
           sync_completion_signal(&frame_processing_signal_);
         }
       }
+    } else {
+    printf("%s: irq_status was an unsupported status!\n", __func__);
+    irq_status.Print();
     }
   }
   return status;
@@ -667,6 +673,7 @@ zx_status_t ArmIspDevice::ReleaseFrame(uint32_t buffer_id, stream_type_t type) {
 
 // A call to either stream type to start will get the isp to start running.
 zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
+  printf("%s\n", __func__);
   auto stream = GetStream(type);
   if (!stream) {
     return ZX_ERR_INVALID_ARGS;
@@ -676,6 +683,7 @@ zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
      
   if (!streaming_) {
     auto status = StartStreaming();
+    printf("StartStreaming called, status = %d\n", (int)status);
     if (status == ZX_OK) {
         streaming_ = true;
     }
@@ -809,9 +817,12 @@ zx_status_t ArmIspDevice::IspCreateOutputStream(
 int ArmIspDevice::FrameProcessingThread() {
   while (running_frame_processing_.load()) {
     sync_completion_wait(&frame_processing_signal_, ZX_TIME_INFINITE);
+
+    printf("%s Got New Frame\n", __func__);
     // Currently this is called only on the new frame signal, so we maintain
     // a variable to tell if we need to finish processing the last frame.
     if (first_frame_processed_) {
+      printf("%s First Frame Processed\n", __func__);
       first_frame_processed_ = false;
     } else {
       // Each of these calls has it's own interrupt, that it could be

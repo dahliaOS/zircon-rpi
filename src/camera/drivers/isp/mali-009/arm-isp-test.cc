@@ -83,7 +83,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
     return;                               \
   }
 
@@ -93,7 +93,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
   }
 
 #define EXPECT_NOT_OK(expr, msg)          \
@@ -102,7 +102,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
   }
 
 #define EXPECT_EQ(expr1, expr2, msg)      \
@@ -111,7 +111,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
   }
 
 #define EXPECT_GT(expr1, expr2, msg)      \
@@ -120,7 +120,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
   }
 
 #define ASSERT_EQ(expr1, expr2, msg)      \
@@ -129,7 +129,7 @@ struct FrameReadyReceiver {
     report.success_count++;               \
   } else {                                \
     report.failure_count++;               \
-    zxlogf(ERROR, "[FAILURE] %s\n", msg); \
+    printf("[FAILURE] %s\n", msg); \
     return;                               \
   }
 
@@ -139,10 +139,12 @@ void ArmIspDeviceTester::TestWriteRegister(
   fbl::AutoLock guard(&isp_lock_);
   uint32_t offset =
       IspGlobalDbg::Get().addr() / 4;  // divide by 4 to get the word address.
+  printf("%s: Writing to IspGlobalDbg\n", __func__);
   IspGlobalDbg::Get()
       .ReadFrom(&(isp_->isp_mmio_))
       .set_mode_en(1)
       .WriteTo(&(isp_->isp_mmio_));
+  printf("%s: dumping regs:\n", __func__);
   ArmIspRegisterDump after_enable = isp_->DumpRegisters();
   EXPECT_EQ(after_enable.global_config[offset], 1,
             "Global debug was not enabled!");
@@ -283,12 +285,14 @@ void ArmIspDeviceTester::TestCallbacks(fuchsia_camera_test_TestReport& report) {
 
 // DDKMessage Helper Functions.
 zx_status_t ArmIspDeviceTester::RunTests(fidl_txn_t* txn) {
+  printf("ArmIspDeviceTester::RunTests\n");
   fuchsia_camera_test_TestReport report = {1, 0, 0};
   {
     fbl::AutoLock guard(&isp_lock_);
     if (!isp_) {
       return ZX_ERR_BAD_STATE;
     }
+    printf("Running isp->RunTests()\n");
     if (isp_->RunTests() == ZX_OK) {
       report.success_count++;
     } else {
@@ -296,8 +300,11 @@ zx_status_t ArmIspDeviceTester::RunTests(fidl_txn_t* txn) {
     }
   }
   TestWriteRegister(report);
+  printf("done.\nRunning TestConnectStream\n");
   TestConnectStream(report);
+  printf("done.\nRunning TestCallbacks\n");
   TestCallbacks(report);
+  printf("done.\n Replying\n");
   return fuchsia_camera_test_IspTesterRunTests_reply(txn, ZX_OK, &report);
 }
 
