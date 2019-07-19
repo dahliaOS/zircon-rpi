@@ -39,7 +39,6 @@ static zx_status_t fdio_watcher_create(int dirfd, fdio_watcher_t** out) {
 
     zx_handle_t dir_channel = fdio_unsafe_borrow_channel(io);
     if (dir_channel == ZX_HANDLE_INVALID) {
-        printf("ERROR: dir_channel == ZX_HANDLE_INVALID\n");
         fdio_unsafe_release(io);
         return ZX_ERR_NOT_SUPPORTED;
     }
@@ -51,10 +50,8 @@ static zx_status_t fdio_watcher_create(int dirfd, fdio_watcher_t** out) {
                                                         &status);
     fdio_unsafe_release(io);
     if (io_status != ZX_OK) {
-        printf("ERROR: io_status = %d\n", io_status);
         return io_status;
     } else if (status != ZX_OK) {
-        printf("ERROR: status = %d\n", status);
         return status;
     }
 
@@ -141,7 +138,6 @@ zx_status_t fdio_watch_directory(int dirfd, watchdir_func_t cb, zx_time_t deadli
 
     zx_status_t status;
     if ((status = fdio_watcher_create(dirfd, &watcher)) < 0) {
-        printf("fdio_watch_directory ERROR: status = %d\n", status);
         return status;
     }
 

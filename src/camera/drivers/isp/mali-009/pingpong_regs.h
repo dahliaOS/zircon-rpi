@@ -6023,7 +6023,8 @@ DEF_NAMESPACE_REG(DmaWriter_WBank, pong::FullResolution::Primary, 0x340d0)
 DEF_NAMESPACE_REG(DmaWriter_WBank, pong::FullResolution::Uv, 0x34128)
 
 class DmaWriter_FrameCount
-    : public hwreg::RegisterBase<DmaWriter_FrameCount, uint32_t> {
+    : public hwreg::RegisterBase<DmaWriter_FrameCount, uint32_t,
+                                 hwreg::EnablePrinter> {
  public:
   //  count of incomming frames (starts) to vdma_writer on video input,
   //   non resetable, rolls over, updates at pixel 1 of new frame on
@@ -6033,10 +6034,6 @@ class DmaWriter_FrameCount
   //   AXI output, non resetable, rolls over, updates at pixel 1 of new
   //   frame on video in
   DEF_FIELD(31, 16, frame_wcount);
-
-  void PrintStatus() {
-      printf("Dma writer frame icount: %u, wcount: %u\n", frame_icount(), frame_wcount());
-  }
 };
 
 DEF_NAMESPACE_REG(DmaWriter_FrameCount, ping::DownScaled::Primary, 0x1c290)
@@ -6049,7 +6046,8 @@ DEF_NAMESPACE_REG(DmaWriter_FrameCount, pong::FullResolution::Primary, 0x340dc)
 DEF_NAMESPACE_REG(DmaWriter_FrameCount, pong::FullResolution::Uv, 0x34134)
 
 class DmaWriter_Failures
-    : public hwreg::RegisterBase<DmaWriter_Failures, uint32_t> {
+    : public hwreg::RegisterBase<DmaWriter_Failures, uint32_t,
+                                 hwreg::EnablePrinter> {
  public:
   // clearable alarm, high to indicate bad  bresp captured
   DEF_BIT(0, axi_fail_bresp);
@@ -6071,18 +6069,6 @@ class DmaWriter_Failures
   //  active high, problem found on video port(s) ( active width/height
   //   or interline/frame blanks failure)
   DEF_BIT(8, video_alarm);
-
-  void PrintAlarms() {
-    if (axi_fail_bresp()) printf("DmaWriter has failure: axi_fail_bresp\n");
-    if (axi_fail_awmaxwait()) printf("DmaWriter has failure: axi_fail_awmaxwait\n");
-    if (axi_fail_wmaxwait()) printf("DmaWriter has failure: axi_fail_wmaxwait\n");
-    if (axi_fail_wxact_ostand()) printf("DmaWriter has failure: axi_fail_wxact_ostand\n");
-    if (vi_fail_active_width()) printf("DmaWriter has failure: vi_fail_active_width\n");
-    if (vi_fail_active_height()) printf("DmaWriter has failure: vi_fail_active_height\n");
-    if (vi_fail_interline_blanks()) printf("DmaWriter has failure: vi_fail_interline_blanks\n");
-    if (vi_fail_interframe_blanks()) printf("DmaWriter has failure: vi_fail_interframe_blanks\n");
-    if (video_alarm()) printf("DmaWriter has failure: video_alarm\n");
-  }
 };
 
 DEF_NAMESPACE_REG(DmaWriter_Failures, ping::DownScaled::Primary, 0x1c298)

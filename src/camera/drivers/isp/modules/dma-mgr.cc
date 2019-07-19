@@ -126,11 +126,11 @@ auto DmaManager::GetUvFailures() {
 
 void DmaManager::PrintStatus(ddk::MmioBuffer *mmio) {
     printf("%s DMA Status:\n   Primary:\n", (stream_type_ == Stream::Downscaled) ? "Downscaled" : "Full Resolution" );
-    GetPrimaryFrameCount().ReadFrom(mmio).PrintStatus();
-    GetPrimaryFailures().ReadFrom(mmio).PrintAlarms();
+    GetPrimaryFrameCount().ReadFrom(mmio).Print();
+    GetPrimaryFailures().ReadFrom(mmio).Print();
     printf("   Secondary:\n");
-    GetUvFrameCount().ReadFrom(mmio).PrintStatus();
-    GetUvFailures().ReadFrom(mmio).PrintAlarms();
+    GetUvFrameCount().ReadFrom(mmio).Print();
+    GetUvFailures().ReadFrom(mmio).Print();
 }
 
 

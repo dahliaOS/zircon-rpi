@@ -234,9 +234,10 @@ class IspGlobalInterrupt_MaskVector
   DEF_BIT(7, metering_aexp_1024_bin_hist_done);
   DEF_BIT(8, metering_antifog_hist_done);
   DEF_BIT(9, lut_init_done);
-  DEF_BIT(11, fr_y_dma_write_done);
-  DEF_BIT(12, fr_uv_dma_write_done);
-  DEF_BIT(13, ds_y_dma_write_done);
+  DEF_BIT(10, fr_y_dma_write_done);
+  DEF_BIT(11, fr_uv_dma_write_done);
+  DEF_BIT(12, ds_y_dma_write_done);
+  DEF_BIT(13, ds_uv_dma_write_done);
   DEF_BIT(14, linearization_done);
   DEF_BIT(15, static_dpc_done);
   DEF_BIT(16, ca_correction_done);
@@ -262,6 +263,7 @@ class IspGlobalInterrupt_MaskVector
     set_fr_y_dma_write_done(1);
     set_fr_uv_dma_write_done(1);
     set_ds_y_dma_write_done(1);
+    set_ds_uv_dma_write_done(1);
     set_linearization_done(1);
     set_static_dpc_done(1);
     set_ca_correction_done(1);
@@ -293,9 +295,10 @@ class IspGlobalInterrupt_ClearVector
   DEF_BIT(7, metering_aexp_1024_bin_hist_done);
   DEF_BIT(8, metering_antifog_hist_done);
   DEF_BIT(9, lut_init_done);
-  DEF_BIT(11, fr_y_dma_write_done);
-  DEF_BIT(12, fr_uv_dma_write_done);
-  DEF_BIT(13, ds_y_dma_write_done);
+  DEF_BIT(10, fr_y_dma_write_done);
+  DEF_BIT(11, fr_uv_dma_write_done);
+  DEF_BIT(12, ds_y_dma_write_done);
+  DEF_BIT(13, ds_uv_dma_write_done);
   DEF_BIT(14, linearization_done);
   DEF_BIT(15, static_dpc_done);
   DEF_BIT(16, ca_correction_done);
@@ -325,9 +328,10 @@ class IspGlobalInterrupt_ShadowDisableVector
   DEF_BIT(7, metering_aexp_1024_bin_hist_done);
   DEF_BIT(8, metering_antifog_hist_done);
   DEF_BIT(9, lut_init_done);
-  DEF_BIT(11, fr_y_dma_write_done);
-  DEF_BIT(12, fr_uv_dma_write_done);
-  DEF_BIT(13, ds_y_dma_write_done);
+  DEF_BIT(10, fr_y_dma_write_done);
+  DEF_BIT(11, fr_uv_dma_write_done);
+  DEF_BIT(12, ds_y_dma_write_done);
+  DEF_BIT(13, ds_uv_dma_write_done);
   DEF_BIT(14, linearization_done);
   DEF_BIT(15, static_dpc_done);
   DEF_BIT(16, ca_correction_done);
@@ -366,7 +370,8 @@ class IspGlobalInterrupt_Clear
 };
 
 class IspGlobalInterrupt_StatusVector
-    : public hwreg::RegisterBase<IspGlobalInterrupt_StatusVector, uint32_t> {
+    : public hwreg::RegisterBase<IspGlobalInterrupt_StatusVector, uint32_t,
+                                 hwreg::EnablePrinter> {
  public:
   DEF_BIT(0, isp_start);
   DEF_BIT(1, isp_done);
@@ -378,9 +383,10 @@ class IspGlobalInterrupt_StatusVector
   DEF_BIT(7, metering_aexp_1024_bin_hist_done);
   DEF_BIT(8, metering_antifog_hist_done);
   DEF_BIT(9, lut_init_done);
-  DEF_BIT(11, fr_y_dma_write_done);
-  DEF_BIT(12, fr_uv_dma_write_done);
-  DEF_BIT(13, ds_y_dma_write_done);
+  DEF_BIT(10, fr_y_dma_write_done);
+  DEF_BIT(11, fr_uv_dma_write_done);
+  DEF_BIT(12, ds_y_dma_write_done);
+  DEF_BIT(13, ds_uv_dma_write_done);
   DEF_BIT(14, linearization_done);
   DEF_BIT(15, static_dpc_done);
   DEF_BIT(16, ca_correction_done);
@@ -392,85 +398,7 @@ class IspGlobalInterrupt_StatusVector
   DEF_BIT(22, dma_error_interrupt);
   DEF_BIT(23, input_port_safely_stopped);
 
-  void PrintStatus() {
-    if (isp_start()) {
-      printf("IspGlobalInterrupt Status Vector has isp_start\n");
-    }
-    if (isp_done()) {
-      printf("IspGlobalInterrupt Status Vector has isp_done\n");
-    }
-    if (ctx_management_error()) {
-      printf("IspGlobalInterrupt Status Vector has ctx_management_error\n");
-    }
-    if (broken_frame_error()) {
-      printf("IspGlobalInterrupt Status Vector has broken_frame_error\n");
-    }
-    if (metering_af_done()) {
-      printf("IspGlobalInterrupt Status Vector has metering_af_done\n");
-    }
-    if (metering_aexp_done()) {
-      printf("IspGlobalInterrupt Status Vector has metering_aexp_done\n");
-    }
-    if (metering_awb_done()) {
-      printf("IspGlobalInterrupt Status Vector has metering_awb_done\n");
-    }
-    if (metering_aexp_1024_bin_hist_done()) {
-      printf("IspGlobalInterrupt Status Vector has metering_aexp_1024_bin_hist_done\n");
-    }
-    if (metering_antifog_hist_done()) {
-      printf("IspGlobalInterrupt Status Vector has metering_antifog_hist_done\n");
-    }
-    if (lut_init_done()) {
-      printf("IspGlobalInterrupt Status Vector has lut_init_done\n");
-    }
-    if (fr_y_dma_write_done()) {
-      printf("IspGlobalInterrupt Status Vector has fr_y_dma_write_done\n");
-    }
-    if (fr_uv_dma_write_done()) {
-      printf("IspGlobalInterrupt Status Vector has fr_uv_dma_write_done\n");
-    }
-    if (ds_y_dma_write_done()) {
-      printf("IspGlobalInterrupt Status Vector has ds_y_dma_write_done\n");
-    }
-    if (linearization_done()) {
-      printf("IspGlobalInterrupt Status Vector has linearization_done\n");
-    }
-    if (static_dpc_done()) {
-      printf("IspGlobalInterrupt Status Vector has static_dpc_done\n");
-    }
-    if (ca_correction_done()) {
-      printf("IspGlobalInterrupt Status Vector has ca_correction_done\n");
-    }
-    if (iridix_done()) {
-      printf("IspGlobalInterrupt Status Vector has iridix_done\n");
-    }
-    if (three_d_liut_done()) {
-      printf("IspGlobalInterrupt Status Vector has three_d_liut_done\n");
-    }
-    if (wdg_timer_timed_out()) {
-      printf("IspGlobalInterrupt Status Vector has wdg_timer_timed_out\n");
-    }
-    if (frame_collision_error()) {
-      printf("IspGlobalInterrupt Status Vector has frame_collision_error\n");
-    }
-    if (luma_variance_done()) {
-      printf("IspGlobalInterrupt Status Vector has luma_variance_done\n");
-    }
-    if (dma_error_interrupt()) {
-      printf("IspGlobalInterrupt Status Vector has dma_error_interrupt\n");
-    }
-    if (input_port_safely_stopped()) {
-      printf("IspGlobalInterrupt Status Vector has input_port_safely_stopped\n");
-    }
-  }
-
   bool has_errors() const {
-    if (broken_frame_error()) printf("IspGlobalInterrupt has broken_frame_error\n");
-    if (frame_collision_error()) printf("IspGlobalInterrupt has frame_collision_error\n");
-    if (frame_collision_error()) printf("IspGlobalInterrupt has frame_collision_error\n");
-    if (dma_error_interrupt()) printf("IspGlobalInterrupt has dma_error_interrupt\n");
-    if (ctx_management_error()) printf("IspGlobalInterrupt has ctx_management_error\n");
-    if (wdg_timer_timed_out()) printf("IspGlobalInterrupt has wdg_timer_timed_out\n");
     return (broken_frame_error() || frame_collision_error() ||
             dma_error_interrupt() || ctx_management_error() ||
             wdg_timer_timed_out());
@@ -572,7 +500,8 @@ class IspGlobalLp_ClockGateDisable
 };
 
 class IspGlobalMonitor_Status
-    : public hwreg::RegisterBase<IspGlobalMonitor_Status, uint32_t> {
+    : public hwreg::RegisterBase<IspGlobalMonitor_Status, uint32_t,
+                                 hwreg::EnablePrinter> {
  public:
   // bit[0] : active width mismatch
   //     bit[1] : active_height mismatch
@@ -593,22 +522,9 @@ class IspGlobalMonitor_Status
 };
 
 class IspGlobalMonitor_Failures
-    : public hwreg::RegisterBase<IspGlobalMonitor_Failures, uint32_t> {
+    : public hwreg::RegisterBase<IspGlobalMonitor_Failures, uint32_t,
+                                 hwreg::EnablePrinter> {
  public:
-  // [0] : temper_dma_lsb_wtr_axi_alarm
-  //     [1] : temper_dma_lsb_rdr_axi_alarm
-  //     [2] : temper_dma_msb_wtr_axi_alarm
-  //     [3] : temper_dma_msb_rdr_axi_alarm
-  //     [4] : FR UV dma axi alarm
-  //     [5] : FR dma axi alarm
-  //     [6] : DS UV dma axi alarm
-  //     [7] : DS dma axi alarm
-  //     [8] : Temper LSB dma frame dropped
-  //     [9] : Temper MSB dma frame dropped
-  //     [10]: FR UV-DMA frame dropped
-  //     [11]: FR Y-DMA frame dropped
-  //     [12]: DS UV-DMA frame dropped
-  //     [13]: DS Y-DMA frame dropped
   DEF_BIT(0, fr_y_dma_wfifo_fail_full);
   DEF_BIT(1, fr_y_dma_wfifo_fail_empty);
   DEF_BIT(2, fr_uv_dma_wfifo_fail_full);
@@ -621,6 +537,7 @@ class IspGlobalMonitor_Failures
   DEF_BIT(9, temper_dma_wfifo_fail_full);
   DEF_BIT(10, temper_dma_rfifo_fail_empty);
   DEF_BIT(11, temper_dma_rfifo_fail_full);
+
   // DMA Alarms:
   DEF_BIT(16, temper_dma_lsb_wtr_axi_alarm);
   DEF_BIT(17, temper_dma_lsb_rdr_axi_alarm);
@@ -636,35 +553,6 @@ class IspGlobalMonitor_Failures
   DEF_BIT(27, fr_y_dma_frame_dropped);
   DEF_BIT(28, ds_uv_dma_frame_dropped);
   DEF_BIT(29, ds_y_dma_frame_dropped);
-  
-  void PrintAlarms() {
-  if (fr_y_dma_wfifo_fail_full()) printf("IspGlobalMonitor Failures has fr_y_dma_wfifo_fail_full\n");
-  if (fr_y_dma_wfifo_fail_empty()) printf("IspGlobalMonitor Failures has fr_y_dma_wfifo_fail_empty\n");
-  if (fr_uv_dma_wfifo_fail_full()) printf("IspGlobalMonitor Failures has fr_uv_dma_wfifo_fail_full\n");
-  if (fr_uv_dma_wfifo_fail_empty()) printf("IspGlobalMonitor Failures has fr_uv_dma_wfifo_fail_empty\n");
-  if (ds_y_dma_wfifo_fail_full()) printf("IspGlobalMonitor Failures has ds_y_dma_wfifo_fail_full\n");
-  if (ds_y_dma_wfifo_fail_empty()) printf("IspGlobalMonitor Failures has ds_y_dma_wfifo_fail_empty\n");
-  if (ds_uv_dma_wfifo_fail_full()) printf("IspGlobalMonitor Failures has ds_uv_dma_wfifo_fail_full\n");
-  if (ds_uv_dma_wfifo_fail_empty()) printf("IspGlobalMonitor Failures has ds_uv_dma_wfifo_fail_empty\n");
-  if (temper_dma_wfifo_fail_empty()) printf("IspGlobalMonitor Failures has temper_dma_wfifo_fail_empty\n");
-  if (temper_dma_wfifo_fail_full()) printf("IspGlobalMonitor Failures has temper_dma_wfifo_fail_full\n");
-  if (temper_dma_rfifo_fail_empty()) printf("IspGlobalMonitor Failures has temper_dma_rfifo_fail_empty\n");
-  if (temper_dma_rfifo_fail_full()) printf("IspGlobalMonitor Failures has temper_dma_rfifo_fail_full\n");
-  if (temper_dma_lsb_wtr_axi_alarm()) printf("IspGlobalMonitor Failures has temper_dma_lsb_wtr_axi_alarm\n");
-  if (temper_dma_lsb_rdr_axi_alarm()) printf("IspGlobalMonitor Failures has temper_dma_lsb_rdr_axi_alarm\n");
-  if (temper_dma_msb_wtr_axi_alarm()) printf("IspGlobalMonitor Failures has temper_dma_msb_wtr_axi_alarm\n");
-  if (temper_dma_msb_rdr_axi_alarm()) printf("IspGlobalMonitor Failures has temper_dma_msb_rdr_axi_alarm\n");
-  if (fr_uv_dma_axi_alarm()) printf("IspGlobalMonitor Failures has fr_uv_dma_axi_alarm\n");
-  if (fr_dma_axi_alarm()) printf("IspGlobalMonitor Failures has fr_dma_axi_alarm\n");
-  if (ds_uv_dma_axi_alarm()) printf("IspGlobalMonitor Failures has ds_uv_dma_axi_alarm\n");
-  if (ds_dma_axi_alarm()) printf("IspGlobalMonitor Failures has ds_dma_axi_alarm\n");
-  if (temper_lsb_dma_frame_dropped()) printf("IspGlobalMonitor Failures has temper_lsb_dma_frame_dropped\n");
-  if (temper_msb_dma_frame_dropped()) printf("IspGlobalMonitor Failures has temper_msb_dma_frame_dropped\n");
-  if (fr_uv_dma_frame_dropped()) printf("IspGlobalMonitor Failures has fr_uv_dma_frame_dropped\n");
-  if (fr_y_dma_frame_dropped()) printf("IspGlobalMonitor Failures has fr_y_dma_frame_dropped\n");
-  if (ds_uv_dma_frame_dropped()) printf("IspGlobalMonitor Failures has ds_uv_dma_frame_dropped\n");
-  if (ds_y_dma_frame_dropped()) printf("IspGlobalMonitor Failures has ds_y_dma_frame_dropped\n");
-  }
 
 
   static auto Get() {
