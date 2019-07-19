@@ -134,7 +134,7 @@ void DmaManager::PrintStatus(ddk::MmioBuffer *mmio) {
 }
 
 
-zx_status_t DmaManager::Start(
+zx_status_t DmaManager::Configure(
     fuchsia_sysmem_BufferCollectionInfo buffer_collection,
     fit::function<void(fuchsia_camera_common_FrameAvailableEvent)>
         frame_available_callback) {
@@ -175,10 +175,20 @@ zx_status_t DmaManager::Start(
     return status;
   }
   frame_available_callback_ = std::move(frame_available_callback);
-  enabled_ = true;
   return ZX_OK;
 }
 
+void DmaManager::Enable() {
+  ZX_ASSERT(frame_available_callback_ != nullptr);
+  enabled_ = true;
+}
+
+void DmaManager::Disable() {
+  enabled_ = false;
+  // TODO(CAM-54): Provide a way to dump the previous set of write locked
+  // buffers.
+  write_locked_buffers_.clear();
+}
 
 void DmaManager::OnFrameWritten() {
   // If we have not started streaming, just skip.
