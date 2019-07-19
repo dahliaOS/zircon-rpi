@@ -192,6 +192,7 @@ void DmaManager::Disable() {
 }
 
 void DmaManager::OnFrameWritten() {
+  printf("DmaManager::OnFrameWritten\n");
   // If we have not started streaming, just skip.
   if (!enabled_) {
     return;
@@ -209,8 +210,10 @@ void DmaManager::OnFrameWritten() {
 
 // Called as one of the later steps when a new frame arrives.
 void DmaManager::OnNewFrame() {
+    printf("DmaManager::OnNewFrame\n");
   // If we have not initialized yet with a format, just skip.
   if (!enabled_) {
+    printf("DmaManager::OnNewFrame: Not Enabled, so no newframe\n");
     return;
   }
   // 1) Get another buffer

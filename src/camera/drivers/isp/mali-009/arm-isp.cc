@@ -189,6 +189,7 @@ int ArmIspDevice::IspIrqHandler() {
 
   while (running_.load()) {
     status = isp_irq_.wait(NULL);
+    printf("%s: came out of wait, status = %d\n", __func__, (int)status);
     if (status != ZX_OK) {
       return status;
     }
@@ -233,6 +234,8 @@ int ArmIspDevice::IspIrqHandler() {
 
     // Currently only handling Frame Start Interrupt.
     if (irq_status.isp_start()) {
+
+    printf("%s: irq_status.isp_start()\n", __func__);
       // Frame Start Interrupt
       auto current_config = IspGlobal_Config4::Get().ReadFrom(&isp_mmio_);
       if (current_config.is_pong()) {
@@ -274,6 +277,9 @@ int ArmIspDevice::IspIrqHandler() {
           sync_completion_signal(&frame_processing_signal_);
         }
       }
+    } else {
+    printf("%s: irq_status was an unsupported status!\n", __func__);
+    irq_status.Print();
     }
   }
   return status;
@@ -656,6 +662,7 @@ zx_status_t ArmIspDevice::ReleaseFrame(uint32_t buffer_id, stream_type_t type) {
 
 // A call to either stream type to start will get the isp to start running.
 zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
+  printf("%s\n", __func__);
   auto stream = GetStream(type);
   if (!stream) {
     return ZX_ERR_INVALID_ARGS;
@@ -665,6 +672,7 @@ zx_status_t ArmIspDevice::StartStream(stream_type_t type) {
 
   if (!streaming_) {
     auto status = StartStreaming();
+    printf("StartStreaming called, status = %d\n", (int)status);
     if (status == ZX_OK) {
         streaming_ = true;
     }
