@@ -55,18 +55,15 @@ class DmaManager {
   // Updates the dma writer with the address of a free buffer from the pool.
   void OnNewFrame();
 
-  // This should be called when the appropriate "y-DMA write done" interrupt
-  // is triggered.
-  void OnPrimaryFrameWritten();
-  // This should be called when the appropriate "uv-DMA write done" interrupt
-  // is triggered (if a secondary channel is used).
-  void OnSecondaryFrameWritten();
-
   // Signal that all consumers are done with this frame.
   zx_status_t ReleaseFrame(uint32_t buffer_index);
 
   // Prints status registers. Used for debugging.
   void PrintStatus(ddk::MmioBuffer *mmio);
+
+  // Releases the write lock on the frame and calls the
+  // frame_available_callback.
+  void OnFrameWritten();
 
  private:
   bool enabled_ = false;
@@ -78,7 +75,6 @@ class DmaManager {
   fit::function<void(fuchsia_camera_common_FrameAvailableEvent)>
       frame_available_callback_;
   zx::bti bti_;
-  bool primary_frame_written_ = false, secondary_frame_written_ = false;
 
   // Get the Registers used by the DMA Writer.
   auto GetPrimaryMisc();
@@ -96,9 +92,6 @@ class DmaManager {
 
   // Writes the dma format to the registers
   void WriteFormat();
-  // Releases the write lock on the frame and calls the
-  // frame_available_callback.
-  void OnFrameWritten();
 };
 
 }  // namespace camera
