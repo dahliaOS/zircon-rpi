@@ -288,7 +288,7 @@ void DmaManager::WriteFormat() {
         // TODO: should there be a format.WidthUv() ?
         GetUvMisc().ReadFrom(&isp_mmio_local_)
             .set_base_mode(current_format_->GetBaseMode())
-            .set_plane_select(current_format_->GetPlaneSelect())
+            .set_plane_select(current_format_->GetPlaneSelectUv())
             .WriteTo(&isp_mmio_local_);
         GetUvActiveDim().ReadFrom(&isp_mmio_local_)
             .set_active_width(current_format_->width())
