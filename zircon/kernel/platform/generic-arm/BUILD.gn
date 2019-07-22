@@ -25,6 +25,7 @@ source_set("generic-arm") {
     "$zx/kernel/dev/uart/amlogic_s905",
     "$zx/kernel/dev/uart/dw8250",
     "$zx/kernel/dev/uart/msm",
+    "$zx/kernel/dev/uart/msm-geni",
     "$zx/kernel/dev/uart/mt8167",
     "$zx/kernel/dev/uart/nxp-imx",
     "$zx/kernel/dev/uart/pl011",
