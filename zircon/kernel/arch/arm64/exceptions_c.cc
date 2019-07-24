@@ -330,7 +330,7 @@ extern "C" void arm64_sync_exception(arm64_iframe_t* iframe, uint exception_flag
   }
 
   /* if we came from user space, check to see if we have any signals to handle */
-  if (unlikely(exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL)) {
+  if (exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL) {
     /* in the case of receiving a kill signal, this function may not return,
      * but the scheduler would have been invoked so it's fine.
      */
@@ -344,7 +344,7 @@ extern "C" void arm64_sync_exception(arm64_iframe_t* iframe, uint exception_flag
 }
 
 /* called from assembly */
-extern "C" uint32_t arm64_irq(iframe_short_t* iframe, uint exception_flags) {
+extern "C" void arm64_irq(iframe_t* iframe, uint exception_flags) {
   if (exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL) {
     // if we came from a lower level, restore the per cpu pointer
     arm64_restore_percpu_pointer();
@@ -361,15 +361,11 @@ extern "C" uint32_t arm64_irq(iframe_short_t* iframe, uint exception_flags) {
   bool do_preempt = int_handler_finish(&state);
 
   /* if we came from user space, check to see if we have any signals to handle */
-  if (unlikely(exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL)) {
-    uint32_t exit_flags = 0;
-    if (thread_is_signaled(get_current_thread())) {
-      exit_flags |= ARM64_IRQ_EXIT_THREAD_SIGNALED;
-    }
-    if (do_preempt) {
-      exit_flags |= ARM64_IRQ_EXIT_RESCHEDULE;
-    }
-    return exit_flags;
+  if (exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL) {
+    /* in the case of receiving a kill signal, this function may not return,
+     * but the scheduler would have been invoked so it's fine.
+     */
+    arch_iframe_process_pending_signals(iframe);
   }
 
   /* preempt the thread if the interrupt has signaled it */
@@ -381,10 +377,9 @@ extern "C" uint32_t arm64_irq(iframe_short_t* iframe, uint exception_flags) {
   if ((exception_flags & ARM64_EXCEPTION_FLAG_LOWER_EL) == 0) {
     iframe->r[18] = (uint64_t)arm64_read_percpu_ptr();
   }
-
-  return 0;
 }
 
+#if 0
 /* called from assembly */
 extern "C" void arm64_finish_user_irq(uint32_t exit_flags, arm64_iframe_t* iframe) {
   // we came from a lower level, so restore the per cpu pointer
@@ -403,6 +398,7 @@ extern "C" void arm64_finish_user_irq(uint32_t exit_flags, arm64_iframe_t* ifram
     thread_preempt();
   }
 }
+#endif
 
 /* called from assembly */
 extern "C" void arm64_invalid_exception(arm64_iframe_t* iframe, unsigned int which) {

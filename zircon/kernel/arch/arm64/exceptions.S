@@ -62,42 +62,6 @@ stp  x10, x11, [sp, #regsave_special_reg_offset + 16]
 str x12, [sp, #regsave_special_reg_offset + 32]
 .endm
 
-.macro regsave_short
-// Align the same as the long version above. The 10 extra words correspond to
-// x20 through x29 which are not saved here.
-sub_from_sp ((6*8) + (10*8))
-push_regs x18, x19
-push_regs x16, x17
-push_regs x14, x15
-push_regs x12, x13
-push_regs x10, x11
-push_regs x8, x9
-push_regs x6, x7
-push_regs x4, x5
-push_regs x2, x3
-push_regs x0, x1
-// Preserve x0-x7 to mirror regsave_long
-mrs  x9, sp_el0
-mrs  x10, elr_el1
-mrs  x11, spsr_el1
-stp  lr, x9, [sp, #regsave_special_reg_offset]
-.cfi_rel_offset lr, (regsave_special_reg_offset)
-.cfi_rel_offset sp, (regsave_special_reg_offset + 8)
-stp  x10, x11, [sp, #regsave_special_reg_offset + 16]
-.cfi_rel_offset elr1, (regsave_special_reg_offset + 16)
-.endm
-
-// convert a short iframe to a long one by patching in the additional 10 words to save
-.macro regsave_short_to_long
-stp  x20, x21, [sp, #regsave_high_reg_offset]
-stp  x22, x23, [sp, #regsave_high_reg_offset + 0x10]
-stp  x24, x25, [sp, #regsave_high_reg_offset + 0x20]
-stp  x26, x27, [sp, #regsave_high_reg_offset + 0x30]
-stp  x28, x29, [sp, #regsave_high_reg_offset + 0x40]
-mrs  x12, mdscr_el1
-str  x12, [sp, #regsave_special_reg_offset + 32]
-.endm
-
 // Once we pop the stack past the saved sp_el0, elr_el1 the userspace values
 // are inaccessible.
 .macro mark_lr_sp_inaccessible
@@ -137,28 +101,6 @@ add_to_sp (6*8)
 mark_lr_sp_inaccessible
 .endm
 
-.macro regrestore_short
-// Preserve x0-x7 to mirror regrestore_long
-ldp  lr, x9, [sp, #regsave_special_reg_offset]
-.cfi_same_value lr
-ldp  x10, x11, [sp, #regsave_special_reg_offset + 16]
-msr  sp_el0, x9
-msr  elr_el1, x10
-msr  spsr_el1, x11
-pop_regs x0, x1
-pop_regs x2, x3
-pop_regs x4, x5
-pop_regs x6, x7
-pop_regs x8, x9
-pop_regs x10, x11
-pop_regs x12, x13
-pop_regs x14, x15
-pop_regs x16, x17
-pop_regs x18, x19
-add_to_sp ((6*8) + (10*8))
-mark_lr_sp_inaccessible
-.endm
-
 .macro start_isr_cfi
     .cfi_startproc simple
     .cfi_signal_frame
@@ -184,7 +126,7 @@ mark_lr_sp_inaccessible
 
 // Mark the locations of the registers based on the CFA so that the
 // location doesn't change as the regs are popped.
-.macro setup_short_helper_cfi
+.macro setup_long_helper_cfi
     REG_CFA_OFFSET(0)
     REG_CFA_OFFSET(1)
     REG_CFA_OFFSET(2)
@@ -205,12 +147,6 @@ mark_lr_sp_inaccessible
     REG_CFA_OFFSET(17)
     REG_CFA_OFFSET(18)
     REG_CFA_OFFSET(19)
-    .cfi_offset sp, -(3 * 8)
-    .cfi_offset lr, -(4 * 8)
-.endm
-
-.macro setup_long_helper_cfi
-    setup_short_helper_cfi
     REG_CFA_OFFSET(20)
     REG_CFA_OFFSET(21)
     REG_CFA_OFFSET(22)
@@ -221,11 +157,8 @@ mark_lr_sp_inaccessible
     REG_CFA_OFFSET(27)
     REG_CFA_OFFSET(28)
     REG_CFA_OFFSET(29)
-.endm
-
-.macro start_short_helper
-    start_helper_cfi
-    setup_short_helper_cfi
+    .cfi_offset sp, -(3 * 8)
+    .cfi_offset lr, -(4 * 8)
 .endm
 
 .macro start_long_helper
@@ -244,14 +177,14 @@ mark_lr_sp_inaccessible
 
 .macro irq_exception, exception_flags
     start_isr_func
-    regsave_short
+    regsave_long
     msr daifclr, #1 /* reenable fiqs once elr and spsr have been saved */
     mov x0, sp
     mov x1, \exception_flags
     bl  arm64_irq
-    cbnz x0, arm64_finish_user_irq_wrapper /* anything extra to do? */
+//    cbnz x0, arm64_finish_user_irq_wrapper /* anything extra to do? */
     msr daifset, #1 /* disable fiqs to protect elr and spsr restore */
-    b   arm64_exc_shared_restore_short
+    b   arm64_exc_shared_restore_long
 .endm
 
 .macro sync_exception, exception_flags, from_lower_el_64=0
@@ -310,10 +243,10 @@ END_FUNCTION(arm64_el1_irq_current_el_SPx)
 .org 0x300
 LOCAL_FUNCTION_LABEL(arm64_el1_fiq_current_el_SPx)
     start_isr_func
-    regsave_short
+    regsave_long
     mov x0, sp
     bl  platform_fiq
-    b  arm64_exc_shared_restore_short
+    b  arm64_exc_shared_restore_long
 END_FUNCTION(arm64_el1_fiq_current_el_SPx)
 
 .org 0x380
@@ -335,10 +268,10 @@ END_FUNCTION(arm64_el1_irq_lower_el_64)
 .org 0x500
 LOCAL_FUNCTION_LABEL(arm64_el1_fiq_lower_el_64)
     start_isr_func
-    regsave_short
+    regsave_long
     mov x0, sp
     bl  platform_fiq
-    b  arm64_exc_shared_restore_short
+    b  arm64_exc_shared_restore_long
 END_FUNCTION(arm64_el1_fiq_lower_el_64)
 
 .org 0x580
@@ -360,10 +293,10 @@ END_FUNCTION(arm64_el1_irq_lower_el_32)
 .org 0x700
 LOCAL_FUNCTION_LABEL(arm64_el1_fiq_lower_el_32)
     start_isr_func
-    regsave_short
+    regsave_long
     mov x0, sp
     bl  platform_fiq
-    b  arm64_exc_shared_restore_short
+    b  arm64_exc_shared_restore_long
 END_FUNCTION(arm64_el1_fiq_lower_el_32)
 
 .org 0x780
@@ -371,6 +304,7 @@ LOCAL_FUNCTION_LABEL(arm64_el1_err_exc_lower_el_32)
     invalid_exception 0x33
 END_FUNCTION(arm64_el1_err_exc_lower_el_32)
 
+#if 0
 /* If an IRQ happened in userspace, and either the thread was signaled or
    needs to be rescheduled, then we end up here after arm64_irq returns.
    Suspending the thread requires constructing a long iframe in order to
@@ -378,7 +312,7 @@ END_FUNCTION(arm64_el1_err_exc_lower_el_32)
    them, but we can't do that until arm64_irq returns as we rely on the
    compiler to save/restore callee-saved regs. */
 LOCAL_FUNCTION_LABEL(arm64_finish_user_irq_wrapper)
-    start_short_helper
+    start_long_helper
     /* if we're only here because of a need to reschedule then we don't
        need to construct a long iframe */
     cmp x0, #ARM64_IRQ_EXIT_RESCHEDULE
@@ -395,18 +329,13 @@ LOCAL_FUNCTION_LABEL(arm64_finish_user_irq_wrapper)
     msr daifset, #1 /* disable fiqs to protect elr and spsr restore */
     b   arm64_exc_shared_restore_long
 END_FUNCTION(arm64_finish_user_irq_wrapper)
+#endif
 
 LOCAL_FUNCTION_LABEL(arm64_exc_shared_restore_long)
     start_long_helper
     regrestore_long
     eret
 END_FUNCTION(arm64_exc_shared_restore_long)
-
-LOCAL_FUNCTION_LABEL(arm64_exc_shared_restore_short)
-    start_short_helper
-    regrestore_short
-    eret
-END_FUNCTION(arm64_exc_shared_restore_short)
 
 //
 // Syscall args are in x0-x7 already.
