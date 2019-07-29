@@ -32,7 +32,6 @@ class Pciroot : public PcirootType, public ddk::PcirootProtocol<Pciroot, ddk::ba
   zx_status_t PcirootGetAuxdata(const char* args, void* out_data, size_t data_size,
                                 size_t* out_data_actual);
   zx_status_t PcirootGetBti(uint32_t bdf, uint32_t index, zx::bti* bti);
-  zx_status_t PcirootConnectSysmem(zx::handle handle);
   zx_status_t PcirootGetPciPlatformInfo(pci_platform_info_t* info);
   zx_status_t PcirootGetPciIrqInfo(pci_irq_info_t* info);
 

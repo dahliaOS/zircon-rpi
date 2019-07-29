@@ -197,17 +197,6 @@ static zx_status_t pciroot_op_get_bti(void* context, uint32_t bdf, uint32_t inde
   return zx_bti_create(iommu_handle, 0, bdf, bti);
 }
 
-static zx_status_t pciroot_op_connect_sysmem(void* context, zx_handle_t handle) {
-  acpi_device_t* dev = (acpi_device_t*)context;
-  sysmem_protocol_t sysmem;
-  zx_status_t status = device_get_protocol(dev->platform_bus, ZX_PROTOCOL_SYSMEM, &sysmem);
-  if (status != ZX_OK) {
-    zx_handle_close(handle);
-    return status;
-  }
-  return sysmem_connect(&sysmem, handle);
-}
-
 #ifdef ENABLE_USER_PCI
 zx_status_t Pciroot::PcirootGetAuxdata(const char* args, void* data, size_t bytes, size_t* actual) {
   return pciroot_op_get_auxdata(c_context(), args, data, bytes, actual);
@@ -215,15 +204,6 @@ zx_status_t Pciroot::PcirootGetAuxdata(const char* args, void* data, size_t byte
 
 zx_status_t Pciroot::PcirootGetBti(uint32_t bdf, uint32_t index, zx::bti* bti) {
   return pciroot_op_get_bti(c_context(), bdf, index, bti->reset_and_get_address());
-}
-
-zx_status_t Pciroot::PcirootConnectSysmem(zx::handle handle) {
-  sysmem_protocol_t sysmem;
-  zx_status_t status = device_get_protocol(platform_bus_, ZX_PROTOCOL_SYSMEM, &sysmem);
-  if (status != ZX_OK) {
-    return status;
-  }
-  return sysmem_connect(&sysmem, handle.release());
 }
 
 zx_status_t Pciroot::PcirootGetPciPlatformInfo(pci_platform_info_t* info) {
@@ -424,7 +404,6 @@ static zx_status_t pciroot_op_free_address_space(void*, zx_paddr_t, size_t, pci_
 static pciroot_protocol_ops_t pciroot_proto = {
     .get_auxdata = pciroot_op_get_auxdata,
     .get_bti = pciroot_op_get_bti,
-    .connect_sysmem = pciroot_op_connect_sysmem,
     .get_pci_platform_info = pciroot_op_get_pci_platform_info,
     .get_pci_irq_info = pciroot_op_get_pci_irq_info,
     .driver_should_proxy_config = pciroot_op_driver_should_proxy_config,

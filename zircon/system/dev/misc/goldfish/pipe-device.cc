@@ -293,5 +293,6 @@ static constexpr zx_driver_ops_t goldfish_driver_ops = []() -> zx_driver_ops_t {
 
 ZIRCON_DRIVER_BEGIN(goldfish, goldfish_driver_ops, "zircon", "0.1", 3)
 BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_ACPI),
-    BI_ABORT_IF(NE, BIND_ACPI_HID_0_3, 0x47465348),  // GFSH0003\0
-    BI_MATCH_IF(EQ, BIND_ACPI_HID_4_7, 0x30303033), ZIRCON_DRIVER_END(goldfish)
+  BI_ABORT_IF(NE, BIND_ACPI_HID_0_3, 0x47465348),  // GFSH0003\0
+  BI_MATCH_IF(EQ, BIND_ACPI_HID_4_7, 0x30303033), 
+ZIRCON_DRIVER_END(goldfish)

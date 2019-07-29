@@ -1,0 +1,59 @@
+./board/vim2/vim-sysmem.cc:48:  if ((status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+./board/x86/sysmem.c:57:    if ((status = pbus_protocol_device_add(pbus, ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+./board/sherlock/sherlock-sysmem.cc:53:  zx_status_t status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_SYSMEM, &sysmem_dev);
+./board/gauss/gauss-sysmem.c:45:    if ((status = pbus_protocol_device_add(&bus->pbus, ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+./board/machina/machina-sysmem.c:46:    if ((status = pbus_protocol_device_add(&bus->pbus, ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+./board/astro/astro-sysmem.cc:53:  zx_status_t status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_SYSMEM, &sysmem_dev);
+./board/mt8167s_ref/mt8167-sysmem.cc:50:  zx_status_t status = pbus_.ProtocolDeviceAdd(ZX_PROTOCOL_SYSMEM, &sysmem_dev);
+./board/qemu/qemu-sysmem.c:47:    if ((status = pbus_protocol_device_add(&bus->pbus, ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+./board/hikey960/hikey960-sysmem.c:48:    if ((status = pbus_protocol_device_add(&hikey->pbus, ZX_PROTOCOL_SYSMEM, &sysmem_dev)) != ZX_OK) {
+
+./board/x86/pciroot.cc:203:  zx_status_t status = device_get_protocol(dev->platform_bus, ZX_PROTOCOL_SYSMEM, &sysmem);
+./board/x86/pciroot.cc:222:  zx_status_t status = device_get_protocol(platform_bus_, ZX_PROTOCOL_SYSMEM, &sysmem);
+./board/x86/acpi-nswalk.c:437:    zx_status_t st = device_get_protocol(dev->platform_bus, ZX_PROTOCOL_SYSMEM, &sysmem);
+./board/x86/acpi-nswalk.c:453:    zx_status_t st = device_get_protocol(dev->platform_bus, ZX_PROTOCOL_SYSMEM, &sysmem);
+
+./display/intel-i915/intel-i915.cc:2134:  zx_status_t status = device_get_protocol(parent(), ZX_PROTOCOL_SYSMEM, &sysmem_);
+
+./bus/platform/platform-bus.cc:59:    case ZX_PROTOCOL_SYSMEM: {
+./bus/platform/platform-bus.cc:234:    case ZX_PROTOCOL_SYSMEM:
+./bus/pci/kpci/proxy.c:377:    if (proto_id == ZX_PROTOCOL_SYSMEM) {
+
+
+
+ddk.protocol.acpi/acpi.banjo:    ConnectSysmem(handle<channel> connection) -> (zx.status s);
+ddk.protocol.acpi/acpi.banjo:    RegisterSysmemHeap(uint64 heap, handle<channel> connection) -> (zx.status s);
+
+ddk.protocol.display.controller/display-controller.banjo:    GetSysmemConnection(handle<channel> sysmem_handle) -> (zx.status s);
+ddk.protocol.goldfish.pipe/goldfish-pipe.banjo:    ConnectSysmem(handle<channel> connection) -> (zx.status s);
+ddk.protocol.goldfish.pipe/goldfish-pipe.banjo:    RegisterSysmemHeap(uint64 heap, handle<channel> connection) -> (zx.status s);
+
+ddk.protocol.pciroot/pciroot.banjo:    ConnectSysmem(handle connection) -> (zx.status s);
+
+
+
+
+./board/x86/pciroot.cc:200:static zx_status_t pciroot_op_connect_sysmem(void* context, zx_handle_t handle) {
+./board/x86/pciroot.cc:427:    .connect_sysmem = pciroot_op_connect_sysmem,
+
+./board/x86/acpi-nswalk.c:432:static zx_status_t acpi_op_connect_sysmem(void* ctx, zx_handle_t handle) {
+./board/x86/acpi-nswalk.c:471:    .connect_sysmem = acpi_op_connect_sysmem,
+./bus/pci/kpci/kpci.c:173:static zx_status_t kpci_connect_sysmem(pci_msg_t* req, kpci_device_t* device, zx_handle_t ch) {
+./bus/pci/kpci/kpci.c:176:        zx_status_t status = pciroot_connect_sysmem(&device->pciroot, req->handle);
+./bus/pci/kpci/kpci.c:207:    [PCI_OP_CONNECT_SYSMEM] = kpci_connect_sysmem,
+
+./board/x86/pciroot.cc:220:zx_status_t Pciroot::PcirootConnectSysmem(zx::handle handle) {
+./board/x86/include/pciroot.h:35:  zx_status_t PcirootConnectSysmem(zx::handle handle);
+./display/goldfish-display/display.cc:566:  zx_status_t status = pipe_.ConnectSysmem(std::move(connection));
+./misc/goldfish/pipe-device.h:51:  zx_status_t GoldfishPipeConnectSysmem(zx::channel connection);
+./misc/goldfish/pipe-device.cc:239:zx_status_t PipeDevice::GoldfishPipeConnectSysmem(zx::channel connection) {
+./misc/goldfish/pipe-device.cc:240:  TRACE_DURATION("gfx", "PipeDevice::GoldfishPipeConnectSysmem");
+./misc/goldfish/pipe-device.cc:242:  return acpi_.ConnectSysmem(std::move(connection));
+./bus/pci/test/fakes/fake_pciroot.h:48:  zx_status_t PcirootConnectSysmem(zx::handle handle) { return ZX_ERR_NOT_SUPPORTED; }
+
+./board/x86/acpi-nswalk.c:448:static zx_status_t acpi_op_register_sysmem_heap(void* ctx, uint64_t heap, zx_handle_t handle) {
+./board/x86/acpi-nswalk.c:472:    .register_sysmem_heap = acpi_op_register_sysmem_heap,
+
+./board/x86/acpi-nswalk.c:448:static zx_status_t acpi_op_register_sysmem_heap(void* ctx, uint64_t heap, zx_handle_t handle) {
+./board/x86/acpi-nswalk.c:472:    .register_sysmem_heap = acpi_op_register_sysmem_heap,
+
