@@ -183,6 +183,9 @@ void DmaManager::Disable() {
   // TODO(CAM-54): Provide a way to dump the previous set of write locked
   // buffers.
   write_locked_buffers_.clear();
+  // Don't send a callback the next time we get OnNewFrame, because we will not
+  // have any previously written frame.
+  first_frame_ = true;
 }
 
 void DmaManager::OnFrameWritten() {
@@ -203,10 +206,23 @@ void DmaManager::OnFrameWritten() {
 
 // Called as one of the later steps when a new frame arrives.
 void DmaManager::OnNewFrame() {
-  // If we have not initialized yet with a format, just skip.
   if (!enabled_) {
     return;
   }
+
+  // First, call the callbacks for the previous written frame
+  // This assumes that OnFrameWritten will not be called by a seperate interrupt.
+  if (first_frame_) {
+    first_frame_ = false;
+  } else if (write_locked_buffers_.size() > 0) {
+    OnFrameWritten();
+  }
+
+  // Next, load a frame for the next dma write:
+  LoadNewFrame();
+}
+
+void DmaManager::LoadNewFrame() {
   // 1) Get another buffer
   auto buffer = buffers_.LockBufferForWrite();
   if (!buffer) {

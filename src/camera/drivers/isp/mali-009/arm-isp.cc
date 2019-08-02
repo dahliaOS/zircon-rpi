@@ -653,15 +653,15 @@ zx_status_t ArmIspDevice::StartStreaming() {
   IspGlobal_Config3::Get().ReadFrom(&isp_mmio_).select_config_ping().WriteTo(&isp_mmio_);
 
   // Grab a new frame for whichever dma is streaming:
-  downscaled_dma_->OnNewFrame();
-  full_resolution_dma_->OnNewFrame();
+  downscaled_dma_->LoadNewFrame();
+  full_resolution_dma_->LoadNewFrame();
 
   // Copy current context to ISP
   CopyContextInfo(kPing, kCopyToIsp);
 
   // TODO(Garratt): Test if we need to load pong configuration now.
-  full_resolution_dma_->OnNewFrame();
-  downscaled_dma_->OnNewFrame();
+  full_resolution_dma_->LoadNewFrame();
+  downscaled_dma_->LoadNewFrame();
   CopyContextInfo(kPong, kCopyToIsp);
 
   zx_status_t status = SetPort(kSafeStart);
@@ -737,17 +737,9 @@ zx_status_t ArmIspDevice::IspCreateOutputStream(const buffer_collection_info_t* 
 int ArmIspDevice::FrameProcessingThread() {
   while (running_frame_processing_.load()) {
     sync_completion_wait(&frame_processing_signal_, ZX_TIME_INFINITE);
-    // Currently this is called only on the new frame signal, so we maintain
-    // a variable to tell if we need to finish processing the last frame.
-    if (first_frame_) {
-      first_frame_ = false;
-    } else {
-      // Each of these calls has it's own interrupt, that it could be
-      // attached to:
-      full_resolution_dma_->OnFrameWritten();
-      downscaled_dma_->OnFrameWritten();
-    }
-    // Now for the actions we should take on new frame:
+
+    // Currently this is called only on the new frame signal, so OnNewFrame
+    // checks if it needs to finish processing the last frame.
     full_resolution_dma_->OnNewFrame();
     downscaled_dma_->OnNewFrame();
 
