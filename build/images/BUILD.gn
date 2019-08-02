@@ -638,6 +638,13 @@ component_manager_target_name = get_label_info(component_manager_label, "name")
 component_manager_manifest =
     component_manager_target_dir + "/" + component_manager_target_name
 
+devhost_label = "//src/ddk/devhost:devhost.bootfs"
+devhost_target_dir =
+    get_label_info(devhost_label, "target_out_dir")
+devhost_target_name = get_label_info(devhost_label, "name")
+devhost_manifest =
+    devhost_target_dir + "/" + devhost_target_name
+
 root_manifests_label = "//src/sys/root:root_manifests.bootfs"
 root_manifests_target_dir =
     get_label_info(root_manifests_label, "target_out_dir")
@@ -654,11 +661,13 @@ zbi("fuchsia") {
     ":devmgr_config.txt",
     ":system_image.manifest",
     component_manager_label,
+    devhost_label,
     root_manifests_label,
   ]
   inputs = [
     boot_manifest,
     component_manager_manifest,
+    devhost_manifest,
     root_manifests_manifest,
     zircon_kernel_zbi,
   ]

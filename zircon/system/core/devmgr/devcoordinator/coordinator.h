@@ -110,6 +110,8 @@ struct CoordinatorConfig {
   bool require_system;
   // Whether we require ASan drivers.
   bool asan_drivers;
+  // version of devhost
+  uint8_t devhost_version;
   // Whether to reboot the device when suspend does not finish on time.
   bool suspend_fallback;
 };

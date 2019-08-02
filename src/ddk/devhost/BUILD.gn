@@ -1,0 +1,41 @@
+# Copyright 2019 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//build/rust/rustc_binary.gni")
+import("//build/rust/rustc_library.gni")
+
+rustc_binary("devhost") {
+  name = "devhost"
+  with_unit_tests = true
+  edition = "2018"
+
+  deps = [
+    "//third_party/rust_crates:failure",
+    "//garnet/public/rust/fdio",
+    "//garnet/public/rust/fuchsia-async",
+    "//third_party/rust_crates:futures-preview",
+    "//garnet/public/rust/fuchsia-syslog",
+    "//garnet/public/rust/fuchsia-zircon",
+    "//garnet/public/rust/fuchsia-runtime",
+    "//third_party/rust_crates:log",
+    "//third_party/rust_crates:lazy_static",
+
+    #
+    # "//garnet/public/rust/fuchsia-component",
+  ]
+
+  # force_opt = "z"
+  # with_lto = "fat"
+}
+
+# This manifest is consumed by the ZBI rule in //build/images to add the experimental devhost to bootfs.
+generate_manifest("devhost.bootfs") {
+  deps = [
+    ":devhost",
+  ]
+
+   args = [ "--entry=bin/devhost2=" +
+            rebase_path("$root_build_dir/devhost", root_build_dir) ]
+}

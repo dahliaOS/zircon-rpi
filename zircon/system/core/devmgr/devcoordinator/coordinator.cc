@@ -304,7 +304,7 @@ void Coordinator::DumpDrivers(VmoWriter* vmo) const {
   }
 }
 
-static const char* get_devhost_bin(bool asan_drivers) {
+static const char* get_devhost_bin(bool asan_drivers, uint8_t devhost_version) {
   // If there are any ASan drivers, use the ASan-supporting devhost for
   // all drivers because even a devhost launched initially with just a
   // non-ASan driver might later load an ASan driver.  One day we might
@@ -313,6 +313,9 @@ static const char* get_devhost_bin(bool asan_drivers) {
   // devhosts at the same time when only a subset of drivers use ASan.
   if (asan_drivers)
     return "/boot/bin/devhost.asan";
+//  if (devhost_version) {
+    return "/boot/bin/devhost2";
+//  }
   return "/boot/bin/devhost";
 }
 
@@ -479,7 +482,7 @@ zx_status_t Coordinator::NewDevhost(const char* name, Devhost* parent, Devhost**
   boot_args().Collect("driver.", &env);
   env.push_back(nullptr);
   status =
-      dc_launch_devhost(dh.get(), loader_service_, get_devhost_bin(config_.asan_drivers), name,
+      dc_launch_devhost(dh.get(), loader_service_, get_devhost_bin(config_.asan_drivers, config_.devhost_version), name,
                         env.get(), hrpc.release(), root_resource(),
                         zx::unowned_job(config_.devhost_job));
   if (status != ZX_OK) {
