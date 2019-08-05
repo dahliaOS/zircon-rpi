@@ -6,15 +6,14 @@
 
 #include <ddk/protocol/platform/device.h>
 #include <lib/device-protocol/platform-device.h>
-#include <ddk/protocol/serialimpl.h>
 #include <ddk/protocol/serial.h>
-#include <ddktl/device.h>
-#include <lib/mmio/mmio.h>
 #include <ddktl/protocol/serialimpl.h>
-
+#include <ddktl/device.h>
 #include <fbl/function.h>
 #include <fbl/mutex.h>
+#include <lib/mmio/mmio.h>
 #include <lib/zx/interrupt.h>
+#include <lib/zx/port.h>
 #include <lib/zircon-internal/thread_annotations.h>
 #include <zircon/types.h>
 
@@ -64,6 +63,7 @@ class AmlUart : public DeviceType, public ddk::SerialImplProtocol<AmlUart, ddk::
   const serial_port_info_t serial_port_info_;
   ddk::MmioBuffer mmio_;
   zx::interrupt irq_;
+  zx::port port_;
 
   thrd_t irq_thread_ TA_GUARDED(enable_lock_);
   bool enabled_ TA_GUARDED(enable_lock_) = false;

@@ -1,0 +1,14 @@
+fx set core.vim2 --release --with-base //garnet/packages/tests:zircon --with-base //garnet/packages/tools:bluetooth --with //src/connectivity/bluetooth/profiles/bt-a2dp-sink --with //garnet/packages/prod:media_audio --with //garnet/packages/prod:mediaplayer
+
+
+set-device-class AUDIOVIDEO
+
+start a2dp before pairing
+
+run -d fuchsia-pkg://fuchsia.com/bt-a2dp-sink#meta/bt-a2dp-sink.cmx
+
+
+
+    7198    11130      14.15 block devhost:pdev:05:00:3:bt_usb_read_thread
+    7198     7395      11.81 block devhost:pdev:05:00:3:platform_serial_thread
+    7198     7390       7.37 block devhost:pdev:05:00:3:aml_uart_irq_thread

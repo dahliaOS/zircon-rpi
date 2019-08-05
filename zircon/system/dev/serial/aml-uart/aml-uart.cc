@@ -28,6 +28,12 @@
 
 namespace serial {
 
+enum {
+  kPortKeyInterrupt,
+  kPortKeyExit,
+};
+  
+
 zx_status_t AmlUart::Create(void* ctx, zx_device_t* parent) {
   zx_status_t status;
 
@@ -106,12 +112,20 @@ int AmlUart::IrqThread() {
   zxlogf(INFO, "%s start\n", __func__);
 
   while (1) {
-    zx_status_t status;
-    status = irq_.wait(nullptr);
+    zx_port_packet_t packet;
+    auto status = port_.wait(zx::time::infinite(), &packet);
+printf("port wait got %d\n", status);
     if (status != ZX_OK) {
-      zxlogf(ERROR, "%s: irq.wait() got %d\n", __func__, status);
+      zxlogf(ERROR, "%s port wait failed: %d\n", __func__, status);
       break;
     }
+    zxlogf(TRACE, "%s msg on port key %lu\n", __func__, packet.key);
+    if (packet.key == kPortKeyExit) {
+      zxlogf(INFO, "aml-uart thread terminating\n");
+      break;
+    }
+    irq_.ack();
+
     // This will call the notify_cb if the serial state has changed.
     ReadStateAndNotify();
   }
@@ -259,6 +273,21 @@ zx_status_t AmlUart::SerialImplEnable(bool enable) {
       return status;
     }
 
+    status = zx::port::create(ZX_PORT_BIND_TO_INTERRUPT, &port_);
+    if (status != ZX_OK) {
+      zxlogf(ERROR, "%s port create failed %d\n", __func__, status);
+      irq_.destroy();
+      return status;
+    }
+
+    status = irq_.bind(port_, kPortKeyInterrupt, 0);
+    if (status != ZX_OK) {
+      zxlogf(ERROR, "%s interrupt bind failed %d\n", __func__, status);
+      irq_.destroy();
+      port_.reset();
+      return status;
+    }
+
     EnableLocked(true);
 
     auto start_thread = [](void* arg) { return static_cast<AmlUart*>(arg)->IrqThread(); };
@@ -269,7 +298,10 @@ zx_status_t AmlUart::SerialImplEnable(bool enable) {
     }
   } else if (!enable && enabled_) {
     irq_.destroy();
+    zx_port_packet packet = {kPortKeyExit, ZX_PKT_TYPE_USER, ZX_OK, {}};
+    port_.queue(&packet);
     thrd_join(irq_thread_, nullptr);
+    port_.reset();
     EnableLocked(false);
   }
 
