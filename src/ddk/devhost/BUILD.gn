@@ -12,18 +12,19 @@ rustc_binary("devhost") {
   edition = "2018"
 
   deps = [
-    "//third_party/rust_crates:failure",
+    "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/fdio",
     "//garnet/public/rust/fuchsia-async",
-    "//third_party/rust_crates:futures-preview",
+    "//garnet/public/rust/fuchsia-runtime",
     "//garnet/public/rust/fuchsia-syslog",
     "//garnet/public/rust/fuchsia-zircon",
-    "//garnet/public/rust/fuchsia-runtime",
-    "//third_party/rust_crates:log",
+    "//third_party/rust_crates:failure",
+    "//third_party/rust_crates:futures-preview",
     "//third_party/rust_crates:lazy_static",
-
-    #
-    # "//garnet/public/rust/fuchsia-component",
+    "//third_party/rust_crates:log",
+    "//zircon/public/fidl/fuchsia-io:fuchsia-io-rustc",
+    "//zircon/public/fidl/fuchsia-device:fuchsia-device-rustc",
+    "//zircon/public/fidl/fuchsia-device-manager:fuchsia-device-manager-rustc",
   ]
 
   # force_opt = "z"
@@ -36,6 +37,6 @@ generate_manifest("devhost.bootfs") {
     ":devhost",
   ]
 
-   args = [ "--entry=bin/devhost2=" +
-            rebase_path("$root_build_dir/devhost", root_build_dir) ]
+  args = [ "--entry=bin/devhost2=" +
+           rebase_path("$root_build_dir/devhost", root_build_dir) ]
 }
