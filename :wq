@@ -3,12 +3,14 @@
 // found in the LICENSE file.
 
 #![feature(async_await)]
+#![allow(warnings)]
 
 use {
     failure::{format_err, Error},
     fidl::endpoints::RequestStream,
     fidl_fuchsia_device_manager::{DevhostControllerRequest, DevhostControllerRequestStream},
     fuchsia_async as fasync,
+    fuchsia_syslog::{self as syslog},
     fuchsia_zircon::{self as zx, AsHandleRef},
     futures::TryStreamExt,
     libc,
@@ -28,7 +30,6 @@ mod klog;
 /// TODO(bwb): remove when bind rules are no longer in elf notes
 mod dlfcn;
 
-#[derive(Debug)]
 pub struct Driver {
     pub path: String,
     pub name: String,
@@ -71,31 +72,26 @@ impl Driver {
             }
             dyn_lib
         };
-        info!("DYN LIB LOADED: {}", path);
         let driver_note = unsafe {
             let driver_note_raw = libc::dlsym(dyn_lib, "__zircon_driver_note__".as_ptr() as *const i8);
-            error!("__zircon_driver_note_raw {:?}", driver_note_raw);
             if driver_note_raw.is_null() {
-                error!("Missing __zircon_driver_note__ for {}", path);
+                error!("Missing __zircon_driver_note__");
                 return Err(zx::Status::IO_INVALID.into());
             }
-            error!("Found __zircon_driver_note__ for {}", path);
             let driver_note: *const DriverNote = std::mem::transmute(driver_note_raw);
             driver_note
         };
 
-        let name = unsafe { String::from_utf8((*driver_note).payload.name.to_vec())? };
-//        info!("DRIVER NOTE: {} ", name);
-
         // TODO do something with ops
-        //unsafe {
-        //    let driver_ops_raw = libc::dlsym(dyn_lib, "__zircon_driver_ops__".as_ptr() as *const i8);
-        //    if driver_ops_raw.is_null() {
-        //        error!("Missing __zircon_driver_ops__");
-        //        return Err(zx::Status::IO_INVALID.into());
-        //    }
-        //}
+        unsafe {
+            let driver_ops_raw = libc::dlsym(dyn_lib, "__zircon_driver_ops__".as_ptr() as *const i8);
+            if driver_ops_raw.is_null() {
+                error!("Missing __zircon_driver_ops__");
+                return Err(zx::Status::IO_INVALID.into());
+            }
+        }
 
+        let name = unsafe { String::from_utf8((*driver_note).payload.name.to_vec())? };
 
         Ok(Rc::new(Driver { path, name }))
     }
@@ -115,10 +111,10 @@ async fn connect_devcoordinator(
                 rpc,
                 driver_path,
                 driver,
-                parent_proxy: _,
+                parent_proxy,
                 proxy_args,
-                local_device_id: _,
-                control_handle: _,
+                local_device_id,
+                control_handle,
             } => {
                 info!("Create Device {} with {:?}", driver_path, proxy_args);
 
@@ -126,26 +122,23 @@ async fn connect_devcoordinator(
                 // for driver in drivers {
 
                 let driver = Driver::new(driver_path, driver)?;
-                info!("Initializing a Device with {:?}", driver);
                 drivers.push(driver.clone());
-                info!("pushed: {:?}", driver);
-                device_controller::connect(rpc, driver).await?;
-                info!("inited");
+                device_controller::connect(rpc, driver).await
             }
             DevhostControllerRequest::CreateDeviceStub {
-                rpc: _,
-                protocol_id: _,
+                rpc,
+                protocol_id,
                 local_device_id,
-                control_handle: _,
+                control_handle,
             } => {
                 info!("Created Device Stub {}", local_device_id);
             }
             DevhostControllerRequest::CreateCompositeDevice {
-                rpc: _,
-                components: _,
+                rpc,
+                components,
                 name,
                 local_device_id,
-                responder: _,
+                responder,
             } => {
                 info!("Created Composite Device {} named {}", local_device_id, name);
             }
@@ -167,12 +160,10 @@ async fn main() -> Result<(), Error> {
     );
 
     // TODO(bwb): Nothing uses this? remove?
-    // let root_resource =
-    //     fuchsia_runtime::take_startup_handle(fuchsia_runtime::HandleType::Resource.into())
-    //         .ok_or(format_err!("missing root resource handle"))?;
+    let root_resource =
+        fuchsia_runtime::take_startup_handle(fuchsia_runtime::HandleType::Resource.into())
+            .ok_or(format_err!("missing root resource handle"))?;
 
     let devhost_drivers: DevhostDrivers = vec![];
-    let status = connect_devcoordinator(fasync::Channel::from_channel(root_channel)?, devhost_drivers).await;
-    info!("Device Coordination terminated with {:?}", status);
-    Ok(())
+    connect_devcoordinator(fasync::Channel::from_channel(root_channel)?, devhost_drivers).await
 }
