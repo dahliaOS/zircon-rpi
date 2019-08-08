@@ -10,6 +10,8 @@
 #include <zircon/compiler.h>
 #include <stdint.h>
 
+#include <ddk/device-power-states.h>
+
 __BEGIN_CDECLS
 
 typedef struct zx_device zx_device_t;
@@ -97,12 +99,17 @@ typedef struct device_add_args {
   // Number of device properties
   uint32_t prop_count;
 
+  // Mandatory list of power_states. The driver fills in the supported power states.
+  fuchsia_device_DevicePowerStateInfo* power_states;
+
+  // Number of valid power states
+  uint8_t power_state_count;
+
   // Optional custom protocol for this device
   uint32_t proto_id;
 
   // Optional custom protocol operations for this device
   void* proto_ops;
-
   // Arguments used with DEVICE_ADD_MUST_ISOLATE
   // these will be passed to the create() driver op of
   // the proxy device in the new devhost

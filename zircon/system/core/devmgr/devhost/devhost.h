@@ -162,6 +162,9 @@ zx_status_t devhost_load_firmware(const fbl::RefPtr<zx_device_t>& dev, const cha
 zx_status_t devhost_get_topo_path(const fbl::RefPtr<zx_device_t>& dev, char* path, size_t max,
                                   size_t* actual);
 
+zx_status_t devhost_get_power_caps(const fbl::RefPtr<zx_device_t>& dev,
+                                   fuchsia_device_DevicePowerStateInfo* power_states, uint8_t* state_count);
+
 zx_status_t devhost_get_metadata(const fbl::RefPtr<zx_device_t>& dev, uint32_t type, void* buf,
                                  size_t buflen, size_t* actual) REQ_DM_LOCK;
 

@@ -6,6 +6,7 @@
 #define ZIRCON_SYSTEM_CORE_DEVMGR_DEVHOST_ZX_DEVICE_H_
 
 #include <ddk/device.h>
+#include <ddk/device-power-states.h>
 #include <fbl/intrusive_double_list.h>
 #include <fbl/intrusive_wavl_tree.h>
 #include <fbl/mutex.h>
@@ -153,6 +154,20 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
   void set_composite(fbl::RefPtr<devmgr::CompositeDevice> composite);
   fbl::RefPtr<devmgr::CompositeDevice> take_composite();
 
+  void power_states(fuchsia_device_DevicePowerStateInfo** power_states, uint8_t *count) {
+    *power_states = power_states_;
+  }
+  zx_status_t set_power_states(fuchsia_device_DevicePowerStateInfo* power_states, uint8_t count) {
+    if (count < fuchsia_device_MAX_DEVICE_POWER_STATES ||
+        count > fuchsia_device_MAX_DEVICE_POWER_STATES) {
+      return ZX_ERR_INVALID_ARGS;
+    }
+    for (size_t i = 0; i < count; i++) {
+      fuchsia_device_DevicePowerStateInfo* info = &power_states[i];
+      memcpy(&power_states_[info->state_id], info, sizeof(*info));
+    }
+    return ZX_OK;
+  }
  private:
   zx_device() = default;
 
@@ -191,6 +206,8 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
   fbl::Mutex test_compatibility_conn_lock_;
   fbl::Vector<fs::FidlConnection> test_compatibility_conn_
       TA_GUARDED(test_compatibility_conn_lock_);
+
+  fuchsia_device_DevicePowerStateInfo power_states_[fuchsia_device_MAX_DEVICE_POWER_STATES];
 };
 
 // zx_device_t objects must be created or initialized by the driver manager's
