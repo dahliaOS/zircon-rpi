@@ -142,12 +142,63 @@ zx_status_t UsbMidiSource::DdkRead(void* data, size_t len, zx_off_t off, size_t*
   return status;
 }
 
-void UsbMidiSource::GetInfo(GetInfoCompleter::Sync completer) {
-  llcpp::fuchsia::hardware::midi::Info info = {
-      .is_sink = false,
-      .is_source = true,
-  };
-  completer.Reply(info);
+void UsbMidiSource::GetDirection(GetDirectionCompleter::Sync completer) {
+  completer.Reply(llcpp::fuchsia::hardware::midi::Direction::SOURCE);
+}
+
+void UsbMidiSource::Read(uint64_t count, ReadCompleter::Sync completer) {
+  auto result = llcpp::fuchsia::hardware::midi::Device_Read_Result();
+  zx_status_t status = ZX_OK;
+
+  fbl::AutoLock al(&mutex_);
+
+  if (dead_) {
+    status = ZX_ERR_IO_NOT_PRESENT;
+    goto error;
+  }
+
+  if (count < 3) {
+    status = ZX_ERR_BUFFER_TOO_SMALL;
+    goto error;
+  }
+
+  {
+    usb_request_complete_t complete = {
+        .callback = [](void* ctx,
+                       usb_request_t* req) { static_cast<UsbMidiSource*>(ctx)->ReadComplete(req); },
+        .ctx = this,
+    };
+
+    auto req = completed_reads_.pop();
+    if (!req.has_value()) {
+      status = ZX_ERR_SHOULD_WAIT;
+      goto error;
+    }
+
+    // MIDI events are 4 bytes. We can ignore the zeroth byte
+    uint8_t data[3];
+    req->CopyFrom(data, 3, 1);
+
+    auto response = llcpp::fuchsia::hardware::midi::Device_Read_Response();
+    response.data = fidl::VectorView(get_midi_message_length(data[0]), data);
+    result.set_response(std::move(response));
+
+    free_read_reqs_.push(std::move(*req));
+    while ((req = free_read_reqs_.pop()).has_value()) {
+      usb_.RequestQueue(req->take(), &complete);
+    }
+  }
+
+error:
+  UpdateSignals();
+  result.set_err(status);
+  completer.Reply(std::move(result));
+}
+
+void UsbMidiSource::Write(fidl::VectorView<uint8_t> data, WriteCompleter::Sync completer) {
+  auto result = llcpp::fuchsia::hardware::midi::Device_Write_Result();
+  result.set_err(ZX_ERR_NOT_SUPPORTED);
+  completer.Reply(std::move(result));
 }
 
 zx_status_t UsbMidiSource::DdkMessage(fidl_msg_t* msg, fidl_txn_t* txn) {

@@ -150,12 +150,77 @@ zx_status_t UsbMidiSink::DdkWrite(const void* data, size_t length, zx_off_t offs
   return status;
 }
 
-void UsbMidiSink::GetInfo(GetInfoCompleter::Sync completer) {
-  llcpp::fuchsia::hardware::midi::Info info = {
-      .is_sink = true,
-      .is_source = false,
-  };
-  completer.Reply(info);
+void UsbMidiSink::GetDirection(GetDirectionCompleter::Sync completer) {
+  completer.Reply(llcpp::fuchsia::hardware::midi::Direction::SINK);
+}
+
+void UsbMidiSink::Read(uint64_t count, ReadCompleter::Sync completer) {
+  auto result = llcpp::fuchsia::hardware::midi::Device_Read_Result();
+  result.set_err(ZX_ERR_NOT_SUPPORTED);
+  completer.Reply(std::move(result));
+}
+
+void UsbMidiSink::Write(fidl::VectorView<uint8_t> data, WriteCompleter::Sync completer) {
+  const uint8_t* src = data.data();
+  auto length = data.count();
+  zx_status_t status = ZX_OK;
+
+  fbl::AutoLock al(&mutex_);
+
+  if (dead_) {
+    status = ZX_ERR_IO_NOT_PRESENT;
+    goto error;
+  }
+
+  while (length > 0) {
+    sync_completion_wait(&free_write_completion_, ZX_TIME_INFINITE);
+    if (dead_) {
+      status = ZX_ERR_IO_NOT_PRESENT;
+      goto error;
+    }
+
+    std::optional<UsbRequest> req;
+    req = free_write_reqs_.pop();
+    if (free_write_reqs_.is_empty()) {
+      sync_completion_reset(&free_write_completion_);
+    }
+
+    if (!req) {
+      // shouldn't happen!
+      status = ZX_ERR_INTERNAL;
+      goto error;
+    }
+
+    size_t message_length = get_midi_message_length(*src);
+    if (message_length < 1 || message_length > length) {
+      status = ZX_ERR_INVALID_ARGS;
+      goto error;
+    }
+
+    uint8_t buffer[4];
+    buffer[0] = (src[0] & 0xF0) >> 4;
+    buffer[1] = src[0];
+    buffer[2] = (message_length > 1 ? src[1] : 0);
+    buffer[3] = (message_length > 2 ? src[2] : 0);
+
+    req->CopyTo(buffer, 4, 0);
+    req->request()->header.length = 4;
+    usb_request_complete_t complete = {
+        .callback = [](void* ctx,
+                       usb_request_t* req) { static_cast<UsbMidiSink*>(ctx)->WriteComplete(req); },
+        .ctx = this,
+    };
+    usb_.RequestQueue(req->take(), &complete);
+
+    src += message_length;
+    length -= message_length;
+  }
+
+error:
+  UpdateSignals();
+  auto result = llcpp::fuchsia::hardware::midi::Device_Write_Result();
+  result.set_err(status);
+  completer.Reply(std::move(result));
 }
 
 zx_status_t UsbMidiSink::DdkMessage(fidl_msg_t* msg, fidl_txn_t* txn) {

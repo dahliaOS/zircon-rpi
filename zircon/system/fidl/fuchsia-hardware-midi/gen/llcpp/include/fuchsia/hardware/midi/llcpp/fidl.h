@@ -20,43 +20,272 @@ namespace fuchsia {
 namespace hardware {
 namespace midi {
 
-struct Info;
+enum class Direction : uint8_t {
+  SOURCE = 1u,
+  SINK = 2u,
+};
+
+
+struct Device_Write_Response;
+struct Device_Write_Result;
+struct Device_Read_Response;
+struct Device_Read_Result;
 class Device;
 
 
 
-// Describes what type of MIDI device an implementation of Device represents
-struct Info {
+struct Device_Write_Response {
   static constexpr const fidl_type_t* Type = nullptr;
   static constexpr uint32_t MaxNumHandles = 0;
-  static constexpr uint32_t PrimarySize = 2;
+  static constexpr uint32_t PrimarySize = 8;
   [[maybe_unused]]
   static constexpr uint32_t MaxOutOfLine = 0;
 
-  // Whether or not this device is a MIDI sink
-  bool is_sink = {};
-
-  // Whether or not this device is a MIDI source
-  bool is_source = {};
+  uint64_t actual = {};
 };
 
-extern "C" const fidl_type_t fuchsia_hardware_midi_DeviceGetInfoResponseTable;
+extern "C" const fidl_type_t fuchsia_hardware_midi_Device_Write_ResultTable;
+
+struct Device_Write_Result {
+  enum class Tag : fidl_union_tag_t {
+    kResponse = 0,
+    kErr = 1,
+    Invalid = ::std::numeric_limits<::fidl_union_tag_t>::max(),
+  };
+
+  Device_Write_Result();
+  ~Device_Write_Result();
+
+  Device_Write_Result(Device_Write_Result&& other) {
+    tag_ = Tag::Invalid;
+    if (this != &other) {
+      MoveImpl_(std::move(other));
+    }
+  }
+
+  Device_Write_Result& operator=(Device_Write_Result&& other) {
+    if (this != &other) {
+      MoveImpl_(std::move(other));
+    }
+    return *this;
+  }
+
+  bool has_invalid_tag() const { return tag_ == Tag::Invalid; }
+
+  bool is_response() const { return tag_ == Tag::kResponse; }
+
+  Device_Write_Response& mutable_response();
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, Device_Write_Response>::value && std::is_copy_assignable<T>::value>
+  set_response(const T& v) {
+    mutable_response() = v;
+  }
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, Device_Write_Response>::value && std::is_move_assignable<T>::value>
+  set_response(T&& v) {
+    mutable_response() = std::move(v);
+  }
+
+  Device_Write_Response const & response() const { return response_; }
+
+  bool is_err() const { return tag_ == Tag::kErr; }
+
+  int32_t& mutable_err();
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, int32_t>::value && std::is_copy_assignable<T>::value>
+  set_err(const T& v) {
+    mutable_err() = v;
+  }
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, int32_t>::value && std::is_move_assignable<T>::value>
+  set_err(T&& v) {
+    mutable_err() = std::move(v);
+  }
+
+  int32_t const & err() const { return err_; }
+
+  Tag which() const { return tag_; }
+
+  static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_Device_Write_ResultTable;
+  static constexpr uint32_t MaxNumHandles = 0;
+  static constexpr uint32_t PrimarySize = 16;
+  [[maybe_unused]]
+  static constexpr uint32_t MaxOutOfLine = 0;
+
+ private:
+  void Destroy();
+  void MoveImpl_(Device_Write_Result&& other);
+  static void SizeAndOffsetAssertionHelper();
+  Tag tag_;
+  union {
+    Device_Write_Response response_;
+    int32_t err_;
+  };
+};
+
+extern "C" const fidl_type_t fuchsia_hardware_midi_Device_Read_ResponseTable;
+
+struct Device_Read_Response {
+  static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_Device_Read_ResponseTable;
+  static constexpr uint32_t MaxNumHandles = 0;
+  static constexpr uint32_t PrimarySize = 16;
+  [[maybe_unused]]
+  static constexpr uint32_t MaxOutOfLine = 4294967295;
+
+  ::fidl::VectorView<uint8_t> data = {};
+};
+
+extern "C" const fidl_type_t fuchsia_hardware_midi_Device_Read_ResultTable;
+
+struct Device_Read_Result {
+  enum class Tag : fidl_union_tag_t {
+    kResponse = 0,
+    kErr = 1,
+    Invalid = ::std::numeric_limits<::fidl_union_tag_t>::max(),
+  };
+
+  Device_Read_Result();
+  ~Device_Read_Result();
+
+  Device_Read_Result(Device_Read_Result&& other) {
+    tag_ = Tag::Invalid;
+    if (this != &other) {
+      MoveImpl_(std::move(other));
+    }
+  }
+
+  Device_Read_Result& operator=(Device_Read_Result&& other) {
+    if (this != &other) {
+      MoveImpl_(std::move(other));
+    }
+    return *this;
+  }
+
+  bool has_invalid_tag() const { return tag_ == Tag::Invalid; }
+
+  bool is_response() const { return tag_ == Tag::kResponse; }
+
+  Device_Read_Response& mutable_response();
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, Device_Read_Response>::value && std::is_copy_assignable<T>::value>
+  set_response(const T& v) {
+    mutable_response() = v;
+  }
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, Device_Read_Response>::value && std::is_move_assignable<T>::value>
+  set_response(T&& v) {
+    mutable_response() = std::move(v);
+  }
+
+  Device_Read_Response const & response() const { return response_; }
+
+  bool is_err() const { return tag_ == Tag::kErr; }
+
+  int32_t& mutable_err();
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, int32_t>::value && std::is_copy_assignable<T>::value>
+  set_err(const T& v) {
+    mutable_err() = v;
+  }
+
+  template <typename T>
+  std::enable_if_t<std::is_convertible<T, int32_t>::value && std::is_move_assignable<T>::value>
+  set_err(T&& v) {
+    mutable_err() = std::move(v);
+  }
+
+  int32_t const & err() const { return err_; }
+
+  Tag which() const { return tag_; }
+
+  static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_Device_Read_ResultTable;
+  static constexpr uint32_t MaxNumHandles = 0;
+  static constexpr uint32_t PrimarySize = 24;
+  [[maybe_unused]]
+  static constexpr uint32_t MaxOutOfLine = 4294967295;
+
+ private:
+  void Destroy();
+  void MoveImpl_(Device_Read_Result&& other);
+  static void SizeAndOffsetAssertionHelper();
+  Tag tag_;
+  union {
+    Device_Read_Response response_;
+    int32_t err_;
+  };
+};
+
+extern "C" const fidl_type_t fuchsia_hardware_midi_DeviceGetDirectionResponseTable;
+extern "C" const fidl_type_t fuchsia_hardware_midi_DeviceReadResponseTable;
+extern "C" const fidl_type_t fuchsia_hardware_midi_DeviceWriteRequestTable;
+extern "C" const fidl_type_t fuchsia_hardware_midi_DeviceWriteResponseTable;
 
 class Device final {
   Device() = delete;
  public:
 
-  struct GetInfoResponse final {
+  struct GetDirectionResponse final {
     FIDL_ALIGNDECL
     fidl_message_header_t _hdr;
-    Info info;
+    Direction direction;
 
-    static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_DeviceGetInfoResponseTable;
+    static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_DeviceGetDirectionResponseTable;
     static constexpr uint32_t MaxNumHandles = 0;
     static constexpr uint32_t PrimarySize = 24;
     static constexpr uint32_t MaxOutOfLine = 0;
   };
-  using GetInfoRequest = ::fidl::AnyZeroArgMessage;
+  using GetDirectionRequest = ::fidl::AnyZeroArgMessage;
+
+  struct ReadResponse final {
+    FIDL_ALIGNDECL
+    fidl_message_header_t _hdr;
+    Device_Read_Result result;
+
+    static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_DeviceReadResponseTable;
+    static constexpr uint32_t MaxNumHandles = 0;
+    static constexpr uint32_t PrimarySize = 40;
+    static constexpr uint32_t MaxOutOfLine = 4294967295;
+  };
+  struct ReadRequest final {
+    FIDL_ALIGNDECL
+    fidl_message_header_t _hdr;
+    uint64_t count;
+
+    static constexpr const fidl_type_t* Type = nullptr;
+    static constexpr uint32_t MaxNumHandles = 0;
+    static constexpr uint32_t PrimarySize = 24;
+    static constexpr uint32_t MaxOutOfLine = 0;
+    using ResponseType = ReadResponse;
+  };
+
+  struct WriteResponse final {
+    FIDL_ALIGNDECL
+    fidl_message_header_t _hdr;
+    Device_Write_Result result;
+
+    static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_DeviceWriteResponseTable;
+    static constexpr uint32_t MaxNumHandles = 0;
+    static constexpr uint32_t PrimarySize = 32;
+    static constexpr uint32_t MaxOutOfLine = 0;
+  };
+  struct WriteRequest final {
+    FIDL_ALIGNDECL
+    fidl_message_header_t _hdr;
+    ::fidl::VectorView<uint8_t> data;
+
+    static constexpr const fidl_type_t* Type = &fuchsia_hardware_midi_DeviceWriteRequestTable;
+    static constexpr uint32_t MaxNumHandles = 0;
+    static constexpr uint32_t PrimarySize = 32;
+    static constexpr uint32_t MaxOutOfLine = 4294967295;
+    using ResponseType = WriteResponse;
+  };
 
 
   // Collection of return types of FIDL calls in this interface.
@@ -64,13 +293,45 @@ class Device final {
     ResultOf() = delete;
    private:
     template <typename ResponseType>
-    class GetInfo_Impl final : private ::fidl::internal::OwnedSyncCallBase<ResponseType> {
+    class GetDirection_Impl final : private ::fidl::internal::OwnedSyncCallBase<ResponseType> {
       using Super = ::fidl::internal::OwnedSyncCallBase<ResponseType>;
      public:
-      GetInfo_Impl(zx::unowned_channel _client_end);
-      ~GetInfo_Impl() = default;
-      GetInfo_Impl(GetInfo_Impl&& other) = default;
-      GetInfo_Impl& operator=(GetInfo_Impl&& other) = default;
+      GetDirection_Impl(zx::unowned_channel _client_end);
+      ~GetDirection_Impl() = default;
+      GetDirection_Impl(GetDirection_Impl&& other) = default;
+      GetDirection_Impl& operator=(GetDirection_Impl&& other) = default;
+      using Super::status;
+      using Super::error;
+      using Super::ok;
+      using Super::Unwrap;
+      using Super::value;
+      using Super::operator->;
+      using Super::operator*;
+    };
+    template <typename ResponseType>
+    class Read_Impl final : private ::fidl::internal::OwnedSyncCallBase<ResponseType> {
+      using Super = ::fidl::internal::OwnedSyncCallBase<ResponseType>;
+     public:
+      Read_Impl(zx::unowned_channel _client_end, uint64_t count);
+      ~Read_Impl() = default;
+      Read_Impl(Read_Impl&& other) = default;
+      Read_Impl& operator=(Read_Impl&& other) = default;
+      using Super::status;
+      using Super::error;
+      using Super::ok;
+      using Super::Unwrap;
+      using Super::value;
+      using Super::operator->;
+      using Super::operator*;
+    };
+    template <typename ResponseType>
+    class Write_Impl final : private ::fidl::internal::OwnedSyncCallBase<ResponseType> {
+      using Super = ::fidl::internal::OwnedSyncCallBase<ResponseType>;
+     public:
+      Write_Impl(zx::unowned_channel _client_end, ::fidl::VectorView<uint8_t> data);
+      ~Write_Impl() = default;
+      Write_Impl(Write_Impl&& other) = default;
+      Write_Impl& operator=(Write_Impl&& other) = default;
       using Super::status;
       using Super::error;
       using Super::ok;
@@ -81,7 +342,9 @@ class Device final {
     };
 
    public:
-    using GetInfo = GetInfo_Impl<GetInfoResponse>;
+    using GetDirection = GetDirection_Impl<GetDirectionResponse>;
+    using Read = Read_Impl<ReadResponse>;
+    using Write = Write_Impl<WriteResponse>;
   };
 
   // Collection of return types of FIDL calls in this interface,
@@ -90,13 +353,45 @@ class Device final {
     UnownedResultOf() = delete;
    private:
     template <typename ResponseType>
-    class GetInfo_Impl final : private ::fidl::internal::UnownedSyncCallBase<ResponseType> {
+    class GetDirection_Impl final : private ::fidl::internal::UnownedSyncCallBase<ResponseType> {
       using Super = ::fidl::internal::UnownedSyncCallBase<ResponseType>;
      public:
-      GetInfo_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer);
-      ~GetInfo_Impl() = default;
-      GetInfo_Impl(GetInfo_Impl&& other) = default;
-      GetInfo_Impl& operator=(GetInfo_Impl&& other) = default;
+      GetDirection_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer);
+      ~GetDirection_Impl() = default;
+      GetDirection_Impl(GetDirection_Impl&& other) = default;
+      GetDirection_Impl& operator=(GetDirection_Impl&& other) = default;
+      using Super::status;
+      using Super::error;
+      using Super::ok;
+      using Super::Unwrap;
+      using Super::value;
+      using Super::operator->;
+      using Super::operator*;
+    };
+    template <typename ResponseType>
+    class Read_Impl final : private ::fidl::internal::UnownedSyncCallBase<ResponseType> {
+      using Super = ::fidl::internal::UnownedSyncCallBase<ResponseType>;
+     public:
+      Read_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, uint64_t count, ::fidl::BytePart _response_buffer);
+      ~Read_Impl() = default;
+      Read_Impl(Read_Impl&& other) = default;
+      Read_Impl& operator=(Read_Impl&& other) = default;
+      using Super::status;
+      using Super::error;
+      using Super::ok;
+      using Super::Unwrap;
+      using Super::value;
+      using Super::operator->;
+      using Super::operator*;
+    };
+    template <typename ResponseType>
+    class Write_Impl final : private ::fidl::internal::UnownedSyncCallBase<ResponseType> {
+      using Super = ::fidl::internal::UnownedSyncCallBase<ResponseType>;
+     public:
+      Write_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::VectorView<uint8_t> data, ::fidl::BytePart _response_buffer);
+      ~Write_Impl() = default;
+      Write_Impl(Write_Impl&& other) = default;
+      Write_Impl& operator=(Write_Impl&& other) = default;
       using Super::status;
       using Super::error;
       using Super::ok;
@@ -107,7 +402,9 @@ class Device final {
     };
 
    public:
-    using GetInfo = GetInfo_Impl<GetInfoResponse>;
+    using GetDirection = GetDirection_Impl<GetDirectionResponse>;
+    using Read = Read_Impl<ReadResponse>;
+    using Write = Write_Impl<WriteResponse>;
   };
 
   class SyncClient final {
@@ -121,21 +418,51 @@ class Device final {
 
     ::zx::channel* mutable_channel() { return &channel_; }
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Allocates 40 bytes of message buffer on the stack. No heap allocation necessary.
-    ResultOf::GetInfo GetInfo();
+    ResultOf::GetDirection GetDirection();
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Caller provides the backing storage for FIDL message via request and response buffers.
-    UnownedResultOf::GetInfo GetInfo(::fidl::BytePart _response_buffer);
+    UnownedResultOf::GetDirection GetDirection(::fidl::BytePart _response_buffer);
 
-    // Get information about the type of MIDI device
-    zx_status_t GetInfo_Deprecated(Info* out_info);
+    // Get direction of the MIDI device
+    zx_status_t GetDirection_Deprecated(Direction* out_direction);
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Caller provides the backing storage for FIDL message via request and response buffers.
     // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
-    ::fidl::DecodeResult<GetInfoResponse> GetInfo_Deprecated(::fidl::BytePart _response_buffer, Info* out_info);
+    ::fidl::DecodeResult<GetDirectionResponse> GetDirection_Deprecated(::fidl::BytePart _response_buffer, Direction* out_direction);
+
+    // Reads MIDI data from a MIDI source
+    // Allocates 24 bytes of request buffer on the stack. Response is heap-allocated.
+    ResultOf::Read Read(uint64_t count);
+
+    // Reads MIDI data from a MIDI source
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    UnownedResultOf::Read Read(::fidl::BytePart _request_buffer, uint64_t count, ::fidl::BytePart _response_buffer);
+
+
+    // Reads MIDI data from a MIDI source
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
+    ::fidl::DecodeResult<ReadResponse> Read_Deprecated(::fidl::BytePart _request_buffer, uint64_t count, ::fidl::BytePart _response_buffer, Device_Read_Result* out_result);
+
+    // Reads MIDI data to a MIDI sink
+    // Allocates 32 bytes of response buffer on the stack. Request is heap-allocated.
+    ResultOf::Write Write(::fidl::VectorView<uint8_t> data);
+
+    // Reads MIDI data to a MIDI sink
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    UnownedResultOf::Write Write(::fidl::BytePart _request_buffer, ::fidl::VectorView<uint8_t> data, ::fidl::BytePart _response_buffer);
+
+    // Reads MIDI data to a MIDI sink
+    zx_status_t Write_Deprecated(::fidl::VectorView<uint8_t> data, Device_Write_Result* out_result);
+
+    // Reads MIDI data to a MIDI sink
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
+    ::fidl::DecodeResult<WriteResponse> Write_Deprecated(::fidl::BytePart _request_buffer, ::fidl::VectorView<uint8_t> data, ::fidl::BytePart _response_buffer, Device_Write_Result* out_result);
 
    private:
     ::zx::channel channel_;
@@ -146,21 +473,51 @@ class Device final {
     Call() = delete;
    public:
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Allocates 40 bytes of message buffer on the stack. No heap allocation necessary.
-    static ResultOf::GetInfo GetInfo(zx::unowned_channel _client_end);
+    static ResultOf::GetDirection GetDirection(zx::unowned_channel _client_end);
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Caller provides the backing storage for FIDL message via request and response buffers.
-    static UnownedResultOf::GetInfo GetInfo(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer);
+    static UnownedResultOf::GetDirection GetDirection(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer);
 
-    // Get information about the type of MIDI device
-    static zx_status_t GetInfo_Deprecated(zx::unowned_channel _client_end, Info* out_info);
+    // Get direction of the MIDI device
+    static zx_status_t GetDirection_Deprecated(zx::unowned_channel _client_end, Direction* out_direction);
 
-    // Get information about the type of MIDI device
+    // Get direction of the MIDI device
     // Caller provides the backing storage for FIDL message via request and response buffers.
     // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
-    static ::fidl::DecodeResult<GetInfoResponse> GetInfo_Deprecated(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer, Info* out_info);
+    static ::fidl::DecodeResult<GetDirectionResponse> GetDirection_Deprecated(zx::unowned_channel _client_end, ::fidl::BytePart _response_buffer, Direction* out_direction);
+
+    // Reads MIDI data from a MIDI source
+    // Allocates 24 bytes of request buffer on the stack. Response is heap-allocated.
+    static ResultOf::Read Read(zx::unowned_channel _client_end, uint64_t count);
+
+    // Reads MIDI data from a MIDI source
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    static UnownedResultOf::Read Read(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, uint64_t count, ::fidl::BytePart _response_buffer);
+
+
+    // Reads MIDI data from a MIDI source
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
+    static ::fidl::DecodeResult<ReadResponse> Read_Deprecated(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, uint64_t count, ::fidl::BytePart _response_buffer, Device_Read_Result* out_result);
+
+    // Reads MIDI data to a MIDI sink
+    // Allocates 32 bytes of response buffer on the stack. Request is heap-allocated.
+    static ResultOf::Write Write(zx::unowned_channel _client_end, ::fidl::VectorView<uint8_t> data);
+
+    // Reads MIDI data to a MIDI sink
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    static UnownedResultOf::Write Write(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::VectorView<uint8_t> data, ::fidl::BytePart _response_buffer);
+
+    // Reads MIDI data to a MIDI sink
+    static zx_status_t Write_Deprecated(zx::unowned_channel _client_end, ::fidl::VectorView<uint8_t> data, Device_Write_Result* out_result);
+
+    // Reads MIDI data to a MIDI sink
+    // Caller provides the backing storage for FIDL message via request and response buffers.
+    // The lifetime of handles in the response, unless moved, is tied to the returned RAII object.
+    static ::fidl::DecodeResult<WriteResponse> Write_Deprecated(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::VectorView<uint8_t> data, ::fidl::BytePart _response_buffer, Device_Write_Result* out_result);
 
   };
 
@@ -170,8 +527,14 @@ class Device final {
     InPlace() = delete;
    public:
 
-    // Get information about the type of MIDI device
-    static ::fidl::DecodeResult<GetInfoResponse> GetInfo(zx::unowned_channel _client_end, ::fidl::BytePart response_buffer);
+    // Get direction of the MIDI device
+    static ::fidl::DecodeResult<GetDirectionResponse> GetDirection(zx::unowned_channel _client_end, ::fidl::BytePart response_buffer);
+
+    // Reads MIDI data from a MIDI source
+    static ::fidl::DecodeResult<ReadResponse> Read(zx::unowned_channel _client_end, ::fidl::DecodedMessage<ReadRequest> params, ::fidl::BytePart response_buffer);
+
+    // Reads MIDI data to a MIDI sink
+    static ::fidl::DecodeResult<WriteResponse> Write(zx::unowned_channel _client_end, ::fidl::DecodedMessage<WriteRequest> params, ::fidl::BytePart response_buffer);
 
   };
 
@@ -183,19 +546,47 @@ class Device final {
     using _Outer = Device;
     using _Base = ::fidl::CompleterBase;
 
-    class GetInfoCompleterBase : public _Base {
+    class GetDirectionCompleterBase : public _Base {
      public:
-      void Reply(Info info);
-      void Reply(::fidl::BytePart _buffer, Info info);
-      void Reply(::fidl::DecodedMessage<GetInfoResponse> params);
+      void Reply(Direction direction);
+      void Reply(::fidl::BytePart _buffer, Direction direction);
+      void Reply(::fidl::DecodedMessage<GetDirectionResponse> params);
 
      protected:
       using ::fidl::CompleterBase::CompleterBase;
     };
 
-    using GetInfoCompleter = ::fidl::Completer<GetInfoCompleterBase>;
+    using GetDirectionCompleter = ::fidl::Completer<GetDirectionCompleterBase>;
 
-    virtual void GetInfo(GetInfoCompleter::Sync _completer) = 0;
+    virtual void GetDirection(GetDirectionCompleter::Sync _completer) = 0;
+
+    class ReadCompleterBase : public _Base {
+     public:
+      void Reply(Device_Read_Result result);
+      void Reply(::fidl::BytePart _buffer, Device_Read_Result result);
+      void Reply(::fidl::DecodedMessage<ReadResponse> params);
+
+     protected:
+      using ::fidl::CompleterBase::CompleterBase;
+    };
+
+    using ReadCompleter = ::fidl::Completer<ReadCompleterBase>;
+
+    virtual void Read(uint64_t count, ReadCompleter::Sync _completer) = 0;
+
+    class WriteCompleterBase : public _Base {
+     public:
+      void Reply(Device_Write_Result result);
+      void Reply(::fidl::BytePart _buffer, Device_Write_Result result);
+      void Reply(::fidl::DecodedMessage<WriteResponse> params);
+
+     protected:
+      using ::fidl::CompleterBase::CompleterBase;
+    };
+
+    using WriteCompleter = ::fidl::Completer<WriteCompleterBase>;
+
+    virtual void Write(::fidl::VectorView<uint8_t> data, WriteCompleter::Sync _completer) = 0;
 
   };
 
@@ -227,18 +618,63 @@ class Device final {
 namespace fidl {
 
 template <>
-struct IsFidlType<::llcpp::fuchsia::hardware::midi::Info> : public std::true_type {};
-static_assert(std::is_standard_layout_v<::llcpp::fuchsia::hardware::midi::Info>);
-static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Info, is_sink) == 0);
-static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Info, is_source) == 1);
-static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Info) == ::llcpp::fuchsia::hardware::midi::Info::PrimarySize);
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device_Write_Response> : public std::true_type {};
+static_assert(std::is_standard_layout_v<::llcpp::fuchsia::hardware::midi::Device_Write_Response>);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device_Write_Response, actual) == 0);
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device_Write_Response) == ::llcpp::fuchsia::hardware::midi::Device_Write_Response::PrimarySize);
 
 template <>
-struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::GetInfoResponse> : public std::true_type {};
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device_Write_Result> : public std::true_type {};
+static_assert(std::is_standard_layout_v<::llcpp::fuchsia::hardware::midi::Device_Write_Result>);
+
 template <>
-struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::GetInfoResponse> : public std::true_type {};
-static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::GetInfoResponse)
-    == ::llcpp::fuchsia::hardware::midi::Device::GetInfoResponse::PrimarySize);
-static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::GetInfoResponse, info) == 16);
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device_Read_Response> : public std::true_type {};
+static_assert(std::is_standard_layout_v<::llcpp::fuchsia::hardware::midi::Device_Read_Response>);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device_Read_Response, data) == 0);
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device_Read_Response) == ::llcpp::fuchsia::hardware::midi::Device_Read_Response::PrimarySize);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device_Read_Result> : public std::true_type {};
+static_assert(std::is_standard_layout_v<::llcpp::fuchsia::hardware::midi::Device_Read_Result>);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::GetDirectionResponse> : public std::true_type {};
+template <>
+struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::GetDirectionResponse> : public std::true_type {};
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::GetDirectionResponse)
+    == ::llcpp::fuchsia::hardware::midi::Device::GetDirectionResponse::PrimarySize);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::GetDirectionResponse, direction) == 16);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::ReadRequest> : public std::true_type {};
+template <>
+struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::ReadRequest> : public std::true_type {};
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::ReadRequest)
+    == ::llcpp::fuchsia::hardware::midi::Device::ReadRequest::PrimarySize);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::ReadRequest, count) == 16);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::ReadResponse> : public std::true_type {};
+template <>
+struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::ReadResponse> : public std::true_type {};
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::ReadResponse)
+    == ::llcpp::fuchsia::hardware::midi::Device::ReadResponse::PrimarySize);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::ReadResponse, result) == 16);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::WriteRequest> : public std::true_type {};
+template <>
+struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::WriteRequest> : public std::true_type {};
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::WriteRequest)
+    == ::llcpp::fuchsia::hardware::midi::Device::WriteRequest::PrimarySize);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::WriteRequest, data) == 16);
+
+template <>
+struct IsFidlType<::llcpp::fuchsia::hardware::midi::Device::WriteResponse> : public std::true_type {};
+template <>
+struct IsFidlMessage<::llcpp::fuchsia::hardware::midi::Device::WriteResponse> : public std::true_type {};
+static_assert(sizeof(::llcpp::fuchsia::hardware::midi::Device::WriteResponse)
+    == ::llcpp::fuchsia::hardware::midi::Device::WriteResponse::PrimarySize);
+static_assert(offsetof(::llcpp::fuchsia::hardware::midi::Device::WriteResponse, result) == 16);
 
 }  // namespace fidl

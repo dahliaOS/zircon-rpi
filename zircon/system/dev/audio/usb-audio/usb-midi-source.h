@@ -6,11 +6,11 @@
 #define ZIRCON_SYSTEM_DEV_AUDIO_USB_AUDIO_USB_MIDI_SOURCE_H_
 
 #include <fuchsia/hardware/midi/llcpp/fidl.h>
+#include <lib/zircon-internal/thread_annotations.h>
 
 #include <ddktl/device.h>
 #include <ddktl/protocol/empty-protocol.h>
 #include <fbl/mutex.h>
-#include <lib/zircon-internal/thread_annotations.h>
 #include <usb/request-cpp.h>
 #include <usb/usb.h>
 
@@ -45,7 +45,9 @@ class UsbMidiSource : public UsbMidiSourceBase,
   zx_status_t DdkMessage(fidl_msg_t* msg, fidl_txn_t* txn);
 
   // FIDL methods.
-  void GetInfo(GetInfoCompleter::Sync completer) final;
+  void GetDirection(GetDirectionCompleter::Sync completer) final;
+  void Read(uint64_t count, ReadCompleter::Sync completer) final;
+  void Write(::fidl::VectorView<uint8_t> data, WriteCompleter::Sync completer) final;
 
  private:
   zx_status_t Init(int index, const usb_interface_descriptor_t* intf,

@@ -4,10 +4,11 @@
 
 executable("midiecho") {
   sources = [
-    "midiecho.c",
+    "midiecho.cc",
   ]
   deps = [
-    "$zx/system/fidl/fuchsia-hardware-midi:c",
+    "$zx/system/fidl/fuchsia-hardware-midi:llcpp",
+    "$zx/system/ulib/fbl",
     "$zx/system/ulib/fdio",
     "$zx/system/ulib/zircon",
   ]
