@@ -8,11 +8,11 @@ base_package_labels -= [ "//garnet/bin/terminal:tiles_with_terminal_config" ]
 
 base_package_labels += [
   "//src/modular/bundles:framework_experimental",
-  "//src/experiences/bundles:ermine",
-  "//src/experiences/bin/term",
+  "//src/developer/dachsiaboard:tiles_with_dachsiaboard_config",
 ]
 
 cache_package_labels += [
+  "//src/developer/dachsiaboard",
   "//src/experiences/bin/simple_browser",
   "//src/media/audio/audio",
   "//src/media/audio/audio_core",
