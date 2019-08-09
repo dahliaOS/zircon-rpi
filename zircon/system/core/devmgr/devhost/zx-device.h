@@ -158,14 +158,14 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
     *power_states = power_states_;
   }
   zx_status_t set_power_states(fuchsia_device_DevicePowerStateInfo* power_states, uint8_t count) {
-    if (count < fuchsia_device_MAX_DEVICE_POWER_STATES ||
+    if (count < fuchsia_device_MIN_DEVICE_POWER_STATES ||
         count > fuchsia_device_MAX_DEVICE_POWER_STATES) {
       return ZX_ERR_INVALID_ARGS;
     }
-    for (size_t i = 0; i < count; i++) {
+    /*for (size_t i = 0; i < count; i++) {
       fuchsia_device_DevicePowerStateInfo* info = &power_states[i];
       memcpy(&power_states_[info->state_id], info, sizeof(*info));
-    }
+    }*/
     return ZX_OK;
   }
  private:

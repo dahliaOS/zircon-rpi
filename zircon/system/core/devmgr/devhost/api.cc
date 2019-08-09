@@ -78,6 +78,20 @@ __EXPORT zx_status_t device_add_from_driver(zx_driver_t* drv, zx_device_t* paren
       dev->flags |= DEV_FLAG_ALLOW_MULTI_COMPOSITE;
     }
 
+    //TODO(ravoorir): Remove when all drivers declare power states
+    //Temporarily allocate working and non-working power states
+
+    if (args->power_state_count == 0) {
+      printf("MINE MINE entered here.\n");
+      fuchsia_device_DevicePowerStateInfo power_states[2];
+      power_states[0].state_id = fuchsia_device_DevicePowerState_DEVICE_POWER_STATE_D0;
+      power_states[0].is_supported = true;
+      power_states[1].state_id = fuchsia_device_DevicePowerState_DEVICE_POWER_STATE_D3HOT;
+      power_states[1].is_supported = true;
+      args->power_states = power_states;
+      args->power_state_count = 2;
+    }
+
     r = dev->set_power_states(args->power_states, args->power_state_count);
     if (r != ZX_OK) {
       return r;
