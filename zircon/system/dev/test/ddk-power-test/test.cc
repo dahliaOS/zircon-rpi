@@ -16,7 +16,7 @@
 
 using driver_integration_test::IsolatedDevmgr;
 
-TEST(DeviceControllerIntegrationTest, InvalidPowerArgs) {
+TEST(DeviceControllerIntegrationTest, InvalidDeviceCaps) {
   IsolatedDevmgr devmgr;
   IsolatedDevmgr::Args args;
   args.load_drivers.push_back("/boot/driver/ddk-power-test.so");
