@@ -77,4 +77,4 @@ ZIRCON_DRIVER_BEGIN(TestPower, test_power_hook_driver_ops, "zircon", "0.1", 2)
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_TEST),
     BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_PID, PDEV_PID_POWER_TEST),
 ZIRCON_DRIVER_END(TestPower)
-    // clang-format on
+// clang-format on
