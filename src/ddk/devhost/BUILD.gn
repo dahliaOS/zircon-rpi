@@ -12,6 +12,7 @@ rustc_binary("devhost") {
   edition = "2018"
 
   deps = [
+    "//src/ddk/fuchsia-ddk-sys",
     "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/fdio",
     "//garnet/public/rust/fuchsia-async",
