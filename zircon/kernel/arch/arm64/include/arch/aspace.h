@@ -52,7 +52,7 @@ class ArmArchVmAspace final : public ArchVmAspaceInterface {
   inline bool IsValidVaddr(vaddr_t vaddr) { return (vaddr >= base_ && vaddr <= base_ + size_ - 1); }
 
   // Page table management.
-  volatile pte_t* GetPageTable(uint page_size_shift, vaddr_t pt_index, volatile pte_t* page_table)
+  zx_status_t GetPageTable(uint page_size_shift, vaddr_t pt_index, volatile pte_t* page_table, volatile pte_t** page_table_out)
       TA_REQ(lock_);
 
   zx_status_t AllocPageTable(paddr_t* paddrp, uint page_size_shift) TA_REQ(lock_);
@@ -99,21 +99,25 @@ class ArmArchVmAspace final : public ArchVmAspaceInterface {
 
   DECLARE_MUTEX(ArmArchVmAspace) lock_;
 
+  // Mostly static data set up at init time
+  uint flags_ = 0;
   uint16_t asid_ = MMU_ARM64_UNUSED_ASID;
+
+  // Range of address space.
+  vaddr_t base_ = 0;
+  size_t size_ = 0;
 
   // Pointer to the translation table.
   paddr_t tt_phys_ = 0;
   volatile pte_t* tt_virt_ = nullptr;
 
-  // Upper bound of the number of pages allocated to back the translation
-  // table.
-  size_t pt_pages_ = 0;
+  // Precomputed page size shifts
 
-  uint flags_ = 0;
+  // Upper bound of the number of pages allocated to back the translation table.
+  uint pt_pages_ = 0;
 
-  // Range of address space.
-  vaddr_t base_ = 0;
-  size_t size_ = 0;
+  bool local_trace_ = false;
+
 };
 
 static inline paddr_t arm64_vttbr(uint16_t vmid, paddr_t baddr) {

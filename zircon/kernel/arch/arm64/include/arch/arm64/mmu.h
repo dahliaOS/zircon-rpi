@@ -203,6 +203,7 @@
 
 /* Block/Page attrs */
 #define MMU_PTE_ATTR_RES_SOFTWARE               BM(55, 4, 0xf)
+#define MMU_PTE_ATTR_RES_SOFTWARE_SHIFT         55
 #define MMU_PTE_ATTR_UXN                        BM(54, 1, 1)
 #define MMU_PTE_ATTR_PXN                        BM(53, 1, 1)
 #define MMU_PTE_ATTR_CONTIGUOUS                 BM(52, 1, 1)

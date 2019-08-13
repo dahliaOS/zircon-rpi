@@ -235,16 +235,24 @@ static bool test_mapping_oom() {
 
     const uint arch_rw_flags = ARCH_MMU_FLAG_PERM_READ | ARCH_MMU_FLAG_PERM_WRITE;
 
-    size_t mapped;
+    TRACEF("running with pages %lu\n", avail_mmu_pages);
+
+    size_t mapped = 0;
     err = aspace.Map(kMappingStart, mapping_paddrs, kMappingPageCount, arch_rw_flags, &mapped);
+    TRACEF("Map returns %d, mapped %zu\n", err, mapped);
     if (err == ZX_OK) {
       map_success = true;
       size_t unmapped;
       EXPECT_EQ(aspace.Unmap(kMappingStart, kMappingPageCount, &unmapped), ZX_OK, "");
       EXPECT_EQ(unmapped, kMappingPageCount, "");
-    } else {
-      // The arm aspace code isn't set up to return ZX_ERR_NO_MEMORY.
+    } else if (err == ZX_ERR_NO_MEMORY) {
       avail_mmu_pages++;
+
+      // validate that all of the pages were consumed
+      EXPECT_TRUE(list_is_empty(&node), "");
+    } else {
+      // it returned an unexpected error code
+      EXPECT_TRUE(false, "");
     }
 
     // Destroying the aspace verifies that everything was cleaned up

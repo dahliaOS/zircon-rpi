@@ -33,6 +33,7 @@ const uint ARCH_MMU_FLAG_INVALID = (1u << 7);  // Indicates that flags are not s
 
 const uint ARCH_ASPACE_FLAG_KERNEL = (1u << 0);
 const uint ARCH_ASPACE_FLAG_GUEST = (1u << 1);
+const uint ARCH_ASPACE_FLAG_DEBUG = (1u << 31);
 
 typedef zx_status_t(page_alloc_fn_t)(uint alloc_flags, vm_page** p, paddr_t* pa);
 

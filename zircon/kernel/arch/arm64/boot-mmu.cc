@@ -44,6 +44,10 @@ static size_t vaddr_to_l3_index(uintptr_t addr) {
   return (addr >> MMU_LX_X(MMU_KERNEL_PAGE_SIZE_SHIFT, 3)) & (MMU_KERNEL_PAGE_TABLE_ENTRIES - 1);
 }
 
+static void update_pte(volatile pte_t* pte, pte_t newval) {
+  *pte = newval;
+}
+
 // called from start.S to grab another page to back a page table from the boot allocator
 __NO_SAFESTACK
 extern "C" pte_t* boot_alloc_ptable() {
@@ -67,7 +71,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
                                           const paddr_t paddr, const size_t len, const pte_t flags,
                                           paddr_t (*alloc_func)(), pte_t* phys_to_virt(paddr_t)) {
   // loop through the virtual range and map each physical page, using the largest
-  // page size supported. Allocates necessar page tables along the way.
+  // page size supported. Allocates necessary page tables along the way.
   size_t off = 0;
   while (off < len) {
     // make sure the level 1 pointer is valid
@@ -77,7 +81,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
       default: {  // invalid/unused entry
         paddr_t pa = alloc_func();
 
-        kernel_table0[index0] = (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE;
+        update_pte(&kernel_table0[index0], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -97,8 +101,8 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
         if ((((vaddr + off) & l1_large_page_size_mask) == 0) &&
             (((paddr + off) & l1_large_page_size_mask) == 0) && (len - off) >= l1_large_page_size) {
           // set up a 1GB page here
-          kernel_table1[index1] =
-              ((paddr + off) & ~l1_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK;
+          update_pte(&kernel_table1[index1],
+              ((paddr + off) & ~l1_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK);
 
           off += l1_large_page_size;
           continue;
@@ -106,7 +110,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
 
         paddr_t pa = alloc_func();
 
-        kernel_table1[index1] = (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE;
+        update_pte(&kernel_table1[index1], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -126,8 +130,8 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
         if ((((vaddr + off) & l2_large_page_size_mask) == 0) &&
             (((paddr + off) & l2_large_page_size_mask) == 0) && (len - off) >= l2_large_page_size) {
           // set up a 2MB page here
-          kernel_table2[index2] =
-              ((paddr + off) & ~l2_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK;
+          update_pte(&kernel_table2[index2],
+              ((paddr + off) & ~l2_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK);
 
           off += l2_large_page_size;
           continue;
@@ -135,7 +139,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
 
         paddr_t pa = alloc_func();
 
-        kernel_table2[index2] = (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE;
+        update_pte(&kernel_table2[index2], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -148,8 +152,8 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
 
     // generate a standard page mapping
     size_t index3 = vaddr_to_l3_index(vaddr + off);
-    kernel_table3[index3] =
-        ((paddr + off) & MMU_PTE_OUTPUT_ADDR_MASK) | flags | MMU_PTE_L3_DESCRIPTOR_PAGE;
+    update_pte(&kernel_table3[index3],
+        ((paddr + off) & MMU_PTE_OUTPUT_ADDR_MASK) | flags | MMU_PTE_L3_DESCRIPTOR_PAGE);
 
     off += PAGE_SIZE;
   }
