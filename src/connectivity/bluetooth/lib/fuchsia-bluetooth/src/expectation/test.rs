@@ -1,4 +1,4 @@
-use crate::{assert_satisfies, over, expect};
+use crate::{assert_satisfies, over};
 use crate::expectation::*;
 use crate::expectation::Predicate as P;
 use fidl_fuchsia_bluetooth_control::{Appearance, RemoteDevice, TechnologyType};
@@ -156,29 +156,6 @@ fn incorrect_compound_all_predicate_fails() {
                 over!(Person:name, P::not_equal("Bob".to_string()))
                 .and(
                 over!(Person:age, P::predicate(|age: &u64| *age < 50, "< 50")))));
-
-    /*
-    let predicate =
-        over!(Group => persons,
-            all(
-                over!(Person => name, not_equal("Bob".to_string()))
-                .and(
-                over!(Person => age, satisfies(|age: &u64| *age < 50, "< 50")))));
-
-
-    let predicate =
-        fields!(Group, persons => all( fields!(Person,
-                                        name => not_equal("Bob".to_string()),
-                                        age => satisfies(|age| *age < 50, "<50"),
-                                      )))
-    */
-
-    let predicate =
-        expect!(Group, persons => P::all( expect!(name => P::not_equal("Bob".to_string()))
-                                             .and( expect!(age => P::predicate(|a| a < 50, "< 50")))));
-
-                            //and!( name => not_equal("Bob".to_string()),
-                                  //age => satisfies(|age| *age < 50, "<50"))))
 
     let expected_msg = vec![
         "FAILED EXPECTATION",

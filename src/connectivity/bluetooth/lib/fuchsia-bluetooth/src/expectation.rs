@@ -345,18 +345,6 @@ macro_rules! over {
     }
 }
 
-//expect!(Group, persons => P::all( expect!(name, not_equal("Bob".to_string()))
-//                                     .and( expect!(age, satisfies(|a| a < 50, "< 50"))))
-#[macro_export]
-macro_rules! expect {
-    ($selector:tt => $pred:expr) => {
-        $pred.over(|v| &v.$selector, format!(".{}", stringify!($selector)))
-    };
-    ($type:ty, $selector:tt => $pred:expr) => {
-        $pred.over(|var: &$type| &var.$selector, format!(".{}", stringify!($selector)))
-    };
-}
-
 #[macro_export]
 macro_rules! assert_satisfies {
     ($subject:expr, $pred:expr) => {
