@@ -17,6 +17,7 @@ use {
         },
         hci_emulator::Emulator,
         host,
+        over,
         util::{clone_host_info, clone_host_state, clone_remote_device},
     },
     fuchsia_zircon::{Duration, DurationNum},
@@ -59,7 +60,8 @@ pub fn expect_remote_device(
 // Returns a future that resolves when a peer matching `id` is not present on the host.
 pub async fn expect_no_peer(host: &HostDriverHarness, id: String) -> Result<(), Error> {
     host.when_satisfied(
-        Predicate::<HostState>::new(move |host| host.peers.iter().all(|(i, _)| i != &id), None),
+        //Predicate::<HostState>::predicate(move |host| host.peers.iter().all(|(i, _)| i != &id), None),
+        over!(HostState:peers, Predicate::all( Predicate::not_equal( id ).over(|i: (&String, &RemoteDevice)| i.0, "id"))),
         timeout_duration(),
     )
     .await?;
@@ -68,6 +70,7 @@ pub async fn expect_no_peer(host: &HostDriverHarness, id: String) -> Result<(), 
 
 pub type HostDriverHarness = ExpectationHarness<HostState, (HostProxy, Option<Emulator>)>;
 
+#[derive(Debug)]
 pub struct HostState {
     // Access to the bt-host device under test.
     host_path: PathBuf,
@@ -114,9 +117,9 @@ pub async fn expect_host_peer(
     target: Predicate<RemoteDevice>,
 ) -> Result<HostState, Error> {
     host.when_satisfied(
-        Predicate::<HostState>::new(
+        Predicate::<HostState>::predicate(
             move |host| host.peers.iter().any(|(_, p)| target.satisfied(p)),
-            None,
+            "expect_host_peer", // TODO(nickpollard)
         ),
         timeout_duration(),
     )
@@ -128,12 +131,12 @@ pub async fn expect_adapter_state(
     target: Predicate<AdapterState>,
 ) -> Result<HostState, Error> {
     host.when_satisfied(
-        Predicate::<HostState>::new(
+        Predicate::<HostState>::predicate(
             move |host| match &host.host_info.state {
                 Some(state) => target.satisfied(state),
                 None => false,
             },
-            None,
+            "expect_Adapter_state", // TODO(nickpollard)
         ),
         timeout_duration(),
     )

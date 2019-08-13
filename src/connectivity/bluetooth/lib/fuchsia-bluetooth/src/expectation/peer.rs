@@ -8,6 +8,13 @@ pub fn name(expected_name: &str) -> Predicate<RemoteDevice> {
     Predicate::equal(Some(expected_name.to_string()))
         .over(|peer: &RemoteDevice| &peer.name, ".name")
 }
+pub fn identifier(expected_ident: &str) -> Predicate<RemoteDevice> {
+    let identifier = expected_ident.to_string();
+    Predicate::<RemoteDevice>::predicate(
+        move |peer| peer.identifier == identifier,
+        format!("identifier == {}", expected_ident),
+    )
+}
 pub fn address(expected_address: &str) -> Predicate<RemoteDevice> {
     let address = expected_address.to_string();
     Predicate::<RemoteDevice>::predicate(

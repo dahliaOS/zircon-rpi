@@ -195,7 +195,7 @@ pub async fn activate_fake_host(
         )
         .await?;
 
-    let host = state
+    let host = control_state
         .hosts
         .iter()
         .find(|(id, host)| host.address == FAKE_HCI_ADDRESS && !initial_hosts.contains(id))
