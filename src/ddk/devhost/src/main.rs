@@ -13,12 +13,15 @@ use {
     futures::TryStreamExt,
     libc,
     log::*,
+    device::Device,
     std::rc::Rc,
 };
 
 /// All drivers currently loaded into this devhost
 type DevhostDrivers = Vec<Rc<Driver>>;
 
+/// devhost device
+mod device;
 /// control devices from the devcoordanator
 mod device_controller;
 /// devhost currently uses the kernel log
@@ -117,7 +120,7 @@ async fn connect_devcoordinator(
                 driver,
                 parent_proxy: _,
                 proxy_args,
-                local_device_id: _,
+                local_device_id,
                 control_handle: _,
             } => {
                 info!("Create Device {} with {:?}", driver_path, proxy_args);
@@ -129,16 +132,18 @@ async fn connect_devcoordinator(
                 info!("Initializing a Device with {:?}", driver);
                 drivers.push(driver.clone());
                 info!("pushed: {:?}", driver);
-                device_controller::connect(rpc, driver).await?;
+                device_controller::connect(rpc, local_device_id, Some(driver)).await?;
                 info!("inited");
             }
             DevhostControllerRequest::CreateDeviceStub {
-                rpc: _,
+                rpc,
                 protocol_id: _,
                 local_device_id,
                 control_handle: _,
             } => {
                 info!("Created Device Stub {}", local_device_id);
+                let _device = Device::new();
+                device_controller::connect(rpc, local_device_id, None).await?;
             }
             DevhostControllerRequest::CreateCompositeDevice {
                 rpc: _,
