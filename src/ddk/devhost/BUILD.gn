@@ -12,17 +12,17 @@ rustc_binary("devhost") {
   edition = "2018"
 
   deps = [
-    "//src/ddk/fuchsia-ddk-sys",
     "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/fdio",
     "//garnet/public/rust/fuchsia-async",
     "//garnet/public/rust/fuchsia-runtime",
     "//garnet/public/rust/fuchsia-syslog",
     "//garnet/public/rust/fuchsia-zircon",
-    "//third_party/rust_crates:libc",
+    "//src/ddk/fuchsia-ddk-sys",
     "//third_party/rust_crates:failure",
     "//third_party/rust_crates:futures-preview",
     "//third_party/rust_crates:lazy_static",
+    "//third_party/rust_crates:libc",
     "//third_party/rust_crates:log",
     "//zircon/public/fidl/fuchsia-device:fuchsia-device-rustc",
     "//zircon/public/fidl/fuchsia-device-manager:fuchsia-device-manager-rustc",

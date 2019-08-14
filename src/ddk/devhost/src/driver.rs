@@ -3,15 +3,15 @@
 // found in the LICENSE file
 
 use {
+    crate::dlfcn,
     failure::Error,
-    std::rc::Rc,
     fuchsia_ddk_sys as sys,
     fuchsia_zircon::{self as zx, AsHandleRef},
     log::*,
-    std::ffi::CString,
-    crate::dlfcn,
     std::collections::HashSet,
+    std::ffi::CString,
     std::hash::{Hash, Hasher},
+    std::rc::Rc,
 };
 
 /// All drivers currently loaded into this devhost
@@ -41,7 +41,7 @@ impl PartialEq for Driver {
         self.path == other.path
     }
 }
-impl Eq for Driver{}
+impl Eq for Driver {}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -102,13 +102,14 @@ impl Driver {
                 error!("Missing __zircon_driver_ops__ for {}", path);
                 return Err(zx::Status::IO_INVALID.into());
             }
-            let driver_ops: *const *const sys::zx_driver_ops_t = std::mem::transmute(driver_ops_raw);
+            let driver_ops: *const *const sys::zx_driver_ops_t =
+                std::mem::transmute(driver_ops_raw);
             driver_ops
         };
 
         // context that gets passed around in the driver.
         // TODO(bwb) make const? It's mutated by the driver but ddk never touches
-        let mut ctx: *mut libc::c_void  = std::ptr::null_mut();
+        let mut ctx: *mut libc::c_void = std::ptr::null_mut();
 
         // If initialize is defined in the driver's ops table, run it
         unsafe {
@@ -120,11 +121,11 @@ impl Driver {
         }
 
         let name = unsafe { String::from_utf8((*driver_note).payload.name.to_vec())? };
-        Ok(Rc::new(Driver { path, name, ops, ctx}))
+        Ok(Rc::new(Driver { path, name, ops, ctx }))
     }
 
     /// Returns a reference to the drivers ops tables
-    fn get_ops_table(&self) -> &sys::zx_driver_ops_t {
+    pub fn get_ops_table(&self) -> &sys::zx_driver_ops_t {
         unsafe {
             if self.ops.is_null() {
                 error!("Bad ops table access");

@@ -1,4 +1,5 @@
 use {
+    crate::Driver,
     failure::Error,
     fidl::endpoints::RequestStream,
     fidl_fuchsia_device_manager::{DeviceControllerRequest, DeviceControllerRequestStream},
@@ -7,34 +8,41 @@ use {
     futures::TryStreamExt,
     log::*,
     std::rc::Rc,
-    crate::Driver,
 };
 
-pub async fn connect(channel: zx::Channel, _local_device_id: u64, _driver: Option<Rc<Driver>>) -> Result<(), Error> {
+pub async fn connect(
+    channel: zx::Channel,
+    _local_device_id: u64,
+    _driver: Option<Rc<Driver>>,
+) -> Result<(), Error> {
     info!("Connecting the Device Controller!");
-    let mut stream = DeviceControllerRequestStream::from_channel(fasync::Channel::from_channel(channel)?);
+    let mut stream =
+        DeviceControllerRequestStream::from_channel(fasync::Channel::from_channel(channel)?);
     while let Some(request) = stream.try_next().await? {
         match request {
-            DeviceControllerRequest::BindDriver {driver_path, driver: _, responder }=> {
+            DeviceControllerRequest::BindDriver { driver_path, driver: _, responder } => {
                 info!("Bind Driver {} to device", driver_path);
                 responder.send(sys::ZX_OK, None)?;
             }
-            DeviceControllerRequest::Unbind {control_handle: _}=> {
+            DeviceControllerRequest::Unbind { control_handle: _ } => {
                 info!("Unbind device");
             }
-            DeviceControllerRequest::ConnectProxy_ {shadow: _, control_handle: _}=> {
+            DeviceControllerRequest::ConnectProxy_ { shadow: _, control_handle: _ } => {
                 info!("Connect device to it's Proxy");
             }
-            DeviceControllerRequest::CompleteRemoval {control_handle: _}=> {
+            DeviceControllerRequest::CompleteRemoval { control_handle: _ } => {
                 info!("Complete removal of unbind");
             }
-            DeviceControllerRequest::RemoveDevice {control_handle: _}=> {
+            DeviceControllerRequest::RemoveDevice { control_handle: _ } => {
                 info!("Remove device");
             }
-            DeviceControllerRequest::CompleteCompatibilityTests {status: _, control_handle: _}=> {
+            DeviceControllerRequest::CompleteCompatibilityTests {
+                status: _,
+                control_handle: _,
+            } => {
                 info!("Suspend device");
             }
-            DeviceControllerRequest::Suspend {flags: _, responder: _}=> {
+            DeviceControllerRequest::Suspend { flags: _, responder: _ } => {
                 info!("Suspend device");
             }
         }

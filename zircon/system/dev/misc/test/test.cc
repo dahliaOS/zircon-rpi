@@ -204,13 +204,13 @@ zx_status_t TestRootDevice::DdkMessage(fidl_msg_t* msg, fidl_txn_t* txn) {
 }
 
 zx_status_t TestDriverBind(void* ctx, zx_device_t* dev) {
-  auto root = std::make_unique<TestRootDevice>(dev);
-  zx_status_t status = root->Bind();
-  if (status != ZX_OK) {
-    return status;
-  }
-  // devmgr now owns root
-  __UNUSED auto ptr = root.release();
+  //auto root = std::make_unique<TestRootDevice>(dev);
+  //zx_status_t status = root->Bind();
+  //if (status != ZX_OK) {
+  //  return status;
+  //}
+  //// devmgr now owns root
+  //__UNUSED auto ptr = root.release();
   return ZX_OK;
 }
 

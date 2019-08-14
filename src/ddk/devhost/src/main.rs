@@ -6,6 +6,8 @@
 #![allow(warnings)]
 
 use {
+    device::Device,
+    driver::{Driver, DriverSet},
     failure::{format_err, Error},
     fidl::endpoints::RequestStream,
     fidl_fuchsia_device_manager::{DevhostControllerRequest, DevhostControllerRequestStream},
@@ -13,20 +15,20 @@ use {
     fuchsia_zircon::{self as zx},
     futures::TryStreamExt,
     log::*,
-    device::Device,
-    driver::{DriverSet, Driver},
 };
 
-/// devhost drivers
-mod driver;
 /// devhost device
 mod device;
-/// devhost currently uses the kernel log
-mod klog;
 /// dlfcn is a bindgen'd wrapper for the custom musl implementation
 /// on fuchsia which allows access to dlopen_vmo
 /// TODO(bwb): remove when bind rules are no longer in elf notes
 mod dlfcn;
+/// devhost drivers
+mod driver;
+/// devhost currently uses the kernel log
+mod klog;
+/// driver C facing API
+mod api;
 
 /// Start connectionting to the Device Coordinator (devcoordantor). This is the entry point
 /// for all interaction between the two primary parts of the DDk.
@@ -55,7 +57,6 @@ async fn connect_devcoordinator(
                 let device = Device::new("WHAT SHOULD THIS BE", local_device_id);
                 device.connect_controller(rpc, None).await?;
 
-
                 // TODO check if the driver is already in vector
                 // for driver in drivers {
 
@@ -72,7 +73,7 @@ async fn connect_devcoordinator(
             } => {
                 info!("Created Device Stub {}", local_device_id);
                 let device = Device::new("proxy", local_device_id);
-//                device.set_protocol
+                //                device.set_protocol
 
                 device.connect_controller(rpc, None).await?;
             }
@@ -108,7 +109,8 @@ async fn main() -> Result<(), Error> {
     //         .ok_or(format_err!("missing root resource handle"))?;
 
     let devhost_drivers: DriverSet = Default::default();
-    let status = connect_devcoordinator(fasync::Channel::from_channel(root_channel)?, devhost_drivers).await;
+    let status =
+        connect_devcoordinator(fasync::Channel::from_channel(root_channel)?, devhost_drivers).await;
     info!("Device Coordination terminated with {:?}", status);
     Ok(())
 }

@@ -169,6 +169,7 @@ zx_status_t dh_find_driver(fbl::StringPiece libname, zx::vmo vmo, fbl::RefPtr<zx
   const char* c_libname = new_driver->libname().c_str();
 
   void* dl = dlopen_vmo(vmo.get(), RTLD_NOW);
+  log(ERROR, "devhost: driver '%s' opend vmo at %p\n", c_libname, dl);
   if (dl == nullptr) {
     log(ERROR, "devhost: cannot load '%s': %s\n", c_libname, dlerror());
     new_driver->set_status(ZX_ERR_IO);
@@ -176,6 +177,7 @@ zx_status_t dh_find_driver(fbl::StringPiece libname, zx::vmo vmo, fbl::RefPtr<zx
   }
 
   auto dn = static_cast<const zircon_driver_note_t*>(dlsym(dl, "__zircon_driver_note__"));
+  log(ERROR, "devhost: driver '%s' found __zircon_driver_note__ symbolat %p\n", c_libname, dn);
   if (dn == nullptr) {
     log(ERROR, "devhost: driver '%s' missing __zircon_driver_note__ symbol\n", c_libname);
     new_driver->set_status(ZX_ERR_IO);

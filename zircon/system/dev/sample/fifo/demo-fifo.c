@@ -132,6 +132,7 @@ static zx_status_t fifo_bind(void* ctx, zx_device_t* parent) {
       .ops = &fifo_ops,
   };
   zx_status_t status = device_add(parent, &args, &fifo->zxdev);
+  printf("\n\n############### STATUS IS %d", status);
   if (status != ZX_OK) {
     free(fifo);
     return status;

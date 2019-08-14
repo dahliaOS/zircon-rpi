@@ -116,6 +116,11 @@
             "package_name": "glob"
         },
         {
+            "crate_name": "goblin",
+            "crate_type": "lib",
+            "package_name": "goblin"
+        },
+        {
             "crate_name": "harfbuzz",
             "crate_type": "lib",
             "package_name": "harfbuzz"
@@ -356,6 +361,11 @@
             "package_name": "scopeguard"
         },
         {
+            "crate_name": "scroll",
+            "crate_type": "lib",
+            "package_name": "scroll"
+        },
+        {
             "crate_name": "serde",
             "crate_type": "lib",
             "package_name": "serde"
@@ -553,6 +563,11 @@
             "package_name": "futures-test-preview"
         },
         {
+            "crate_name": "goblin",
+            "crate_type": "lib",
+            "package_name": "goblin"
+        },
+        {
             "crate_name": "handlebars",
             "crate_type": "lib",
             "package_name": "handlebars"
@@ -676,6 +691,11 @@
             "crate_name": "scopeguard",
             "crate_type": "lib",
             "package_name": "scopeguard"
+        },
+        {
+            "crate_name": "scroll",
+            "crate_type": "lib",
+            "package_name": "scroll"
         },
         {
             "crate_name": "serde",

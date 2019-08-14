@@ -272,12 +272,12 @@ pub struct zx_driver_rec_t {
 extern "C" {
     #[link_name = "\u{1}__zircon_driver_rec__"]
     pub static mut __zircon_driver_rec__: zx_driver_rec_t;
-    pub fn device_add_from_driver(
-        drv: *mut zx_driver_t,
-        parent: *mut zx_device_t,
-        args: *mut device_add_args_t,
-        out: *mut *mut zx_device_t,
-    ) -> zx::sys::zx_status_t;
+    //pub fn device_add_from_driver(
+    //    drv: *mut zx_driver_t,
+    //    parent: *mut zx_device_t,
+    //    args: *mut device_add_args_t,
+    //    out: *mut *mut zx_device_t,
+    //) -> zx::sys::zx_status_t;
     pub fn device_remove(device: *mut zx_device_t) -> zx::sys::zx_status_t;
     pub fn device_rebind(device: *mut zx_device_t) -> zx::sys::zx_status_t;
     pub fn device_make_visible(device: *mut zx_device_t);
