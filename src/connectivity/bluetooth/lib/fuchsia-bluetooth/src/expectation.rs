@@ -4,6 +4,7 @@
 
 use {
     std::{
+        borrow::Borrow,
         fmt::{self, Debug, Display, Formatter},
         sync::Arc,
     },
@@ -108,18 +109,21 @@ pub trait IsAny<T> {
     fn falsify_any<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>>;
 }
 
-impl<T: 'static, Elem: Debug + 'static> IsAny<T> for Predicate<Elem>
-where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
+impl<T: 'static, U: Debug + 'static> IsAny<T> for Predicate<U>
+where
+    for<'a> &'a T: IntoIterator,
+    for<'a> <&'a T as IntoIterator>::Item: Borrow<U>
+{
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
         doc.text("ANY").append(doc.space().append(self.describe(doc)).nest(2)).group()
     }
     fn falsify_any<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
-        if t.into_iter().any(|el| self.satisfied(el)) {
+        if t.into_iter().any(|el| self.satisfied(el.borrow())) {
             None
         } else {
             // All are falsifications, so display all (up to MAX_ITER_FALSIFICATIONS)
             t.into_iter()
-                .filter_map(|el| falsify_elem(&self, el, doc))
+                .filter_map(|el| falsify_elem(&self, el.borrow(), doc))
                 .take(MAX_ITER_FALSIFICATIONS)
                 .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
         }
@@ -141,14 +145,31 @@ fn falsify_elem<'d, T: Debug>(pred: &Predicate<T>, el: &T, doc: &'d BoxAllocator
     })
 }
 
-impl<T: 'static, Elem: Debug + 'static> IsAll<T> for Predicate<Elem>
-where for<'a> &'a T: IntoIterator<Item = &'a Elem> {
+/*
+fn iterate<'a, T, U>(t: &'a T) -> impl Iterator<Item = &U>
+    where T: 'static,
+          &'a T: IntoIterator + 'static,
+          U: Debug + 'static,
+          <&'a T as IntoIterator>::Item: Borrow<U>
+{
+    IntoIterator::into_iter(t).map(|el| el.borrow())
+}
+*/
+
+impl<T: 'static, U: Debug + 'static> IsAll<T> for Predicate<U>
+where
+    for<'a> &'a T: IntoIterator,
+    for<'a> <&'a T as IntoIterator>::Item: Borrow<U>
+{
     fn describe<'d>(&self, doc: &'d BoxAllocator) -> DocBuilder<'d> {
         doc.text("ALL").append(doc.space().append(self.describe(doc)).nest(2)).group()
     }
+
     fn falsify_all<'d>(&self, t: &T, doc: &'d BoxAllocator) -> Option<DocBuilder<'d>> {
+        //let iter: <&'static T as IntoIterator>::IntoIter = t.into_iter();
         t.into_iter()
-            .filter_map(|el| falsify_elem(&self, el, doc))
+        //iter
+            .filter_map(|el| falsify_elem(&self, el.borrow(), doc))
             .take(MAX_ITER_FALSIFICATIONS)
             .fold(None, |acc: Option<DocBuilder<'d>>, falsification| Some(acc.map_or(doc.nil(), |d| d.append(doc.space())).append(falsification)))
     }
@@ -299,6 +320,25 @@ impl<T> Predicate<T> {
     }
 }
 
+impl<T: Send + Sync + 'static> Predicate<T>
+    where for<'a> &'a T: IntoIterator {
+
+    pub fn all<U>(pred: Predicate<U>) -> Predicate<T>
+    where
+        U: Debug + Send + Sync + 'static,
+        for<'a> <&'a T as IntoIterator>::Item: Borrow<U> {
+        Predicate::All(Arc::new(pred))
+    }
+
+    pub fn any<U>(pred: Predicate<U>) -> Predicate<T>
+    where
+        U: Debug + Send + Sync + 'static,
+        for<'a> <&'a T as IntoIterator>::Item: Borrow<U> {
+        Predicate::Any(Arc::new(pred))
+    }
+}
+
+/*
 /// Methods to work with `T`s that are some collection of elements `Elem`.
 impl<Elem, T: Send + Sync + 'static> Predicate<T>
 where for<'a> &'a T: IntoIterator<Item = &'a Elem>,
@@ -312,6 +352,7 @@ where for<'a> &'a T: IntoIterator<Item = &'a Elem>,
         Predicate::Any(Arc::new(pred))
     }
 }
+*/
 
 impl<U: Send + Sync + 'static> Predicate<U> {
     pub fn over<F, T, P>(self, project: F, path: P) -> Predicate<T>
@@ -329,6 +370,7 @@ impl<U: Send + Sync + 'static> Predicate<U> {
         T: 'static {
         Predicate::Over(Arc::new(OverPred::ByValue(self, Arc::new(project), path.into())))
     }
+    /*
     pub fn over_<F, T, P>(self, params: (F,P)) -> Predicate<T>
     where
         F: Fn(&T) -> &U + Send + Sync + 'static,
@@ -336,6 +378,7 @@ impl<U: Send + Sync + 'static> Predicate<U> {
         T: 'static {
         Predicate::Over(Arc::new(OverPred::ByRef(self, Arc::new(params.0), params.1.into())))
     }
+    */
 }
 
 #[macro_export]

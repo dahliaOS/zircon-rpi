@@ -143,19 +143,86 @@ struct Group {
     persons: Vec<Person>,
 }
 
+fn foo<T, U: Debug>(t: T)
+    where T: Borrow<U>
+{
+    let u: &U = Borrow::<U>::borrow(&t);
+    println!("{:?}", u);
+}
+
+fn bar_<T, U: Debug>(iter: &T)
+    where
+        for<'a> &'a T: IntoIterator<Item: Borrow<U>> {
+        //for<'a> &'a T: IntoIterator,
+        //for<'a> <&'a T as IntoIterator>::Item : Borrow<U> {
+        //for<'a> <&'a T as IntoIterator>::Item: Borrow<U> {
+    for t in iter.into_iter() {
+        let u: &U = Borrow::<U>::borrow(&t);
+        println!("{:?}", u);
+    }
+}
+
+fn bar__<T>(iter: &T)
+    where
+        for<'a> &'a T: IntoIterator,
+        for<'a> <&'a T as IntoIterator>::Item : std::ops::Deref {
+        //for<'a> <&'a T as IntoIterator>::Item: Borrow<U> {
+    for t in iter.into_iter() {
+        println!("void");
+    }
+}
+
+fn bar<'a, T, U: Debug>(iter: &'a T)
+    where
+        &'a T: IntoIterator,
+        <&'a T as IntoIterator>::Item : Borrow<U> {
+        //for<'a> <&'a T as IntoIterator>::Item: Borrow<U> {
+    for t in iter.into_iter() {
+        let u: &U = Borrow::<U>::borrow(&t);
+        println!("{:?}", u);
+    }
+}
+
+fn baz<T, U>(t: &T)
+    where for<'a> &'a T: Borrow<U> {
+        let u: &U = Borrow::<U>::borrow(&t);
+    }
+
+
+#[test]
+fn simple_all_predicate_succeeds() {
+    let strings = vec!["hello".to_string(), "world".to_string()];
+
+    foo::<&String, String>(&"foo".to_string());
+
+    //bar__::<Vec<String>>(&strings);
+
+    baz::<String, String>(&"foo".to_string());
+
+    let predicate = P::<Vec<String>>::all::<String>(P::<String>::not_equal("goodbye".to_string()));
+
+    assert_satisfies!(&strings, predicate);
+}
+
+/*
 #[test]
 fn incorrect_compound_all_predicate_fails() {
     let test_group = Group {
         persons: vec![Person{ name: "Alice".to_string(), age: 40 },
                       Person{ name: "Bob".to_string(), age: 41 }]
     };
-
     let predicate =
         over!(Group:persons,
-            P::all(
-                over!(Person:name, P::not_equal("Bob".to_string()))
-                .and(
-                over!(Person:age, P::predicate(|age: &u64| *age < 50, "< 50")))));
+            P::<Vec<Person>>::all(
+                P::not_equal(Person{ name: "Alice".to_string(), age: 40 })));
+                //Predicate::<Person>::predicate(|&p| &p.name != "Alice", "alice")));
+
+    //let predicate =
+        //over!(Group:persons,
+            //P::all(
+                //over!(Person:name, P::not_equal("Bob".to_string()))
+                //.and(
+                //over!(Person:age, P::predicate(|age: &u64| *age < 50, "< 50")))));
 
     let expected_msg = vec![
         "FAILED EXPECTATION",
@@ -166,7 +233,9 @@ fn incorrect_compound_all_predicate_fails() {
 
     assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
 }
+*/
 
+/*
 #[test]
 fn incorrect_compound_any_predicate_fails() {
     let test_group = Group {
@@ -194,3 +263,4 @@ fn incorrect_compound_any_predicate_fails() {
 
     assert_eq!(predicate.assert_satisfied(&test_group), Err(AssertionText(expected_msg)));
 }
+*/

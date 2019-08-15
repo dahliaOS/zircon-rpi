@@ -17,7 +17,7 @@ use {
         },
         hci_emulator::Emulator,
         host,
-        over,
+        //over,
         util::{clone_host_info, clone_host_state, clone_remote_device},
     },
     fuchsia_zircon::{Duration, DurationNum},
@@ -61,7 +61,8 @@ pub fn expect_remote_device(
 pub async fn expect_no_peer(host: &HostDriverHarness, id: String) -> Result<(), Error> {
     host.when_satisfied(
         //Predicate::<HostState>::predicate(move |host| host.peers.iter().all(|(i, _)| i != &id), None),
-        over!(HostState:peers, Predicate::all( Predicate::not_equal( id ).over(|i: (&String, &RemoteDevice)| i.0, "id"))),
+        //over!(HostState:peers, Predicate::all( Predicate::not_equal( id ).over(|i: &(String, RemoteDevice)| i.0, "id"))),
+        Predicate::all(Predicate::not_equal( id )).over_value(|host: &HostState| host.peers.keys(), ".peers.keys()"),
         timeout_duration(),
     )
     .await?;
