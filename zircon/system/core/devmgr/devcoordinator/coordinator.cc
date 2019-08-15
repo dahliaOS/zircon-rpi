@@ -314,7 +314,7 @@ static const char* get_devhost_bin(bool asan_drivers, uint8_t devhost_version) {
   if (asan_drivers)
     return "/boot/bin/devhost.asan";
 //  if (devhost_version) {
-    // return "/boot/bin/devhost2";
+     return "/boot/bin/devhost2";
 //  }
   return "/boot/bin/devhost";
 }

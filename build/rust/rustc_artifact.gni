@@ -163,7 +163,7 @@ template("rustc_artifact") {
   # staticlib: a statically-linked system library, generally used for linking Rust into C
   # proc-macro: a procedural macro (such as a custom-derive)
   assert(
-      type == "bin" || type == "lib" || type == "staticlib" ||
+      type == "bin" || type == "lib" || type == "staticlib" || type == "cdylib" ||
           type == "proc-macro",
       "Artifact type must be one of: \"bin\", \"lib\", \"staticlib\", or \"proc-macro\"")
   if (type == "lib") {
@@ -241,6 +241,10 @@ template("rustc_artifact") {
   } else if (type == "staticlib") {
     prefix = "staticlib"
     extension = ".a"
+    root_file = "src/lib.rs"
+  } else if (type == "cdylib") {
+    prefix = "cdylib"
+    extension = ".so"
     root_file = "src/lib.rs"
   } else if (type == "proc-macro") {
     prefix = "lib"

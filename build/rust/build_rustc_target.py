@@ -51,7 +51,7 @@ def main():
     parser.add_argument("--crate-type",
                         help="Type of crate to build",
                         required=True,
-                        choices=["bin", "rlib", "staticlib", "proc-macro"])
+                        choices=["bin", "rlib", "cdylib", "staticlib", "proc-macro"])
     parser.add_argument("--crate-name",
                         help="Name of crate to build",
                         required=True)
@@ -267,6 +267,8 @@ def main():
                     ext = ".rlib"
                 elif crate_type == "staticlib":
                     ext = ".a"
+                elif crate_type == "cdylib":
+                    ext = ".so"
                 elif crate_type == "proc-macro":
                     if args.mac_host:
                         ext = ".dylib"

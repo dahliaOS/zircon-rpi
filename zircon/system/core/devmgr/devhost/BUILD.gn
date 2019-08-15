@@ -63,33 +63,33 @@ source_set("common") {
 }
 
 # "$zx/system/ulib/driver" is an alias for this.
-library("driver") {
-  sdk = "shared"
-  sdk_publishable = true
-  sdk_headers = []
-  shared = true
-  static = false
-
-  sources = []
-
-  deps = [
-    ":common",
-  ]
-
-  # Since the tracing support is brought in via an archive, we need explicit
-  # references to ensure everything is present.
-  libs = [ "$zx/system/ulib/trace-engine/ddk-exports.ld" ]
-
-  assert_no_deps = [ "$zx/system/ulib/trace-engine:trace-engine.shared" ]
-
-  metadata = {
-    # This library is on the allowlist for driver() shared library deps.
-    # It doesn't cause driver-denylist-check.sh to fail, and it prunes the
-    # metadata walk here so our own deps are not subject to the check.
-    driver_shlib_denylist = []
-    driver_shlib_denylist_barrier = []
-  }
-}
+ library("driver") {
+   sdk = "shared"
+   sdk_publishable = true
+   sdk_headers = []
+   shared = true
+   static = false
+ 
+   sources = []
+ 
+   deps = [
+     ":common",
+   ]
+ 
+   # Since the tracing support is brought in via an archive, we need explicit
+   # references to ensure everything is present.
+   libs = [ "$zx/system/ulib/trace-engine/ddk-exports.ld" ]
+ 
+   assert_no_deps = [ "$zx/system/ulib/trace-engine:trace-engine.shared" ]
+ 
+   metadata = {
+     # This library is on the allowlist for driver() shared library deps.
+     # It doesn't cause driver-denylist-check.sh to fail, and it prunes the
+     # metadata walk here so our own deps are not subject to the check.
+     driver_shlib_denylist = []
+     driver_shlib_denylist_barrier = []
+   }
+ }
 
 test("devhost-test") {
   test_group = "ddk"
