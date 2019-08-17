@@ -81,18 +81,37 @@ zx_status_t Imx227Device::InitPdev(zx_device_t* parent) {
   return ZX_OK;
 }
 
-uint8_t Imx227Device::ReadReg(uint16_t addr) {
+zx_status_t Imx227Device::ReadReg(uint16_t addr, uint8_t *out_val) {
+  if (out_val == nullptr) {
+    return ZX_ERR_INVALID_ARGS;
+  }
   // Convert the address to Big Endian format.
   // The camera sensor expects in this format.
   uint16_t buf = htobe16(addr);
   uint8_t val = 0;
   zx_status_t status =
-      i2c_.WriteReadSync(reinterpret_cast<uint8_t*>(&buf), sizeof(buf), &val, sizeof(val));
+      i2c_.WriteReadSync(reinterpret_cast<uint8_t*>(&buf), sizeof(buf), out_val, sizeof(val));
   if (status != ZX_OK) {
     zxlogf(ERROR, "Imx227Device: could not read reg addr: 0x%08x  status: %d\n", addr, status);
-    return -1;
+    return status;
   }
-  return val;
+  return ZX_OK;
+}
+
+zx_status_t ReadTwoRegisters(uint16_t addr, uint16_t *out_val) {
+  if (out_val == nullptr) {
+    return ZX_ERR_INVALID_ARGS;
+  }
+  // Read high register.  MSB of out_val, lower address.
+  zx_status_t status = ReadReg(addr, reinterpret_cast<uint8_t*>(out_val) + 1);
+  if (status != ZX_OK) {
+    return status;
+  }
+  // Read low register.  LSB of out_val, higher address.
+  status = ReadReg(addr + 1, reinterpret_cast<uint8_t*>(out_val));
+  if (status != ZX_OK) {
+    return status;
+  }
 }
 
 void Imx227Device::WriteReg(uint16_t addr, uint8_t val) {
@@ -114,7 +133,12 @@ void Imx227Device::WriteReg(uint16_t addr, uint8_t val) {
 }
 
 bool Imx227Device::ValidateSensorID() {
-  uint16_t sensor_id = static_cast<uint16_t>((ReadReg(0x0016) << 8) | ReadReg(0x0017));
+  uint16_t sensor_id;
+  zx_status_t status = ReadTwoRegisters(0x0016, &sensor_id);
+  if (status != ZX_OK) {
+    zxlogf(ERROR, "Imx227Device: could not read sensor id: status: %d\n", status);
+    return false;
+  }
   if (sensor_id != kSensorId) {
     zxlogf(ERROR, "Imx227Device: Invalid sensor ID\n");
     return false;
@@ -258,8 +282,16 @@ zx_status_t Imx227Device::CameraSensorSetMode(uint8_t mode) {
 
   ctx_.param.active.width = supported_modes[mode].resolution.width;
   ctx_.param.active.height = supported_modes[mode].resolution.height;
-  ctx_.HMAX = static_cast<uint16_t>(ReadReg(0x342) << 8 | ReadReg(0x343));
-  ctx_.VMAX = static_cast<uint16_t>(ReadReg(0x340) << 8 | ReadReg(0x341));
+  zx_status_t status = ReadTwoRegisters(0x342, &ctx_.HMAX);
+  if (status != ZX_OK) {
+    zxlogf(ERROR, "Imx227Device: could not read HMAX: status: %d\n", status);
+    return status;
+  }
+  zx_status_t status = ReadTwoRegisters(0x340, &ctx_.VMAX);
+  if (status != ZX_OK) {
+    zxlogf(ERROR, "Imx227Device: could not read VMAX: status: %d\n", status);
+    return status;
+  }
   ctx_.int_max = 0x0ADE;  // Max allowed for 30fps = 2782 (dec), 0x0ADE (hex)
   ctx_.int_time_min = 1;
   ctx_.int_time_limit = ctx_.int_max;

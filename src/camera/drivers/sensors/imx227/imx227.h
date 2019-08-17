@@ -116,7 +116,11 @@ class Imx227Device : public DeviceType,
   bool initialized_ = false;
 
   // I2C Helpers.
-  uint8_t ReadReg(uint16_t addr);
+  zx_status_t ReadReg(uint16_t addr, uint8_t *out_val);
+  // Reads two consecutive registers.
+  // |addr| - lower address (numerically) of the register.
+  // |out_val| - value read from the registers. Only valid if the return == ZX_OK.
+  zx_status_t ReadTwoRegisters(uint16_t addr, uint16_t *out_val);
   void WriteReg(uint16_t addr, uint8_t val);
 
   zx_status_t InitPdev(zx_device_t* parent);
