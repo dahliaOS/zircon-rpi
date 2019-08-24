@@ -22,7 +22,16 @@ namespace fuchsia {
 namespace device {
 namespace manager {
 
-struct SystemPowerStateInfo;
+enum class SystemPowerState : uint8_t {
+  SYSTEM_POWER_STATE_REBOOT = 0u,
+  SYSTEM_POWER_STATE_REBOOT_BOOTLOADER = 1u,
+  SYSTEM_POWER_STATE_REBOOT_RECOVERY = 2u,
+  SYSTEM_POWER_STATE_REBOOT_POWEROFF = 3u,
+  SYSTEM_POWER_STATE_REBOOT_MEXEC = 4u,
+  SYSTEM_POWER_STATE_REBOOT_SUSPEND_RAM = 5u,
+};
+
+
 class DebugDumper;
 class Administrator;
 class DevhostController;
@@ -127,24 +136,6 @@ constexpr inline void AddDeviceConfig::operator^=(
 }
 
 class Coordinator;
-
-extern "C" const fidl_type_t fuchsia_device_manager_SystemPowerStateInfoTable;
-
-struct SystemPowerStateInfo {
-  static constexpr const fidl_type_t* Type = &fuchsia_device_manager_SystemPowerStateInfoTable;
-  static constexpr uint32_t MaxNumHandles = 0;
-  static constexpr uint32_t PrimarySize = 12;
-  [[maybe_unused]]
-  static constexpr uint32_t MaxOutOfLine = 0;
-
-  uint32_t suspend_flag = {};
-
-  // Should wakeup be enabled from this system state?
-  bool wakeup_enable = {};
-
-  // Device power state that the device should be in for this system power state.
-  uint32_t dev_state = {};
-};
 
 extern "C" const fidl_type_t fuchsia_device_manager_DebugDumperDumpTreeRequestTable;
 extern "C" const fidl_type_t fuchsia_device_manager_DebugDumperDumpTreeResponseTable;
@@ -4898,14 +4889,6 @@ class Coordinator final {
 }  // namespace llcpp
 
 namespace fidl {
-
-template <>
-struct IsFidlType<::llcpp::fuchsia::device::manager::SystemPowerStateInfo> : public std::true_type {};
-static_assert(std::is_standard_layout_v<::llcpp::fuchsia::device::manager::SystemPowerStateInfo>);
-static_assert(offsetof(::llcpp::fuchsia::device::manager::SystemPowerStateInfo, suspend_flag) == 0);
-static_assert(offsetof(::llcpp::fuchsia::device::manager::SystemPowerStateInfo, wakeup_enable) == 4);
-static_assert(offsetof(::llcpp::fuchsia::device::manager::SystemPowerStateInfo, dev_state) == 8);
-static_assert(sizeof(::llcpp::fuchsia::device::manager::SystemPowerStateInfo) == ::llcpp::fuchsia::device::manager::SystemPowerStateInfo::PrimarySize);
 
 template <>
 struct IsFidlType<::llcpp::fuchsia::device::manager::DebugDumper::DumpTreeRequest> : public std::true_type {};
