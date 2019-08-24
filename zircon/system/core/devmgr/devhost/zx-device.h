@@ -201,8 +201,8 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
 
   std::array<fuchsia_device_DevicePowerStateInfo, fuchsia_device_MAX_DEVICE_POWER_STATES>
                                                                         power_states_;
-  std::array<fuchsia_device_manager_SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>
-                                                                        system_power_states_mapping_;
+  std::array<fuchsia_device_SystemPowerStateInfo,
+      fuchsia_device_manager_MAX_SYSTEM_POWER_STATES> system_power_states_mapping_;
   fuchsia_device_DevicePowerState current_power_state_;
 };
 

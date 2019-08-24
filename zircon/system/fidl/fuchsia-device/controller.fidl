@@ -99,6 +99,15 @@ struct DevicePowerStateInfo {
   int32 system_wake_state;
 };
 
+struct SystemPowerStateInfo {
+  uint32 suspend_flag;
+  /// Should wakeup be enabled from this system state?
+  bool wakeup_enable;
+
+  /// Device power state that the device should be in for this system power state.
+  DevicePowerState dev_state;
+};
+
 /// Interface for manipulating a device in a devhost
 [Layout = "Simple"]
 protocol Controller {

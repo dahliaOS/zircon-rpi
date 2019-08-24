@@ -5,7 +5,6 @@
 library fuchsia.device.manager;
 
 using zx;
-//using fuchsia.device;
 
 // TODO(ravoorir): When the system power states are properly defined,
 // replace these flags.
@@ -18,16 +17,6 @@ const uint32 SUSPEND_FLAG_MEXEC    = 0xdcdc0300;
 const uint32 SUSPEND_FLAG_SUSPEND_RAM = 0xdcdc0400;
 
 const uint32 MAX_SYSTEM_POWER_STATES = 6;
-
-struct SystemPowerStateInfo {
-  uint32 suspend_flag;
-  /// Should wakeup be enabled from this system state?
-  bool wakeup_enable;
-
-  /// Device power state that the device should be in for this system power state.
-  //fuchsia.device.DevicePowerState dev_state;
-  uint32 dev_state;
-};
 
 /// Provides administration services for the device manager service and the device tree it controls.
 [Discoverable, Layout = "Simple"]
