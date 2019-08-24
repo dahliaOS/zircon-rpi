@@ -20,6 +20,7 @@
 #include <lib/zx/eventpair.h>
 #include <zircon/compiler.h>
 #include <lib/zircon-internal/thread_annotations.h>
+#include <fuchsia/device/manager/c/fidl.h>
 
 #include <atomic>
 #include <array>
