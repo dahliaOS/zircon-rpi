@@ -200,6 +200,9 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
 
   std::array<fuchsia_device_DevicePowerStateInfo, fuchsia_device_MAX_DEVICE_POWER_STATES>
                                                                         power_states_;
+  std::array<fuchsia_device_manager_DevicePowerStateInfo, fuchsia_device_MAX_DEVICE_POWER_STATES>
+                                                                        power_states_;
+  fuchsia_device_DevicePowerState current_power_state_;
 };
 
 // zx_device_t objects must be created or initialized by the driver manager's
