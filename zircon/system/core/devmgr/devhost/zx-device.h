@@ -160,6 +160,9 @@ struct zx_device : fbl::RefCountedUpgradeable<zx_device>, fbl::Recyclable<zx_dev
              fuchsia_device_MAX_DEVICE_POWER_STATES>& GetPowerStates() const;
   zx_status_t SetPowerStates(const device_power_state_info_t* power_states,
                              uint8_t count);
+  void SetSystemPowerStateMapping(std::array<fuchsia_device_SystemPowerStateInfo,
+             fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>& mapping);
+  fuchsia_device_DevicePowerState GetCurrentDevicePowerState() { return current_power_state_; }
  private:
   zx_device() = default;
 
