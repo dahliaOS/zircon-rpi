@@ -83,6 +83,12 @@ zx_status_t zx_device::SetPowerStates(const device_power_state_info_t* power_sta
   return ZX_OK;
 }
 
+void zx_device::SetSystemPowerStateMapping(std::array<fuchsia_device_SystemPowerStateInfo,
+             fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>& mapping) {
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    system_power_states_mapping_[i] = mapping[i];
+  }
+}
 
 // We must disable thread-safety analysis due to not being able to statically
 // guarantee the lock holding invariant.  Instead, we acquire the lock if
