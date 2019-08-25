@@ -17,6 +17,7 @@ using driver_integration_test::IsolatedDevmgr;
 using llcpp::fuchsia::device::Controller;
 using llcpp::fuchsia::device::DevicePowerState;
 using llcpp::fuchsia::device::DevicePowerStateInfo;
+using llcpp::fuchsia::device::SystemPowerStateInfo;
 using llcpp::fuchsia::device::MAX_DEVICE_POWER_STATES;
 using llcpp::fuchsia::device::power::test::TestDevice;
 
@@ -49,7 +50,28 @@ class PowerTestCase : public zxtest::Test {
         fdio_get_service_handle(child_fd.release(), child_device_handle.reset_and_get_address()));
     ASSERT_NE(child_device_handle.get(), ZX_HANDLE_INVALID);
   }
+  void AddChildWithPowerArgs(DevicePowerStateInfo* states, uint8_t count) {
+    auto power_states =
+        ::fidl::VectorView<DevicePowerStateInfo>(count, reinterpret_cast<DevicePowerStateInfo *>(states));
+    auto response = TestDevice::Call::AddDeviceWithPowerArgs(zx::unowned(child_device_handle),
+                                                             power_states);
+    ASSERT_OK(response.status());
+    zx_status_t call_status = ZX_OK;
+    if (response->result.is_err()) {
+      call_status = response->result.err();
+    }
+    ASSERT_OK(call_status);
+
+    fbl::unique_fd child2_fd;
+    ASSERT_OK(devmgr_integration_test::RecursiveWaitForFile(
+        devmgr.devfs_root(), "sys/platform/11:0b:0/power-test/power-test-child-2", &child2_fd));
+    ASSERT_GT(child2_fd.get(), 0);
+    ASSERT_OK(
+        fdio_get_service_handle(child2_fd.release(), child2_device_handle.reset_and_get_address()));
+    ASSERT_NE(child2_device_handle.get(), ZX_HANDLE_INVALID);
+  }
   zx::channel child_device_handle;
+  zx::channel child2_device_handle;
   IsolatedDevmgr devmgr;
 };
 
@@ -160,29 +182,12 @@ TEST_F(PowerTestCase, GetDevicePowerCaps_Success) {
   states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
   states[2].is_supported = true;
   states[2].restore_latency = 1000;
-  auto power_states =
-      ::fidl::VectorView<DevicePowerStateInfo>(3, reinterpret_cast<DevicePowerStateInfo *>(states));
-  auto response = TestDevice::Call::AddDeviceWithPowerArgs(zx::unowned(child_device_handle),
-                                                           power_states);
-  ASSERT_OK(response.status());
-  zx_status_t call_status = ZX_OK;
-  if (response->result.is_err()) {
-    call_status = response->result.err();
-  }
-  ASSERT_OK(call_status);
-
-  fbl::unique_fd child2_fd;
-  ASSERT_OK(devmgr_integration_test::RecursiveWaitForFile(
-      devmgr.devfs_root(), "sys/platform/11:0b:0/power-test/power-test-child-2", &child2_fd));
-  ASSERT_GT(child2_fd.get(), 0);
-  zx::channel child2_device_handle;
-  ASSERT_OK(
-      fdio_get_service_handle(child2_fd.release(), child2_device_handle.reset_and_get_address()));
-  ASSERT_NE(child2_device_handle.get(), ZX_HANDLE_INVALID);
+  AddChildWithPowerArgs(states, 3);
 
   const DevicePowerStateInfo *out_dpstates;
   auto response2 = Controller::Call::GetDevicePowerCaps(zx::unowned(child2_device_handle));
   ASSERT_OK(response2.status());
+  zx_status_t call_status;
   if (response2->result.is_err()) {
     call_status = response2->result.err();
   }
@@ -215,25 +220,8 @@ TEST_F(PowerTestCase, Suspend_Success) {
   states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
   states[2].is_supported = true;
   states[2].restore_latency = 1000;
-  auto power_states =
-      ::fidl::VectorView<DevicePowerStateInfo>(3, reinterpret_cast<DevicePowerStateInfo *>(states));
-  auto response = TestDevice::Call::AddDeviceWithPowerArgs(zx::unowned(child_device_handle),
-                                                           power_states);
-  ASSERT_OK(response.status());
-  zx_status_t call_status = ZX_OK;
-  if (response->result.is_err()) {
-    call_status = response->result.err();
-  }
-  ASSERT_OK(call_status);
-
-  fbl::unique_fd child2_fd;
-  ASSERT_OK(devmgr_integration_test::RecursiveWaitForFile(
-      devmgr.devfs_root(), "sys/platform/11:0b:0/power-test/power-test-child-2", &child2_fd));
-  ASSERT_GT(child2_fd.get(), 0);
-  zx::channel child2_device_handle;
-  ASSERT_OK(
-      fdio_get_service_handle(child2_fd.release(), child2_device_handle.reset_and_get_address()));
-  ASSERT_NE(child2_device_handle.get(), ZX_HANDLE_INVALID);
+  AddChildWithPowerArgs(states, 3);
+  zx_status_t call_status;
 
   auto suspend_result = Controller::Call::Suspend(zx::unowned(child2_device_handle),
                                                   DevicePowerState::DEVICE_POWER_STATE_D3COLD);
@@ -265,25 +253,8 @@ TEST_F(PowerTestCase, Resume_Success) {
   states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
   states[2].is_supported = true;
   states[2].restore_latency = 1000;
-  auto power_states =
-      ::fidl::VectorView<DevicePowerStateInfo>(3, reinterpret_cast<DevicePowerStateInfo *>(states));
-  auto response = TestDevice::Call::AddDeviceWithPowerArgs(zx::unowned(child_device_handle),
-                                                           power_states);
-  ASSERT_OK(response.status());
-  zx_status_t call_status = ZX_OK;
-  if (response->result.is_err()) {
-    call_status = response->result.err();
-  }
-  ASSERT_OK(call_status);
-
-  fbl::unique_fd child2_fd;
-  ASSERT_OK(devmgr_integration_test::RecursiveWaitForFile(
-      devmgr.devfs_root(), "sys/platform/11:0b:0/power-test/power-test-child-2", &child2_fd));
-  ASSERT_GT(child2_fd.get(), 0);
-  zx::channel child2_device_handle;
-  ASSERT_OK(
-      fdio_get_service_handle(child2_fd.release(), child2_device_handle.reset_and_get_address()));
-  ASSERT_NE(child2_device_handle.get(), ZX_HANDLE_INVALID);
+  AddChildWithPowerArgs(states, 3);
+  zx_status_t call_status;
 
   auto suspend_result = Controller::Call::Suspend(zx::unowned(child2_device_handle),
                                                   DevicePowerState::DEVICE_POWER_STATE_D3COLD);
@@ -322,4 +293,170 @@ TEST_F(PowerTestCase, Resume_Success) {
   }
   ASSERT_OK(call_status);
   ASSERT_EQ(response3->result.response().cur_state, DevicePowerState::DEVICE_POWER_STATE_D0);
+}
+
+TEST_F(PowerTestCase, DefaultSystemPowerStatesMapping) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, 3);
+
+  const SystemPowerStateInfo *states_mapping;
+  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
+  ASSERT_OK(response2.status());
+  zx_status_t call_status = ZX_OK;
+  if (response2->result.is_err()) {
+    call_status = response2->result.err();
+  }
+  ASSERT_STATUS(call_status, ZX_OK);
+  states_mapping = &response2->result.response().mapping[0];
+
+  // Test Default mapping
+  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
+      DevicePowerState::DEVICE_POWER_STATE_D3COLD);
+  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
+}
+
+TEST_F(PowerTestCase, UpdatePowerStatesMapping_UnsupportedDevicestate) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, 3);
+
+  ::fidl::Array<SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES> mapping{};
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    mapping[i].dev_state = DevicePowerState::DEVICE_POWER_STATE_D2;
+    mapping[i].wakeup_enable = false;
+  }
+
+  auto update_result = 
+    Controller::Call::UpdatePowerStateMapping(zx::unowned(child2_device_handle),
+                                              mapping);
+  ASSERT_OK(update_result.status());
+  zx_status_t call_status = ZX_OK;
+  if (update_result->result.is_err()) {
+    call_status = update_result->result.err();
+  }
+  ASSERT_EQ(call_status, ZX_ERR_INVALID_ARGS);
+
+  const SystemPowerStateInfo *states_mapping;
+  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
+  ASSERT_OK(response2.status());
+  call_status = ZX_OK;
+  if (response2->result.is_err()) {
+    call_status = response2->result.err();
+  }
+  ASSERT_STATUS(call_status, ZX_OK);
+  states_mapping = &response2->result.response().mapping[0];
+
+  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
+      DevicePowerState::DEVICE_POWER_STATE_D3COLD);
+  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
+}
+
+TEST_F(PowerTestCase, UpdatePowerStatesMapping_UnsupportedWakeConfig) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[1].wakeup_capable = false;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, 3);
+
+  ::fidl::Array<SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES> mapping{};
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    mapping[i].dev_state = DevicePowerState::DEVICE_POWER_STATE_D1;
+    mapping[i].wakeup_enable = true;
+  }
+
+  auto update_result = 
+    Controller::Call::UpdatePowerStateMapping(zx::unowned(child2_device_handle),
+                                              mapping);
+  ASSERT_OK(update_result.status());
+  zx_status_t call_status = ZX_OK;
+  if (update_result->result.is_err()) {
+    call_status = update_result->result.err();
+  }
+  ASSERT_EQ(call_status, ZX_ERR_INVALID_ARGS);
+
+  const SystemPowerStateInfo *states_mapping;
+  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
+  ASSERT_OK(response2.status());
+  call_status = ZX_OK;
+  if (response2->result.is_err()) {
+    call_status = response2->result.err();
+  }
+  ASSERT_STATUS(call_status, ZX_OK);
+  states_mapping = &response2->result.response().mapping[0];
+
+  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
+      DevicePowerState::DEVICE_POWER_STATE_D3COLD);
+  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
+}
+
+TEST_F(PowerTestCase, UpdatePowerStatesMapping_success) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, 3);
+
+  ::fidl::Array<SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES> mapping{};
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    mapping[i].dev_state = DevicePowerState::DEVICE_POWER_STATE_D1;
+    mapping[i].wakeup_enable = false;
+  }
+
+  auto update_result = 
+    Controller::Call::UpdatePowerStateMapping(zx::unowned(child2_device_handle),
+                                              mapping);
+  ASSERT_OK(update_result.status());
+  zx_status_t call_status = ZX_OK;
+  if (update_result->result.is_err()) {
+    call_status = update_result->result.err();
+  }
+  ASSERT_OK(call_status);
+
+  const SystemPowerStateInfo *states_mapping;
+  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
+  ASSERT_OK(response2.status());
+  call_status = ZX_OK;
+  if (response2->result.is_err()) {
+    call_status = response2->result.err();
+  }
+  ASSERT_STATUS(call_status, ZX_OK);
+  states_mapping = &response2->result.response().mapping[0];
+
+  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
+      DevicePowerState::DEVICE_POWER_STATE_D1);
+  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
 }
