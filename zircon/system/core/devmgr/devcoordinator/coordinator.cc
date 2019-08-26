@@ -115,7 +115,7 @@ Coordinator::Coordinator(CoordinatorConfig config)
     wait_on_oom_event_.set_trigger(ZX_EVENT_SIGNALED);
     wait_on_oom_event_.Begin(config_.dispatcher);
   }
-
+  printf("MINE MINE Calling InitOutgoingServices\n");
   InitOutgoingServices();
 }
 
@@ -1195,6 +1195,7 @@ static void dump_suspend_task_dependencies(const SuspendTask& task, int depth = 
 }
 
 void Coordinator::Suspend(SuspendContext ctx, std::function<void(zx_status_t)> callback) {
+  printf("MINE MINE Hey...Hey I reached Suspend\n");
   if ((ctx.sflags() & DEVICE_SUSPEND_REASON_MASK) != DEVICE_SUSPEND_FLAG_SUSPEND_RAM) {
     vfs_exit(fshost_event());
   }
@@ -1529,7 +1530,7 @@ void Coordinator::UseFallbackDrivers() { drivers_.splice(drivers_.end(), fallbac
 
 void Coordinator::InitOutgoingServices() {
   const auto& svc_dir = outgoing_services_.svc_dir();
-
+  printf("MINE MINE Calling InitOutgoingServices\n");
   const auto admin = [this](zx::channel request) {
     static_assert(fuchsia_device_manager_SUSPEND_FLAG_REBOOT == DEVICE_SUSPEND_FLAG_REBOOT);
     static_assert(fuchsia_device_manager_SUSPEND_FLAG_POWEROFF == DEVICE_SUSPEND_FLAG_POWEROFF);

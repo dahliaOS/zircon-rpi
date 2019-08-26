@@ -6,7 +6,7 @@
 #include <fuchsia/device/manager/c/fidl.h>
 #include <fuchsia/device/power/test/llcpp/fidl.h>
 #include <lib/driver-integration-test/fixture.h>
-#include <lib/fdio/fdio.h>
+#include <lib/fdio/directory.h>
 #include <zircon/processargs.h>
 #include <zircon/syscalls.h>
 
@@ -74,7 +74,7 @@ class PowerTestCase : public zxtest::Test {
   zx::channel child2_device_handle;
   IsolatedDevmgr devmgr;
 };
-
+/*
 TEST_F(PowerTestCase, InvalidDevicePowerCaps_Less) {
   DevicePowerStateInfo states[1];
   states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
@@ -459,7 +459,7 @@ TEST_F(PowerTestCase, UpdatePowerStatesMapping_success) {
   ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
       DevicePowerState::DEVICE_POWER_STATE_D1);
   ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
-}
+}*/
 
 TEST_F(PowerTestCase, SystemSuspend) {
   // Add Capabilities
@@ -491,17 +491,17 @@ TEST_F(PowerTestCase, SystemSuspend) {
   }
   ASSERT_OK(call_status);
 
-  const SystemPowerStateInfo *states_mapping;
-  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
-  ASSERT_OK(response2.status());
-  call_status = ZX_OK;
-  if (response2->result.is_err()) {
-    call_status = response2->result.err();
-  }
-  ASSERT_STATUS(call_status, ZX_OK);
-  states_mapping = &response2->result.response().mapping[0];
 
-  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
-      DevicePowerState::DEVICE_POWER_STATE_D1);
-  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
+  // MY SUSPEND
+  zx::channel local, remote;
+  zx_status_t status = zx::channel::create(0, &local, &remote);
+  ASSERT_OK(status);
+
+  status = fdio_service_connect("/svc/fuchsia.device.manager.Administrator", remote.release());
+  ASSERT_OK(status);
+
+  call_status = ZX_OK;
+  status = fuchsia_device_manager_AdministratorSuspend(
+      local.get(), fuchsia_device_manager_SUSPEND_FLAG_SUSPEND_RAM, &call_status);
+  ASSERT_OK(status);
 }
