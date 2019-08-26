@@ -89,7 +89,7 @@ void vfs_exit(const zx::event& fshost_event) {
 
 void suspend_fallback(const zx::resource& root_resource, uint32_t flags) {
   log(INFO, "devcoordinator: suspend fallback with flags 0x%08x\n", flags);
-  if (flags == DEVICE_SUSPEND_FLAG_REBOOT) {
+  /*if (flags == DEVICE_SUSPEND_FLAG_REBOOT) {
     zx_system_powerctl(root_resource.get(), ZX_SYSTEM_POWERCTL_REBOOT, nullptr);
   } else if (flags == DEVICE_SUSPEND_FLAG_REBOOT_BOOTLOADER) {
     zx_system_powerctl(root_resource.get(), ZX_SYSTEM_POWERCTL_REBOOT_BOOTLOADER, nullptr);
@@ -97,7 +97,7 @@ void suspend_fallback(const zx::resource& root_resource, uint32_t flags) {
     zx_system_powerctl(root_resource.get(), ZX_SYSTEM_POWERCTL_REBOOT_RECOVERY, nullptr);
   } else if (flags == DEVICE_SUSPEND_FLAG_POWEROFF) {
     zx_system_powerctl(root_resource.get(), ZX_SYSTEM_POWERCTL_SHUTDOWN, nullptr);
-  }
+  }*/
 }
 
 }  // namespace
@@ -1196,9 +1196,9 @@ static void dump_suspend_task_dependencies(const SuspendTask& task, int depth = 
 
 void Coordinator::Suspend(SuspendContext ctx, std::function<void(zx_status_t)> callback) {
   printf("MINE MINE Hey...Hey I reached Suspend\n");
-  if ((ctx.sflags() & DEVICE_SUSPEND_REASON_MASK) != DEVICE_SUSPEND_FLAG_SUSPEND_RAM) {
+  /*if ((ctx.sflags() & DEVICE_SUSPEND_REASON_MASK) != DEVICE_SUSPEND_FLAG_SUSPEND_RAM) {
     vfs_exit(fshost_event());
-  }
+  }*/
 
   // The sys device should have a proxy. If not, the system hasn't fully initialized yet and
   // cannot go to suspend.

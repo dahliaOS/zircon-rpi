@@ -502,6 +502,6 @@ TEST_F(PowerTestCase, SystemSuspend) {
 
   call_status = ZX_OK;
   status = fuchsia_device_manager_AdministratorSuspend(
-      local.get(), fuchsia_device_manager_SUSPEND_FLAG_SUSPEND_RAM, &call_status);
+      local.get(), fuchsia_device_manager_SUSPEND_FLAG_REBOOT, &call_status);
   ASSERT_OK(status);
 }
