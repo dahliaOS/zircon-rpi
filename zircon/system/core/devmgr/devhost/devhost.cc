@@ -254,7 +254,7 @@ void DevhostControllerConnection::CreateDevice(zx::channel rpc, ::fidl::StringVi
   // since the newly created device is not visible to
   // any API surface until a driver is bound to it.
   // (which can only happen via another message on this thread)
-  log(RPC_IN, "devhost: create device drv='%.*s' args='%.*s'\n",
+  log(ERROR, "devhost: create device drv='%.*s' args='%.*s'\n",
       static_cast<int>(driver_path.size()), driver_path.data(), static_cast<int>(proxy_args.size()),
       proxy_args.data());
 
@@ -384,7 +384,7 @@ void DevhostControllerConnection::CreateCompositeDevice(
 void DevhostControllerConnection::CreateDeviceStub(zx::channel rpc, uint32_t protocol_id,
                                                    uint64_t local_device_id,
                                                    CreateDeviceStubCompleter::Sync completer) {
-  log(RPC_IN, "devhost: create device stub\n");
+  log(ERROR, "devhost: create device stub: %lu\n", local_device_id);
 
   fbl::RefPtr<zx_device_t> dev;
   zx_status_t r = zx_device::Create(&dev);

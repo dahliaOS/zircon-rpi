@@ -460,3 +460,48 @@ TEST_F(PowerTestCase, UpdatePowerStatesMapping_success) {
       DevicePowerState::DEVICE_POWER_STATE_D1);
   ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
 }
+
+TEST_F(PowerTestCase, SystemSuspend) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D1;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, 3);
+
+  ::fidl::Array<SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES> mapping{};
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    mapping[i].dev_state = DevicePowerState::DEVICE_POWER_STATE_D1;
+    mapping[i].wakeup_enable = false;
+  }
+
+  auto update_result = 
+    Controller::Call::UpdatePowerStateMapping(zx::unowned(child2_device_handle),
+                                              mapping);
+  ASSERT_OK(update_result.status());
+  zx_status_t call_status = ZX_OK;
+  if (update_result->result.is_err()) {
+    call_status = update_result->result.err();
+  }
+  ASSERT_OK(call_status);
+
+  const SystemPowerStateInfo *states_mapping;
+  auto response2 = Controller::Call::GetPowerStateMapping(zx::unowned(child2_device_handle));
+  ASSERT_OK(response2.status());
+  call_status = ZX_OK;
+  if (response2->result.is_err()) {
+    call_status = response2->result.err();
+  }
+  ASSERT_STATUS(call_status, ZX_OK);
+  states_mapping = &response2->result.response().mapping[0];
+
+  ASSERT_EQ(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].dev_state,
+      DevicePowerState::DEVICE_POWER_STATE_D1);
+  ASSERT_FALSE(states_mapping[fuchsia_device_manager_SystemPowerState_SYSTEM_POWER_STATE_REBOOT].wakeup_enable);
+}
