@@ -11,6 +11,7 @@ group("camera") {
   testonly = true
   deps = [
     "drivers",
+    "camera_manager2",
   ]
 }
 
