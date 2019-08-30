@@ -1,0 +1,14 @@
+{
+    "program": {
+        "binary": "bin/camera_manager"
+    },
+    "sandbox": {
+        "dev": [
+            "class/camera",
+            "test/virtual_camera"
+        ],
+        "features": [
+            "isolated-persistent-storage"
+        ]
+    }
+}
