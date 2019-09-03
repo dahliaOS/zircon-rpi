@@ -5,15 +5,16 @@
 #ifndef SRC_CAMERA_CAMERA_MANAGER_CAMERA_MANAGER_IMPL_H_
 #define SRC_CAMERA_CAMERA_MANAGER_CAMERA_MANAGER_IMPL_H_
 
-#include <fuchsia/camera/cpp/fidl.h>
+#include <fuchsia/camera2/cpp/fidl.h>
+#include <fuchsia/camera2/hal/cpp/fidl.h>
 #include <lib/fidl/cpp/binding.h>
 #include <lib/fsl/io/device_watcher.h>
 
-#include <list>
+#include <deque>
 
 #include <ddk/debug.h>
 #include <ddk/driver.h>
-#include <src/camera/camera_manager/video_device_client.h>
+#include <src/camera/camera_manager2/video_device_client.h>
 
 namespace camera {
 // Implements camera2::Manager FIDL service.  Keeps track of the cameras and
@@ -21,19 +22,20 @@ namespace camera {
 // available to applications.  Also, keeps track of the connections to a
 // device, ensuring that applications do not open more connections than the
 // device can support.
+class CameraManagerApp;
 class CameraManagerImpl : public fuchsia::camera2::Manager {
  public:
   // In addition to shuting down the camera::Manager service, this destructor
   // will attempt to cancel all video streams, even if they are connected
   // directly from the device driver to the application.
-  ~CameraManagerImpl() override;
+  ~CameraManagerImpl() override {};
 
   // This initialization is passed the async::Loop because it will be stepping
   // the loop forward until all the devices are enumerated. |loop| should be
   // the async loop associated with the default dispatcher.
   // This constructor will not return until all existing camera devices have
   // been enumerated and set up.
-  CameraManagerImpl(fidl::InterfaceRequest<Manager> request, CameraManagerApp *app);
+  CameraManagerImpl(fidl::InterfaceRequest<fuchsia::camera2::Manager> request, CameraManagerApp *app);
 
   // Connect to a camera stream:
   // |camera_id| Refers to a specific camera_id from a CameraInfo that has been
@@ -51,13 +53,13 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
   // on the stream is indicated on the response.
   // The connection is considered to be successful once a response has been given, unless
   // |stream| is closed.
-  void ConnectToStream(int32_t camera_id, StreamConstraints constraints,
+  void ConnectToStream(int32_t camera_id, fuchsia::camera2::StreamConstraints constraints,
       fidl::InterfaceHandle<fuchsia::sysmem::BufferCollectionToken> token,
-      fidl::InterfaceRequest<Stream> stream, ConnectToStreamCallback callback) override;
+      fidl::InterfaceRequest<fuchsia::camera2::Stream> stream, ConnectToStreamCallback callback) override;
 
   // Provides flow control.  The client must acknowledge every event before
   // more events can be sent.
-  AcknowledgeCameraEvent() override;
+  void AcknowledgeCameraEvent() override;
 
 
   // Called by the CameraCore when events happen:
@@ -69,6 +71,7 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
  private:
   struct CameraEvent {
       enum EventType { CameraAvailable, CameraUnavailable, Mute, Unmute };
+      EventType type;
       int64_t camera_id;
   };
 
@@ -76,8 +79,9 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
 
   // Add event to queue of events that will be sent to the client.
   void AddCameraEvent(CameraEvent event);
+  void PublishEvent(CameraEvent event);
 
-  fidl::Binding<Manage> binding_;
+  fidl::Binding<fuchsia::camera2::Manager> binding_;
   CameraManagerApp *manager_app_;
   bool waiting_for_acknowledgement_ = false;
 };

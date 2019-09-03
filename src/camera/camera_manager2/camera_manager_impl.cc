@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 #include "src/camera/camera_manager2/camera_manager_impl.h"
+#include "src/camera/camera_manager2/camera_manager_app.h"
 
-#include <fcntl.h>
+// #include <fcntl.h>
 
 #include <string>
 
@@ -13,24 +14,24 @@
 
 namespace camera {
 
-CameraManagerImpl::CameraManagerImpl(fidl::InterfaceRequest<Manager> request, CameraManagerApp *app)
+CameraManagerImpl::CameraManagerImpl(::fidl::InterfaceRequest<fuchsia::camera2::Manager> request, CameraManagerApp *app)
     : binding_(this, std::move(request)), manager_app_(app) {}
 
 
   void CameraManagerImpl::AddCameraAvailableEvent(int32_t camera_id) {
-      AddCameraEvent(EventType::CameraAvailable, camera_id);
+      AddCameraEvent({CameraEvent::EventType::CameraAvailable, camera_id});
   }
 
   void CameraManagerImpl::AddCameraUnavailableEvent(int32_t camera_id) {
-      AddCameraEvent(EventType::CameraUnavailable, camera_id);
+      AddCameraEvent({CameraEvent::EventType::CameraUnavailable, camera_id});
   }
 
   void CameraManagerImpl::AddMuteEvent(int32_t camera_id) {
-      AddCameraEvent(EventType::Mute, camera_id);
+      AddCameraEvent({CameraEvent::EventType::Mute, camera_id});
   }
 
   void CameraManagerImpl::AddUnmuteEvent(int32_t camera_id) {
-      AddCameraEvent(EventType::Unmute, camera_id);
+      AddCameraEvent({CameraEvent::EventType::Unmute, camera_id});
   }
 
 
@@ -43,32 +44,34 @@ void CameraManagerImpl::AddCameraEvent(CameraEvent event) {
     }
 }
 
-void PublishEvent(CameraEvent event) {
+void CameraManagerImpl::PublishEvent(CameraEvent event) {
     auto camera_info = manager_app_->GetCameraInfo(event.camera_id);
     if (!camera_info) {  // Camera dissapeared!
         // go to next message:
         AcknowledgeCameraEvent();
         return;
     }
+    bool last_known_camera = true;
+    fuchsia::camera2::DeviceInfo cloned_device_info;
     switch (event.type) {
         case CameraEvent::EventType::CameraAvailable:
         // check if this is the last camera notification:
-        bool last_known_camera = true;
         for (auto &event : events_to_publish) {
             if (event.type == CameraEvent::EventType::CameraAvailable) {
                 last_known_camera = false;
             }
         }
-        binding_.OnCameraAvailable(*camera_info, last_known_camera);
+        (*camera_info).Clone(&cloned_device_info);
+        binding_.events().OnCameraAvailable(event.camera_id, std::move(cloned_device_info), last_known_camera);
         break;
-        case CameraEvent::EventType::OnCameraUnavailable:
-          binding_.OnCameraUnavailable(*camera_info);
+        case CameraEvent::EventType::CameraUnavailable:
+          binding_.events().OnCameraUnavailable(event.camera_id);
           break;
         case CameraEvent::EventType::Mute:
-          binding_.OnCameraMuteChanged(event.camera_id, true);
+          binding_.events().OnCameraMuteChanged(event.camera_id, true);
           break;
         case CameraEvent::EventType::Unmute:
-          binding_.OnCameraMuteChanged(event.camera_id, false);
+          binding_.events().OnCameraMuteChanged(event.camera_id, false);
           break;
     }
     waiting_for_acknowledgement_ = true;
@@ -85,9 +88,9 @@ void CameraManagerImpl::AcknowledgeCameraEvent() {
 }
 
 
-void CameraManagerImpl::ConnectToStream(int32_t camera_id, StreamConstraints constraints,
+void CameraManagerImpl::ConnectToStream(int32_t camera_id, fuchsia::camera2::StreamConstraints constraints,
         fidl::InterfaceHandle<fuchsia::sysmem::BufferCollectionToken> token,
-        fidl::InterfaceRequest<Stream> stream, ConnectToStreamCallback callback) {
+        fidl::InterfaceRequest<fuchsia::camera2::Stream> stream, ConnectToStreamCallback callback) {
   // TODO(garratt) implement.
 }
 
