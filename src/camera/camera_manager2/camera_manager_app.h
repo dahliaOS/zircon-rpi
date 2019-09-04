@@ -10,13 +10,12 @@
 #include <lib/fsl/io/device_watcher.h>
 #include <lib/sys/cpp/component_context.h>
 
-
 #include <list>
 
 #include <ddk/debug.h>
 #include <ddk/driver.h>
-#include <src/camera/camera_manager2/video_device_client.h>
 #include <src/camera/camera_manager2/camera_manager_impl.h>
+#include <src/camera/camera_manager2/video_device_client.h>
 
 namespace camera {
 // Keeps track of the cameras and
@@ -42,7 +41,7 @@ class CameraManagerApp {
   // Called by the device once it finishes initializing.
   void OnDeviceStartupComplete(int32_t camera_id, zx_status_t status);
 
-  void UpdateWithCurrentEvents(CameraManagerImpl *client);
+  void UpdateWithCurrentEvents(CameraManagerImpl* client);
 
   std::list<std::unique_ptr<VideoDeviceClient>> active_devices_;
   // List of not-yet-activated cameras, waiting to get information from

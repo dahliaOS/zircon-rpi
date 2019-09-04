@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_CAMERA_CAMERA_MANAGER_CAMERA_MANAGER_IMPL_H_
-#define SRC_CAMERA_CAMERA_MANAGER_CAMERA_MANAGER_IMPL_H_
+#ifndef SRC_CAMERA_CAMERA_MANAGER2_CAMERA_MANAGER_IMPL_H_
+#define SRC_CAMERA_CAMERA_MANAGER2_CAMERA_MANAGER_IMPL_H_
 
 #include <fuchsia/camera2/cpp/fidl.h>
 #include <fuchsia/camera2/hal/cpp/fidl.h>
@@ -28,14 +28,15 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
   // In addition to shuting down the camera::Manager service, this destructor
   // will attempt to cancel all video streams, even if they are connected
   // directly from the device driver to the application.
-  ~CameraManagerImpl() override {};
+  ~CameraManagerImpl() override{};
 
   // This initialization is passed the async::Loop because it will be stepping
   // the loop forward until all the devices are enumerated. |loop| should be
   // the async loop associated with the default dispatcher.
   // This constructor will not return until all existing camera devices have
   // been enumerated and set up.
-  CameraManagerImpl(fidl::InterfaceRequest<fuchsia::camera2::Manager> request, CameraManagerApp *app);
+  CameraManagerImpl(fidl::InterfaceRequest<fuchsia::camera2::Manager> request,
+                    CameraManagerApp *app);
 
   // Connect to a camera stream:
   // |camera_id| Refers to a specific camera_id from a CameraInfo that has been
@@ -54,13 +55,13 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
   // The connection is considered to be successful once a response has been given, unless
   // |stream| is closed.
   void ConnectToStream(int32_t camera_id, fuchsia::camera2::StreamConstraints constraints,
-      fidl::InterfaceHandle<fuchsia::sysmem::BufferCollectionToken> token,
-      fidl::InterfaceRequest<fuchsia::camera2::Stream> stream, ConnectToStreamCallback callback) override;
+                       fidl::InterfaceHandle<fuchsia::sysmem::BufferCollectionToken> token,
+                       fidl::InterfaceRequest<fuchsia::camera2::Stream> stream,
+                       ConnectToStreamCallback callback) override;
 
   // Provides flow control.  The client must acknowledge every event before
   // more events can be sent.
   void AcknowledgeCameraEvent() override;
-
 
   // Called by the CameraCore when events happen:
   void AddCameraAvailableEvent(int32_t camera_id);
@@ -70,9 +71,9 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
 
  private:
   struct CameraEvent {
-      enum EventType { CameraAvailable, CameraUnavailable, Mute, Unmute };
-      EventType type;
-      int64_t camera_id;
+    enum EventType { CameraAvailable, CameraUnavailable, Mute, Unmute };
+    EventType type;
+    int64_t camera_id;
   };
 
   std::deque<CameraEvent> events_to_publish;
@@ -88,4 +89,4 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
 
 }  // namespace camera
 
-#endif  // SRC_CAMERA_CAMERA_MANAGER_CAMERA_MANAGER_IMPL_H_
+#endif  // SRC_CAMERA_CAMERA_MANAGER2_CAMERA_MANAGER_IMPL_H_

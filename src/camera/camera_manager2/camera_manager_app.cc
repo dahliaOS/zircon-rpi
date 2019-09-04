@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #include "src/camera/camera_manager2/camera_manager_app.h"
-#include "src/camera/camera_manager2/camera_manager_impl.h"
 
 #include <fcntl.h>
 
@@ -11,37 +10,38 @@
 
 #include <ddk/debug.h>
 #include <ddk/driver.h>
-#include <fbl/unique_fd.h>
 #include <fbl/function.h>
+#include <fbl/unique_fd.h>
+
+#include "src/camera/camera_manager2/camera_manager_impl.h"
 
 namespace camera {
 
-static const char* kCameraDevicePath = "/dev/class/camera";
+static const char *kCameraDevicePath = "/dev/class/camera";
 
-CameraManagerApp::CameraManagerApp():
-    context_(sys::ComponentContext::Create()) {
+CameraManagerApp::CameraManagerApp() : context_(sys::ComponentContext::Create()) {
   // Begin monitoring for plug/unplug events for pluggable cameras.
-  device_watcher_ = fsl::DeviceWatcher::Create(kCameraDevicePath,
-      fbl::BindMember(this, &CameraManagerApp::OnDeviceFound));
+  device_watcher_ = fsl::DeviceWatcher::Create(
+      kCameraDevicePath, fbl::BindMember(this, &CameraManagerApp::OnDeviceFound));
   if (device_watcher_ == nullptr) {
     FXL_LOG(ERROR) << " failed to create DeviceWatcher.";
     return;
   }
   context_->outgoing()->AddPublicService<fuchsia::camera2::Manager>(
-          [this](fidl::InterfaceRequest<fuchsia::camera2::Manager> request) {
-          auto client = std::make_unique<CameraManagerImpl>(std::move(request), this);
-          UpdateWithCurrentEvents(client.get());
-          clients_.push_back(std::move(client));
-          });
+      [this](fidl::InterfaceRequest<fuchsia::camera2::Manager> request) {
+        auto client = std::make_unique<CameraManagerImpl>(std::move(request), this);
+        UpdateWithCurrentEvents(client.get());
+        clients_.push_back(std::move(client));
+      });
 }
 
 void CameraManagerApp::UpdateWithCurrentEvents(CameraManagerImpl *client) {
-    for (auto &device : active_devices_) {
-            client->AddCameraAvailableEvent(device->id());
-            if (device->muted()) {
-                client->AddMuteEvent(device->id());
-            }
+  for (auto &device : active_devices_) {
+    client->AddCameraAvailableEvent(device->id());
+    if (device->muted()) {
+      client->AddMuteEvent(device->id());
     }
+  }
 }
 
 // The dispatcher loop should be shut down when this destructor is called.
@@ -56,16 +56,15 @@ CameraManagerApp::~CameraManagerApp() {
   clients_.clear();
 }
 
-void CameraManagerApp::OnDeviceFound(int dir_fd, const std::string& filename) {
+void CameraManagerApp::OnDeviceFound(int dir_fd, const std::string &filename) {
   auto device = VideoDeviceClient::Create(dir_fd, filename);
   if (!device) {
     FXL_LOG(ERROR) << "Failed to create device " << filename;
     return;
   }
 
-  device->Startup([this, id = device->id()](zx_status_t status) {
-        OnDeviceStartupComplete(id, status);
-      });
+  device->Startup(
+      [this, id = device->id()](zx_status_t status) { OnDeviceStartupComplete(id, status); });
 
   // Don't notify clients of a device until we know more about it.
   inactive_devices_.push_back(std::move(device));
@@ -86,7 +85,7 @@ void CameraManagerApp::OnDeviceStartupComplete(int32_t camera_id, zx_status_t st
         active_devices_.splice(active_devices_.begin(), inactive_devices_, iter);
         // Notify Clients:
         for (auto &client : clients_) {
-            client->AddCameraAvailableEvent(camera_id);
+          client->AddCameraAvailableEvent(camera_id);
         }
       } else {
         inactive_devices_.erase(iter);
