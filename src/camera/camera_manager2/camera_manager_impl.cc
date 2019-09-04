@@ -47,7 +47,7 @@ void CameraManagerImpl::PublishEvent(CameraEvent event) {
   auto camera_info = manager_app_->GetCameraInfo(event.camera_id);
   if (!camera_info) {  // Camera dissapeared!
     // go to next message:
-    AcknowledgeCameraEvent();
+    AcknowledgeDeviceEvent();
     return;
   }
   bool last_known_camera = true;
@@ -61,23 +61,23 @@ void CameraManagerImpl::PublishEvent(CameraEvent event) {
         }
       }
       (*camera_info).Clone(&cloned_device_info);
-      binding_.events().OnCameraAvailable(event.camera_id, std::move(cloned_device_info),
+      binding_.events().OnDeviceAvailable(event.camera_id, std::move(cloned_device_info),
                                           last_known_camera);
       break;
     case CameraEvent::EventType::CameraUnavailable:
-      binding_.events().OnCameraUnavailable(event.camera_id);
+      binding_.events().OnDeviceUnavailable(event.camera_id);
       break;
     case CameraEvent::EventType::Mute:
-      binding_.events().OnCameraMuteChanged(event.camera_id, true);
+      binding_.events().OnDeviceMuteChanged(event.camera_id, true);
       break;
     case CameraEvent::EventType::Unmute:
-      binding_.events().OnCameraMuteChanged(event.camera_id, false);
+      binding_.events().OnDeviceMuteChanged(event.camera_id, false);
       break;
   }
   waiting_for_acknowledgement_ = true;
 }
 
-void CameraManagerImpl::AcknowledgeCameraEvent() {
+void CameraManagerImpl::AcknowledgeDeviceEvent() {
   if (events_to_publish.empty()) {
     waiting_for_acknowledgement_ = false;
     return;

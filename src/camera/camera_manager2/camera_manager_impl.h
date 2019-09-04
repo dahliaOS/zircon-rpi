@@ -61,7 +61,7 @@ class CameraManagerImpl : public fuchsia::camera2::Manager {
 
   // Provides flow control.  The client must acknowledge every event before
   // more events can be sent.
-  void AcknowledgeCameraEvent() override;
+  void AcknowledgeDeviceEvent() override;
 
   // Called by the CameraCore when events happen:
   void AddCameraAvailableEvent(int32_t camera_id);
