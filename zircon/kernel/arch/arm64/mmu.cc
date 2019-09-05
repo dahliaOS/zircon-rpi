@@ -226,26 +226,64 @@ bool is_pte_valid(pte_t pte) {
   return (pte & MMU_PTE_DESCRIPTOR_MASK) != MMU_PTE_DESCRIPTOR_INVALID;
 }
 
-void update_pte(volatile pte_t* pte, pte_t newval) {
-  *pte = newval;
+// or in the new value with the old, keeping the reserved bits
+void update_pte(volatile pte_t* old, pte_t newval) {
+  *old = (*old & MMU_PTE_ATTR_RES_SOFTWARE) | newval;
 }
 
-bool page_table_is_clear(volatile pte_t* page_table, uint page_size_shift) {
+__NO_INLINE
+uint read_page_table_count(volatile pte_t* page_table) {
+  // store the count in the reserved bits of the first few PTEs
+  uint count = (page_table[0] & MMU_PTE_ATTR_RES_SOFTWARE) >> MMU_PTE_ATTR_RES_SOFTWARE_SHIFT;
+  count |= (page_table[1] & MMU_PTE_ATTR_RES_SOFTWARE) >> (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 4);
+  count |= (page_table[2] & MMU_PTE_ATTR_RES_SOFTWARE) >> (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 8);
+
+  return count;
+}
+
+__NO_INLINE
+void update_page_table_count(volatile pte_t* page_table, int adj_count, bool trace) {
+  pte_t count = read_page_table_count(page_table);
+
+  count += adj_count;
+
+  if (trace)
+    TRACEF("updating to count %lu (delta %d) at page table %p\n", count, adj_count, page_table);
+
+  // XXX assert that count is within range
+
+  page_table[0] = (page_table[0] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << MMU_PTE_ATTR_RES_SOFTWARE_SHIFT) & MMU_PTE_ATTR_RES_SOFTWARE);
+  page_table[1] = (page_table[1] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 4)) & MMU_PTE_ATTR_RES_SOFTWARE);
+  page_table[2] = (page_table[2] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 8)) & MMU_PTE_ATTR_RES_SOFTWARE);
+}
+
+bool page_table_is_clear(volatile pte_t* page_table, uint page_size_shift, bool trace) {
   int i;
   int count = 1U << (page_size_shift - 3);
   pte_t pte;
 
+  uint newcount = read_page_table_count(page_table);
+#if 0
+  return newcount == 0;
+#endif
+
+  uint count2 = 0;
   for (i = 0; i < count; i++) {
     pte = page_table[i];
     if (is_pte_valid(pte)) {
-      LTRACEF("page_table at %p still in use, index %d is %#" PRIx64 "\n", page_table, i, pte);
-
-      return false;
+      count2++;
     }
   }
 
-  LTRACEF("page table at %p is clear\n", page_table);
+  if (newcount != count2) {
+    hexdump((void *)page_table, PAGE_SIZE);
+    panic("page table count is out of sync: %p %u %u\n", page_table, newcount, count2);
+  }
+  if (count2 > 0)
+    return false;
 
+  if (trace)
+    TRACEF("page table at %p is clear\n", page_table);
   return true;
 }
 
@@ -420,6 +458,7 @@ zx_status_t ArmArchVmAspace<paf>::GetPageTable(uint page_size_shift, vaddr_t pt_
       update_pte(&page_table[pt_index], pte);
       LTRACEF("pte %p[%#" PRIxPTR "] = %#" PRIx64 "\n", page_table, pt_index, pte);
 
+      update_page_table_count(page_table, 1, LOCAL_TRACE);
       *page_table_out = static_cast<volatile pte_t*>(vaddr);
 
       return ZX_OK;
@@ -470,6 +509,7 @@ zx_status_t ArmArchVmAspace<paf>::SplitLargePage(vaddr_t vaddr, uint index_shift
     // a completely new table
     new_page_table[i] = mapped_paddr | attrs;
   }
+  update_page_table_count(new_page_table, MMU_KERNEL_PAGE_TABLE_ENTRIES, LOCAL_TRACE);
 
   __dmb(ARM_MB_ISHST);
 
@@ -549,9 +589,10 @@ ssize_t ArmArchVmAspace<paf>::UnmapPageTable(vaddr_t vaddr, vaddr_t vaddr_rel, s
 
       // if we unmapped an entire page table leaf and/or the unmap made the level below us empty,
       // free the page table
-      if (chunk_size == block_size || page_table_is_clear(next_page_table, page_size_shift)) {
+      if (chunk_size == block_size || page_table_is_clear(next_page_table, page_size_shift, LOCAL_TRACE)) {
         LTRACEF("pte %p[0x%lx] = 0 (was page table)\n", page_table, index);
         update_pte(&page_table[index], MMU_PTE_DESCRIPTOR_INVALID);
+        update_page_table_count(page_table, -1, LOCAL_TRACE);
 
         // ensure that the update is observable from hardware page table walkers
         __dmb(ARM_MB_ISHST);
@@ -564,6 +605,7 @@ ssize_t ArmArchVmAspace<paf>::UnmapPageTable(vaddr_t vaddr, vaddr_t vaddr_rel, s
     } else if (is_pte_valid(pte)) {
       LTRACEF("pte %p[0x%lx] = 0\n", page_table, index);
       update_pte(&page_table[index], MMU_PTE_DESCRIPTOR_INVALID);
+      update_page_table_count(page_table, -1, LOCAL_TRACE);
 
       // ensure that the update is observable from hardware page table walkers
       __dmb(ARM_MB_ISHST);
@@ -636,12 +678,13 @@ ssize_t ArmArchVmAspace<paf>::MapPageTable(const vaddr_t vaddr_in, const vaddr_t
         // if the level below failed with a memory error, see if we are left with a dangling empty page table
         if (ret == ZX_ERR_NO_MEMORY) {
           // check to see if we need to clear out the lower level page table
-          if (page_table_is_clear(next_page_table, page_size_shift)) {
+          if (page_table_is_clear(next_page_table, page_size_shift, LOCAL_TRACE)) {
             LTRACEF("freeing empty PT pte %p[0x%lx] = 0 (was page table)\n", page_table, index);
 
             paddr_t page_table_paddr = page_table[index] & MMU_PTE_OUTPUT_ADDR_MASK;
 
             update_pte(&page_table[index], MMU_PTE_DESCRIPTOR_INVALID);
+            update_page_table_count(page_table, -1, LOCAL_TRACE);
 
             // ensure that the update is observable from hardware page table walkers
             __dmb(ARM_MB_ISHST);
@@ -673,6 +716,7 @@ ssize_t ArmArchVmAspace<paf>::MapPageTable(const vaddr_t vaddr_in, const vaddr_t
       }
       LTRACEF("pte %p[%#" PRIxPTR "] = %#" PRIx64 "\n", page_table, index, pte);
       update_pte(&page_table[index], pte);
+      update_page_table_count(page_table, 1, LOCAL_TRACE);
     }
     vaddr += chunk_size;
     vaddr_rel += chunk_size;
@@ -1142,7 +1186,7 @@ zx_status_t ArmArchVmAspace<paf>::Destroy() {
   vaddr_t vaddr_base;
   uint top_size_shift, top_index_shift, page_size_shift;
   MmuParamsFromFlags(0, nullptr, &vaddr_base, &top_size_shift, &top_index_shift, &page_size_shift);
-  if (page_table_is_clear(tt_virt_, page_size_shift) == false) {
+  if (page_table_is_clear(tt_virt_, page_size_shift, local_trace_) == false) {
     panic("top level page table still in use! aspace %p tt_virt %p\n", this, tt_virt_);
   }
 

@@ -44,8 +44,27 @@ static size_t vaddr_to_l3_index(uintptr_t addr) {
   return (addr >> MMU_LX_X(MMU_KERNEL_PAGE_SIZE_SHIFT, 3)) & (MMU_KERNEL_PAGE_TABLE_ENTRIES - 1);
 }
 
-static void update_pte(volatile pte_t* pte, pte_t newval) {
-  *pte = newval;
+static uint read_page_table_count(volatile pte_t* page_table) {
+  // store the count in the reserved bits of the first few PTEs
+  uint count = (page_table[0] & MMU_PTE_ATTR_RES_SOFTWARE) >> MMU_PTE_ATTR_RES_SOFTWARE_SHIFT;
+  count |= (page_table[1] & MMU_PTE_ATTR_RES_SOFTWARE) >> (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 4);
+  count |= (page_table[2] & MMU_PTE_ATTR_RES_SOFTWARE) >> (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 8);
+
+  return count;
+}
+
+static void update_page_table_count(volatile pte_t* page_table, int adj_count) {
+  pte_t count = read_page_table_count(page_table);
+
+  count += adj_count;
+
+  page_table[0] = (page_table[0] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << MMU_PTE_ATTR_RES_SOFTWARE_SHIFT) & MMU_PTE_ATTR_RES_SOFTWARE);
+  page_table[1] = (page_table[1] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 4)) & MMU_PTE_ATTR_RES_SOFTWARE);
+  page_table[2] = (page_table[2] & ~MMU_PTE_ATTR_RES_SOFTWARE) | ((count << (MMU_PTE_ATTR_RES_SOFTWARE_SHIFT - 8)) & MMU_PTE_ATTR_RES_SOFTWARE);
+}
+
+static void update_pte(volatile pte_t* old, pte_t newval) {
+  *old = (*old & MMU_PTE_ATTR_RES_SOFTWARE) | newval;
 }
 
 // called from start.S to grab another page to back a page table from the boot allocator
@@ -82,6 +101,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
         paddr_t pa = alloc_func();
 
         update_pte(&kernel_table0[index0], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
+        update_page_table_count(kernel_table0, 1);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -103,6 +123,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
           // set up a 1GB page here
           update_pte(&kernel_table1[index1],
               ((paddr + off) & ~l1_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK);
+          update_page_table_count(kernel_table1, 1);
 
           off += l1_large_page_size;
           continue;
@@ -111,6 +132,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
         paddr_t pa = alloc_func();
 
         update_pte(&kernel_table1[index1], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
+        update_page_table_count(kernel_table1, 1);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -132,6 +154,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
           // set up a 2MB page here
           update_pte(&kernel_table2[index2],
               ((paddr + off) & ~l2_large_page_size_mask) | flags | MMU_PTE_L012_DESCRIPTOR_BLOCK);
+          update_page_table_count(kernel_table2, 1);
 
           off += l2_large_page_size;
           continue;
@@ -140,6 +163,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
         paddr_t pa = alloc_func();
 
         update_pte(&kernel_table2[index2], (pa & MMU_PTE_OUTPUT_ADDR_MASK) | MMU_PTE_L012_DESCRIPTOR_TABLE);
+        update_page_table_count(kernel_table2, 1);
         __FALLTHROUGH;
       }
       case MMU_PTE_L012_DESCRIPTOR_TABLE:
@@ -154,6 +178,7 @@ static inline zx_status_t _arm64_boot_map(pte_t* kernel_table0, const vaddr_t va
     size_t index3 = vaddr_to_l3_index(vaddr + off);
     update_pte(&kernel_table3[index3],
         ((paddr + off) & MMU_PTE_OUTPUT_ADDR_MASK) | flags | MMU_PTE_L3_DESCRIPTOR_PAGE);
+    update_page_table_count(kernel_table3, 1);
 
     off += PAGE_SIZE;
   }
