@@ -390,6 +390,9 @@ void Scheduler::RescheduleCommon(SchedTime now, void* outer_trace) {
 
   // Update the state of the current and next thread.
   current_thread->preempt_pending = false;
+  if (next_thread->state != THREAD_RUNNING) {
+    next_thread->num_wakeups++;
+  }
   next_thread->state = THREAD_RUNNING;
   next_thread->last_cpu = current_cpu;
   next_thread->curr_cpu = current_cpu;

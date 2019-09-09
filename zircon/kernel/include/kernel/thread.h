@@ -117,6 +117,8 @@ struct thread_t {
   // THREAD_RUNNING state, this excludes the time it has accrued since it
   // left the scheduler.
   zx_duration_t runtime_ns;
+  // Total number of times the thread has entered THREAD_RUNNING.
+  uint64_t num_wakeups;
 
   // priority: in the range of [MIN_PRIORITY, MAX_PRIORITY], from low to high.
   // base_priority is set at creation time, and can be tuned with thread_set_priority().
@@ -372,6 +374,9 @@ zx_duration_t thread_runtime(const thread_t* t);
 
 // last cpu the given thread was running on, or INVALID_CPU if it has never run
 cpu_num_t thread_last_cpu(const thread_t* t) TA_EXCL(thread_lock);
+
+// return the number of times a thread has woken up
+uint64_t thread_num_wakeups(const thread_t* t) TA_EXCL(thread_lock);
 
 // deliver a kill signal to a thread
 void thread_kill(thread_t* t);

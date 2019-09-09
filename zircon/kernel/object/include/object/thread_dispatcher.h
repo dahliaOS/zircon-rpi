@@ -118,6 +118,7 @@ class ThreadDispatcher final : public SoloDispatcher<ThreadDispatcher, ZX_DEFAUL
   void get_name(char out_name[ZX_MAX_NAME_LEN]) const final __NONNULL((2));
   uint64_t runtime_ns() const { return thread_runtime(&thread_); }
   cpu_num_t last_cpu() const { return thread_last_cpu(&thread_); }
+  uint64_t num_wakeups() const { return thread_num_wakeups(&thread_); }
 
   zx_status_t SetExceptionPort(fbl::RefPtr<ExceptionPort> eport);
   // Returns true if a port had been set.

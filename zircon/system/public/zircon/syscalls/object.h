@@ -177,6 +177,10 @@ typedef struct zx_info_thread_stats {
     // returns, the thread may have been scheduled elsewhere, so this
     // information should only be used as a hint or for statistics.
     uint32_t last_scheduled_cpu;
+
+    // Total accumulated number of wakeups of the thread.
+    // I.e., the number of times that the thread was newly scheduled after being idle.
+    uint64_t total_wakeups;
 } zx_info_thread_stats_t;
 
 // Statistics about resources (e.g., memory) used by a task. Can be relatively

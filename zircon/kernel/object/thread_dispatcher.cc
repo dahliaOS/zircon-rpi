@@ -941,6 +941,7 @@ zx_status_t ThreadDispatcher::GetStatsForUserspace(zx_info_thread_stats_t* info)
 
   info->total_runtime = runtime_ns();
   info->last_scheduled_cpu = last_cpu();
+  info->total_wakeups = num_wakeups();
   return ZX_OK;
 }
 

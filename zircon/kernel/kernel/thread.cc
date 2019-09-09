@@ -1037,6 +1037,14 @@ cpu_num_t thread_last_cpu(const thread_t* t) {
 }
 
 /**
+ * @brief Return the number of times a thread has woken up.
+ */
+uint64_t thread_num_wakeups(const thread_t* t) {
+  Guard<spin_lock_t, IrqSave> guard{ThreadLock::Get()};
+  return t->num_wakeups;
+}
+
+/**
  * @brief Construct a thread t around the current running state
  *
  * This should be called once per CPU initialization.  It will create
