@@ -30,6 +30,7 @@ typedef struct {
   // has it been seen this pass?
   bool scanned;
   zx_duration_t delta_time;
+  uint64_t delta_wakeups;
 
   // information about the thread
   zx_koid_t proc_koid;
@@ -117,6 +118,7 @@ static zx_status_t thread_callback(void* unused_ctx, int depth, zx_handle_t thre
       // and copy the new state over
       temp->scanned = true;
       temp->delta_time = zx_duration_sub_duration(e.stats.total_runtime, temp->stats.total_runtime);
+      temp->delta_wakeups = e.stats.total_wakeups - temp->stats.total_wakeups;
       temp->info = e.info;
       temp->stats = e.stats;
       return ZX_OK;
@@ -164,7 +166,8 @@ static void sort_threads(enum sort_order order) {
 
 static void print_threads(void) {
   thread_info_t* e;
-  printf("%8s %8s %10s %5s %s\n", "PID", "TID", raw_time ? "TIME_NS" : "TIME%", "STATE", "NAME");
+  printf("%8s %8s %10s %8s %5s %s\n", "PID", "TID", raw_time ? "TIME_NS" : "TIME%", "WAKEUPS",
+         "STATE", "NAME");
 
   int i = 0;
   list_for_every_entry (&thread_list, e, thread_info_t, node) {
@@ -177,11 +180,11 @@ static void print_threads(void) {
       if (e->delta_time > 0)
         percent = e->delta_time / (double)delay * 100;
 
-      printf("%8lu %8lu %10.2f %5s %s:%s\n", e->proc_koid, e->koid, percent, state_string(&e->info),
-             e->proc_name, e->name);
-    } else {
-      printf("%8lu %8lu %10lu %5s %s:%s\n", e->proc_koid, e->koid, e->delta_time,
+      printf("%8lu %8lu %10.2f %8lu %5s %s:%s\n", e->proc_koid, e->koid, percent, e->delta_wakeups,
              state_string(&e->info), e->proc_name, e->name);
+    } else {
+      printf("%8lu %8lu %10lu %8lu %5s %s:%s\n", e->proc_koid, e->koid, e->delta_time,
+             e->delta_wakeups, state_string(&e->info), e->proc_name, e->name);
     }
 
     // only print the first count items (or all, if count < 0)
