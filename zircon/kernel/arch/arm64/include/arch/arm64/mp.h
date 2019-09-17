@@ -31,6 +31,8 @@ __BEGIN_CDECLS
   (((cluster << MPIDR_AFF1_SHIFT) & MPIDR_AFF1_MASK) | \
    ((cpu << MPIDR_AFF0_SHIFT) & MPIDR_AFF0_MASK))
 
+#define ARM64_MPIDR_MASK (MPIDR_AFF3_MASK | MPIDR_AFF2_MASK | MPIDR_AFF1_MASK | MPIDR_AFF0_MASK)
+
 // TODO: add support for AFF2 and AFF3
 
 // Per cpu structure, pointed to by a fixed register while in kernel mode.
@@ -107,6 +109,9 @@ static inline uint arch_cpu_num_to_cpu_id(uint cpu) {
 
   return arm64_cpu_cpu_ids[cpu];
 }
+
+// translate mpidr to cpu number
+uint arm64_mpidr_to_cpu_num(uint64_t mpidr);
 
 #define READ_PERCPU_FIELD32(field) arm64_read_percpu_u32(offsetof(struct arm64_percpu, field))
 

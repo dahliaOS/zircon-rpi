@@ -98,6 +98,7 @@ if (current_toolchain == default_toolchain) {
       "arch.cc",
       "asm.S",
       "cache-ops.S",
+      "dap.cc",
       "debugger.cc",
       "exceptions.S",
       "exceptions_c.cc",
