@@ -52,6 +52,7 @@ group("all_tests") {
     ":tests",
     "hotsort:tests",
     "spinel:tests",
+    "tests/vk/vk_app_state:tests",
   ]
   if (_build_host_tests) {
     data_deps = [
