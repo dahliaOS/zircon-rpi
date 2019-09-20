@@ -8,6 +8,7 @@
 
 #include "allocator_device.h"
 #include "common/macros.h"
+#include "common/vk/vk_app_state.h"
 #include "common/vk/vk_assert.h"
 #include "common/vk/vk_cache.h"
 #include "common/vk/vk_debug.h"
@@ -15,6 +16,9 @@
 #include "ext/transform_stack/transform_stack.h"
 #include "spinel/spinel_assert.h"
 #include "spinel/spinel_vk.h"
+
+#include "presentation.h"
+#include "triangle_shaders.h"
 
 //
 //
@@ -183,255 +187,37 @@ int
 main(int argc, char const * argv[])
 {
   //
-  // create a Vulkan instances
-  //
-  VkApplicationInfo const app_info = {
-
-    .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-    .pNext              = NULL,
-    .pApplicationName   = "Fuchsia Spinel/VK Test",
-    .applicationVersion = 0,
-    .pEngineName        = "Fuchsia Spinel/VK",
-    .engineVersion      = 0,
-    .apiVersion         = VK_API_VERSION_1_1
-  };
-
-  char const * const instance_enabled_layers[] = { "VK_LAYER_LUNARG_standard_validation", NULL };
-
-  char const * const instance_enabled_extensions[] = { VK_EXT_DEBUG_REPORT_EXTENSION_NAME, NULL };
-
-  VkInstanceCreateInfo const instance_info = {
-
-    .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    .pNext                   = NULL,
-    .flags                   = 0,
-    .pApplicationInfo        = &app_info,
-    .enabledLayerCount       = ARRAY_LENGTH_MACRO(instance_enabled_layers) - 1,
-    .ppEnabledLayerNames     = instance_enabled_layers,
-    .enabledExtensionCount   = ARRAY_LENGTH_MACRO(instance_enabled_extensions) - 1,
-    .ppEnabledExtensionNames = instance_enabled_extensions
-  };
-
-  VkInstance instance;
-
-  vk(CreateInstance(&instance_info, NULL, &instance));
-
-  //
-  //
-  //
-#ifndef NDEBUG
-  PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
-    (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance,
-                                                              "vkCreateDebugReportCallbackEXT");
-
-  PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
-    (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance,
-                                                               "vkDestroyDebugReportCallbackEXT");
-
-  VkDebugReportFlagsEXT const drf = VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
-                                    VK_DEBUG_REPORT_WARNING_BIT_EXT |
-                                    VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
-                                    VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_DEBUG_BIT_EXT;
-
-  struct VkDebugReportCallbackCreateInfoEXT const drcci = {
-
-    .sType       = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
-    .pNext       = NULL,
-    .flags       = drf,
-    .pfnCallback = vk_debug_report_cb,
-    .pUserData   = NULL
-  };
-
-  VkDebugReportCallbackEXT drc;
-
-  vk(CreateDebugReportCallbackEXT(instance, &drcci, NULL, &drc));
-#endif
-
-  //
-  // Prepare Vulkan environment for Spinel
-  //
-  struct spn_vk_environment environment = { .d   = VK_NULL_HANDLE,
-                                            .ac  = NULL,
-                                            .pc  = VK_NULL_HANDLE,
-                                            .pd  = VK_NULL_HANDLE,
-                                            .qfi = 0 };
-
-  //
-  // acquire all physical devices
-  //
-  uint32_t pd_count;
-
-  vk(EnumeratePhysicalDevices(instance, &pd_count, NULL));
-
-  if (pd_count == 0)
-    {
-      fprintf(stderr, "No device found\n");
-
-      return EXIT_FAILURE;
-    }
-
-  VkPhysicalDevice * pds = malloc(pd_count * sizeof(*pds));
-
-  vk(EnumeratePhysicalDevices(instance, &pd_count, pds));
-
-  //
-  // select the first device if *both* ids aren't provided
-  //
-  VkPhysicalDeviceProperties pdp;
-
-  vkGetPhysicalDeviceProperties(pds[0], &pdp);
-
-  uint32_t const vendor_id = (argc <= 2) ? pdp.vendorID : strtoul(argv[1], NULL, 16);
-  uint32_t const device_id = (argc <= 2) ? pdp.deviceID : strtoul(argv[2], NULL, 16);
-
-  //
-  // list all devices
-  //
-  environment.pd = VK_NULL_HANDLE;
-
-  for (uint32_t ii = 0; ii < pd_count; ii++)
-    {
-      VkPhysicalDeviceProperties pdp_tmp;
-
-      vkGetPhysicalDeviceProperties(pds[ii], &pdp_tmp);
-
-      bool const is_match = (pdp_tmp.vendorID == vendor_id) && (pdp_tmp.deviceID == device_id);
-
-      if (is_match)
-        {
-          pdp            = pdp_tmp;
-          environment.pd = pds[ii];
-        }
-
-      fprintf(stdout,
-              "%c %X : %X : %s\n",
-              is_match ? '*' : ' ',
-              pdp_tmp.vendorID,
-              pdp_tmp.deviceID,
-              pdp_tmp.deviceName);
-    }
-
-  if (environment.pd == VK_NULL_HANDLE)
-    {
-      fprintf(stderr, "Device %X : %X not found.\n", vendor_id, device_id);
-
-      return EXIT_FAILURE;
-    }
-
-  free(pds);
-
-  //
-  // get the physical device's memory props
-  //
-  vkGetPhysicalDeviceMemoryProperties(environment.pd, &environment.pdmp);
-
-  //
-  // get image properties
-  //
-  // vkGetPhysicalDeviceImageFormatProperties()
-  //
-  // vk(GetPhysicalDeviceImageFormatProperties(phy_device,
+  // Setup vulkan application state.
   //
 
-  //
-  // get queue properties
-  //
-  // FIXME(allanmac): The number and composition of queues (compute
-  // vs. graphics) will be configured by the target.
-  //
-  // This implies Spinel/VK needs to either create the queue pool itself
-  // or accept an externally defined queue strategy.
-  //
-  // This is moot until we get Timeline Semaphores and can run on
-  // multiple queues.
-  //
-  uint32_t qfc;
-
-  vkGetPhysicalDeviceQueueFamilyProperties(environment.pd, &qfc, NULL);
-
-  VkQueueFamilyProperties qfp[qfc];
-
-  vkGetPhysicalDeviceQueueFamilyProperties(environment.pd, &qfc, qfp);
-
-  //
-  // create queue
-  //
-  float const qp[] = { 1.0f };
-
-  VkDeviceQueueCreateInfo const qi = {
-
-    .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-    .pNext            = NULL,
-    .flags            = 0,
-    .queueFamilyIndex = environment.qfi,
-    .queueCount       = 1,
-    .pQueuePriorities = qp
-  };
-
-  //
-  // clumsily enable AMD GCN shader info extension
-  //
-  char const * const device_enabled_extensions[] = {
+  const vk_app_state_config_t app_config = {
+    .app_name = "Fuchsia Spinel/VK Test",
+    .enable_validation = true,
+    .enable_debug_report = true,
 #if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
-    VK_AMD_SHADER_INFO_EXTENSION_NAME
-#else
-    NULL
+    .enable_amd_statistics = true,
 #endif
+    .swapchain_config = &(const vk_swapchain_config_t){
+      .window_width = SPN_BUFFER_SURFACE_WIDTH,
+      .window_height = SPN_BUFFER_SURFACE_HEIGHT,
+    },
   };
 
-  uint32_t device_enabled_extension_count = 0;
-
-#if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
-  if (pdp.vendorID == 0x1002)
-    {
-      device_enabled_extension_count = 1;
-      vk_shader_info_amd_statistics_set_enabled(true);
-    }
-#endif
+  vk_app_state_t app_state;
+  if (!vk_app_state_init(&app_state, &app_config))
+    return EXIT_FAILURE;
 
   //
+  // Setup Spinel environment and context
   //
-  //
-  VkPhysicalDeviceFeatures device_features = { false };
-
-  //
-  // FIXME -- for now, HotSort requires 'shaderInt64'
-  //
-  if (true /*key_val_words == 2*/)
-    {
-      //
-      // FIXME
-      //
-      // SEGMENT_TTCK and SEGMENT_TTRK shaders benefit from
-      // shaderInt64 but shaderFloat64 shouldn't be required.
-      //
-      device_features.shaderInt64   = true;
-      device_features.shaderFloat64 = true;
-    }
-
-  VkDeviceCreateInfo const device_info = {
-
-    .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-    .pNext                   = NULL,
-    .flags                   = 0,
-    .queueCreateInfoCount    = 1,
-    .pQueueCreateInfos       = &qi,
-    .enabledLayerCount       = 0,
-    .ppEnabledLayerNames     = NULL,
-    .enabledExtensionCount   = device_enabled_extension_count,
-    .ppEnabledExtensionNames = device_enabled_extensions,
-    .pEnabledFeatures        = &device_features
+  struct spn_vk_environment environment = {
+    .d    = app_state.d,
+    .ac   = app_state.ac,
+    .pc   = app_state.pc,
+    .pd   = app_state.pd,
+    .pdmp = app_state.pdmp,
+    .qfi  = app_state.qfi,
   };
-
-  vk(CreateDevice(environment.pd, &device_info, NULL, &environment.d));
-
-  //
-  // create the pipeline cache
-  //
-  vk_ok(vk_pipeline_cache_create(environment.d,
-                                 NULL,
-                                 VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
-                                 &environment.pc));
 
   //
   // create device perm allocators
@@ -506,8 +292,8 @@ main(int argc, char const * argv[])
 
   char error_message[256];
 
-  if (!spn_vk_find_target(vendor_id,
-                          device_id,
+  if (!spn_vk_find_target(app_state.pdp.vendorID,
+                          app_state.pdp.deviceID,
                           &create_info.spn,
                           &create_info.hotsort,
                           error_message,
@@ -524,226 +310,466 @@ main(int argc, char const * argv[])
 
   spn(vk_context_create(&environment, &create_info, &context));
 
+  ////////////////////////////////////
   //
-  // create a transform stack
+  // PRESENTATION AND GRAPHICS PIPELINE SETUP
   //
-  struct transform_stack * const ts = transform_stack_create(16);
+  VkDevice                     device = app_state.d;
+  const VkAllocationCallbacks* allocator = app_state.ac;
+  VkSurfaceFormatKHR           surface_format = app_state.swapchain_state.surface_format;
+  VkExtent2D                   surface_extent = app_state.swapchain_state.extent;
 
-  transform_stack_push_scale(ts, 32.0f, 32.0f);
+  VkRenderPass     render_pass       = create_render_pass(device, allocator, surface_format.format);
+  VkPipelineLayout pipeline_layout   = create_pipeline_layout(device, allocator);
+  VkPipeline       graphics_pipeline = create_graphics_pipeline(
+      device, allocator, surface_extent, render_pass, pipeline_layout);
+
+  vk_app_state_init_presentation(&app_state, render_pass);
+
+  if (app_config.enable_debug_report)
+    vk_app_state_print(&app_state);
 
   ////////////////////////////////////
   //
-  // SPINEL BOILERPLATE
+  // MAIN LOOP
   //
-
-  //
-  // create builders
-  //
-  spn_path_builder_t pb;
-
-  spn(path_builder_create(context, &pb));
-
-  spn_raster_builder_t rb;
-
-  spn(raster_builder_create(context, &rb));
-
-  //
-  // create composition
-  //
-  spn_composition_t composition;
-
-  spn(composition_create(context, &composition));
-
-  //
-  // min/max layer in top level group
-  //
-  uint32_t const layer_count = 4096;
-  uint32_t const layer_max   = layer_count - 1;
-  uint32_t const layer_min   = 0;
-
-  //
-  // create styling
-  //
-  spn_styling_t styling;
-
-  spn(styling_create(context, &styling, layer_count, 16384));  // 4K layers, 16K cmds
-
-  //
-  // define top level styling group
-  //
-  spn_group_id group_id;
-
-  spn(styling_group_alloc(styling, &group_id));
-
+  uint32_t frame_counter = 0;
+  while (vk_app_state_poll_events(&app_state))
   {
-    spn_styling_cmd_t * cmds_enter;
+    uint32_t image_index;
 
-    spn(styling_group_enter(styling, group_id, 1, &cmds_enter));
+    if (!vk_app_state_prepare_next_image(&app_state, &image_index, NULL))
+      {
+        // Window was resized! For now just exit!!
+        // TODO(digit): Handle resize!!
+        break;
+      }
 
-    cmds_enter[0] = SPN_STYLING_OPCODE_COLOR_ACC_ZERO;
-  }
+    // For each frame, the following steps are performed:
+    //
+    //  1) Invoke spinel rendering into the destination device-local buffer.
+    //     This happens on the compute pipeline.
+    //
+    //  2) Invoke a render pass to clear the swapchain image, and draw
+    //     a rectangle on it (taken from the triangle example).
+    //
+    //  3) Add a barrier to wait for the completion of 1) and 2) above
+    //     and prepare for the buffer transfer, while changing the image's
+    //     layout.
+    //
+    //  4) Copy the buffer content to the image.
+    //
+    //  5) Add a barrier to wait for the end of the transfer and change the
+    //     image's layout back to presentation.
+    //
 
-  {
-    spn_styling_cmd_t * cmds_leave;
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    /////
+    /////  STEP 1: SPINEL RENDERING THROUGH COMPUTE
+    /////
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
 
-    spn(styling_group_leave(styling, group_id, 4, &cmds_leave));
+    //
+    // create a transform stack
+    //
+    struct transform_stack * const ts = transform_stack_create(16);
 
-    float const background[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    transform_stack_push_scale(ts, 32.0f, 32.0f);
 
-    // cmds[0-2]
-    spn_styling_background_over_encoder(cmds_leave, background);
+    ////////////////////////////////////
+    //
+    // SPINEL BOILERPLATE
+    //
 
-    cmds_leave[3] = SPN_STYLING_OPCODE_COLOR_ACC_STORE_TO_SURFACE;
-  }
+    //
+    // create builders
+    //
+    spn_path_builder_t pb;
 
-  // this is the root group
-  spn(styling_group_parents(styling, group_id, 0, NULL));
+    spn(path_builder_create(context, &pb));
 
-  // the range of the root group is maximal
-  spn(styling_group_range_lo(styling, group_id, layer_min));
-  spn(styling_group_range_hi(styling, group_id, layer_max));
+    spn_raster_builder_t rb;
 
-  //
-  // loop over the entire pipeline
-  //
-  for (uint32_t ii = 0; ii < 1; ii++)
+    spn(raster_builder_create(context, &rb));
+
+
+    //
+    // create composition
+    //
+    spn_composition_t composition;
+
+    spn(composition_create(context, &composition));
+
+    //
+    // min/max layer in top level group
+    //
+    uint32_t const layer_count = 4096;
+    uint32_t const layer_max   = layer_count - 1;
+    uint32_t const layer_min   = 0;
+
+    //
+    // create styling
+    //
+    spn_styling_t styling;
+
+    spn(styling_create(context, &styling, layer_count, 16384));  // 4K layers, 16K cmds
+
+    //
+    // define top level styling group
+    //
+    spn_group_id group_id;
+
+    spn(styling_group_alloc(styling, &group_id));
+
     {
-      //
-      // define paths
-      //
-      uint32_t           path_count;
-      spn_path_t * const paths = lion_cub_paths(pb, &path_count);
+      spn_styling_cmd_t * cmds_enter;
 
-      // force start the pipeline -- FYI: flush() is deprecated and will be removed
-      // spn(path_builder_flush(pb));
-      // spn_context_drain(context);
+      spn(styling_group_enter(styling, group_id, 1, &cmds_enter));
 
-      printf("PATH_BUILDER\n");
-
-      //
-      // define rasters
-      //
-      uint32_t             raster_count;
-      spn_raster_t * const rasters = lion_cub_rasters(rb, ts, 1, paths, path_count, &raster_count);
-
-      // force start the pipeline -- FYI: flush() is deprecated and will be removed
-      // spn(raster_builder_flush(rb));
-      // spn_context_drain(context);
-
-      printf("RASTER_BUILDER\n");
-
-      //
-      // place rasters into composition
-      //
-      uint32_t             layer_count;
-      spn_layer_id * const layer_ids =
-        lion_cub_composition(composition, rasters, raster_count, &layer_count);
-
-      // spn_composition_seal(composition);
-      // spn_context_drain(context);
-
-      printf("COMPOSITION\n");
-
-      //
-      // add to styling
-      //
-      lion_cub_styling(styling, group_id, layer_ids, layer_count);
-
-      // spn_styling_seal(styling);
-      // spn_context_drain(context);
-
-      printf("STYLING\n");
-
-      //
-      // render
-      //
-      spn_render_submit_ext_vk_buffer_copy_t rs_buffer_copy = {
-
-        .ext      = NULL,
-        .type     = SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER_COPY,
-        .dst      = surface.h.dbi,
-        .dst_size = SPN_BUFFER_SURFACE_SIZE
-      };
-
-      spn_render_submit_ext_vk_buffer_t rs_buffer = {
-
-        .ext           = &rs_buffer_copy,
-        .type          = SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER,
-        .surface       = surface.d.dbi,
-        .surface_pitch = SPN_BUFFER_SURFACE_WIDTH,
-        .si            = NULL
-      };
-
-      spn_render_submit_t const rs = {
-
-        .ext         = &rs_buffer,
-        .styling     = styling,
-        .composition = composition,
-        .tile_clip   = { 0, 0, UINT32_MAX, UINT32_MAX }
-      };
-
-      spn(render(context, &rs));
-
-      //
-      // drain everything
-      //
-      spn_context_drain(context);
-
-      printf("RENDER\n");
-
-      //
-      // unseal
-      //
-      spn(composition_unseal(composition));
-      spn(composition_reset(composition));
-
-      spn_context_drain(context);
-
-      printf("COMPOSITION UNSEAL\n");
-
-      spn(styling_unseal(styling));
-      spn(styling_reset(styling));
-
-      spn_context_drain(context);
-
-      printf("STYLING UNSEAL\n");
-
-      //
-      // release handles
-      //
-      spn(path_release(context, paths, path_count));
-      spn(raster_release(context, rasters, raster_count));
-
-      //
-      // free paths/rasters/layer_ids
-      //
-      free(paths);
-      free(rasters);
-      free(layer_ids);
+      cmds_enter[0] = SPN_STYLING_OPCODE_COLOR_ACC_ZERO;
     }
 
+    {
+      spn_styling_cmd_t * cmds_leave;
+
+      spn(styling_group_leave(styling, group_id, 4, &cmds_leave));
+
+      float const background[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+      // cmds[0-2]
+      spn_styling_background_over_encoder(cmds_leave, background);
+
+      cmds_leave[3] = SPN_STYLING_OPCODE_COLOR_ACC_STORE_TO_SURFACE;
+    }
+
+    // this is the root group
+    spn(styling_group_parents(styling, group_id, 0, NULL));
+
+    // the range of the root group is maximal
+    spn(styling_group_range_lo(styling, group_id, layer_min));
+    spn(styling_group_range_hi(styling, group_id, layer_max));
+
+    //
+    // loop over the entire pipeline
+    //
+    for (uint32_t ii = 0; ii < 1; ii++)
+      {
+        //
+        // define paths
+        //
+        uint32_t           path_count;
+        spn_path_t * const paths = lion_cub_paths(pb, &path_count);
+
+        // force start the pipeline -- FYI: flush() is deprecated and will be removed
+        // spn(path_builder_flush(pb));
+        // spn_context_drain(context);
+
+        printf("PATH_BUILDER\n");
+
+        //
+        // define rasters
+        //
+        uint32_t             raster_count;
+        spn_raster_t * const rasters = lion_cub_rasters(rb, ts, 1, paths, path_count, &raster_count);
+
+        // force start the pipeline -- FYI: flush() is deprecated and will be removed
+        // spn(raster_builder_flush(rb));
+        // spn_context_drain(context);
+
+        printf("RASTER_BUILDER\n");
+
+        //
+        // place rasters into composition
+        //
+        uint32_t             layer_count;
+        spn_layer_id * const layer_ids =
+          lion_cub_composition(composition, rasters, raster_count, &layer_count);
+
+        // spn_composition_seal(composition);
+        // spn_context_drain(context);
+
+        printf("COMPOSITION\n");
+
+        //
+        // add to styling
+        //
+        lion_cub_styling(styling, group_id, layer_ids, layer_count);
+
+        // spn_styling_seal(styling);
+        // spn_context_drain(context);
+
+        printf("STYLING\n");
+
+        //
+        // render
+        //
+        spn_render_submit_ext_vk_buffer_copy_t rs_buffer_copy = {
+
+          .ext      = NULL,
+          .type     = SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER_COPY,
+          .dst      = surface.h.dbi,
+          .dst_size = SPN_BUFFER_SURFACE_SIZE
+        };
+
+        spn_render_submit_ext_vk_buffer_t rs_buffer = {
+
+          .ext           = &rs_buffer_copy,
+          .type          = SPN_RENDER_SUBMIT_EXT_TYPE_VK_BUFFER,
+          .surface       = surface.d.dbi,
+          .surface_pitch = SPN_BUFFER_SURFACE_WIDTH,
+          .si            = NULL
+        };
+
+        spn_render_submit_t const rs = {
+
+          .ext         = &rs_buffer,
+          .styling     = styling,
+          .composition = composition,
+          .tile_clip   = { 0, 0, UINT32_MAX, UINT32_MAX }
+        };
+
+        spn(render(context, &rs));
+
+        //
+        // drain everything
+        //
+        spn_context_drain(context);
+
+        printf("RENDER\n");
+
+        //
+        // unseal
+        //
+        spn(composition_unseal(composition));
+        spn(composition_reset(composition));
+
+        spn_context_drain(context);
+
+        printf("COMPOSITION UNSEAL\n");
+
+        spn(styling_unseal(styling));
+        spn(styling_reset(styling));
+
+        spn_context_drain(context);
+
+        printf("STYLING UNSEAL\n");
+
+        //
+        // release handles
+        //
+        spn(path_release(context, paths, path_count));
+        spn(raster_release(context, rasters, raster_count));
+
+        //
+        // free paths/rasters/layer_ids
+        //
+        free(paths);
+        free(rasters);
+        free(layer_ids);
+      }
+
+    //
+    // release the builders, composition and styling
+    //
+    spn(path_builder_release(pb));
+    spn(raster_builder_release(rb));
+    spn(composition_release(composition));
+    spn(styling_release(styling));
+
+    //
+    // release the transform stack
+    //
+    transform_stack_release(ts);
+
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    /////
+    /////  STEP 2: GRAPHICS PIPELINE RENDERING
+    /////
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+
+    VkCommandBuffer   command_buffer = vk_app_state_get_image_command_buffer(&app_state, image_index);
+    vk_frame_data_t * frame_data = vk_app_state_get_image_frame_data(&app_state, image_index);
+    VkImage           swapchain_image = app_state.swapchain_state.images[image_index];
+
+    const VkCommandBufferBeginInfo beginInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+    };
+    vk(BeginCommandBuffer(command_buffer, &beginInfo));
+
+    const VkRenderPassBeginInfo renderPassInfo = {
+      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      .renderPass = render_pass,
+      .framebuffer = frame_data->framebuffer,
+      .renderArea = {
+          .offset = {0, 0},
+          .extent = surface_extent,
+      },
+      .clearValueCount = 1,
+      .pClearValues = &(const VkClearValue){.color = {{0.0f, 0.0f, 0.0f, 1.0f}}},
+    };
+    vkCmdBeginRenderPass(command_buffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    {
+      vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+      vkCmdDraw(command_buffer, 3, 1, 0, 0);  // TODO(digit): Remove this??
+    }
+    vkCmdEndRenderPass(command_buffer);
+
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    /////
+    /////  STEP 3: IMAGE MEMORY BARRIER + LAYOUT TRANSITION
+    /////
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,    // dependencyFlags
+        0,    // memoryBarrierCount
+        NULL, // pMemoryBarriers
+        0,    // bufferMemoryBarrierCount
+        NULL, // pBufferMemoryBarriers
+        1,    // imageMemoryBarrierCount,
+        &(const VkImageMemoryBarrier){
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchain_image,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        }
+    );
+
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    /////
+    /////  STEP 4: BUFFER TO IMAGE COPY
+    /////
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+
+    // TODO(digit): Compute proper intersection rectangle when the
+    // buffer destination rectangle is not completely contained within
+    // the image. Will allow for interesting animations.
+
+    vkCmdCopyBufferToImage(
+        command_buffer,
+        surface.d.dbi.buffer,                           // src buffer
+        swapchain_image,                                // dst image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,           // dst image layout
+        1,                                              // region count
+        &(const VkBufferImageCopy){                     // regions
+            .bufferOffset = 0,
+            .bufferRowLength = SPN_BUFFER_SURFACE_WIDTH,
+            .bufferImageHeight = SPN_BUFFER_SURFACE_HEIGHT,
+            .imageSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+            .imageOffset = {
+                .x = 0,
+                .y = 0,
+                .z = 0,
+            },
+            .imageExtent = {
+                .width = SPN_BUFFER_SURFACE_WIDTH,
+                .height = SPN_BUFFER_SURFACE_HEIGHT,
+                .depth = 1,
+            },
+        }
+    );
+
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    /////
+    /////  STEP 5: IMAGE MEMORY BUFFER + LAYOUT TRANSITION
+    /////
+    /////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+
+    vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,    // dependencyFlags
+        0,    // memoryBarrierCount
+        NULL, // pMemoryBarriers
+        0,    // bufferMemoryBarrierCount
+        NULL, // pBufferMemoryBarriers
+        1,    // imageMemoryBarrierCount,
+        &(const VkImageMemoryBarrier){
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = NULL,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                              VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchain_image,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        }
+    );
+
+    vk(EndCommandBuffer(command_buffer));
+
+    vk_app_state_submit_image(&app_state);
+
+    vk_app_state_present_image(&app_state, image_index);
+
+    // Print a small tick every two seconds (assuming a 60hz swapchain) to
+    // check that everything is working, even if the image is static at this
+    // point.
+    if (app_config.enable_debug_report && ++frame_counter == 60 * 2)
+      {
+        printf("!");
+        fflush(stdout);
+        frame_counter = 0;
+      }
+  }
+#if 0
   //
   // save buffer as PPM
   //
   spn_buffer_to_ppm(surface.h.map, SPN_BUFFER_SURFACE_WIDTH, SPN_BUFFER_SURFACE_HEIGHT);
-
-  //
-  // release the builders, composition and styling
-  //
-  spn(path_builder_release(pb));
-  spn(raster_builder_release(rb));
-  spn(composition_release(composition));
-  spn(styling_release(styling));
-
-  //
-  // release the transform stack
-  //
-  transform_stack_release(ts);
-
+#endif
   //
   // release the context
   //
   spn(context_release(context));
+
+  //
+  // free graphics pipeline + presentation surface.
+  //
+  vkDestroyPipeline(device, graphics_pipeline, allocator);
+  vkDestroyPipelineLayout(device, pipeline_layout, allocator);
+  vkDestroyRenderPass(device, render_pass, allocator);
 
   //
   // free surfaces
@@ -760,18 +786,7 @@ main(int argc, char const * argv[])
   //
   // dispose of Vulkan resources
   //
-  vk_ok(vk_pipeline_cache_destroy(environment.d,
-                                  NULL,
-                                  VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
-                                  environment.pc));
-
-  vkDestroyDevice(environment.d, NULL);
-
-#ifndef NDEBUG
-  vkDestroyDebugReportCallbackEXT(instance, drc, NULL);
-#endif
-
-  vkDestroyInstance(instance, NULL);
+  vk_app_state_destroy(&app_state);
 
   return EXIT_SUCCESS;
 }

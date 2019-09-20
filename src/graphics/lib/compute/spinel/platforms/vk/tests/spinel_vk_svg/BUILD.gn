@@ -3,6 +3,9 @@
 # found in the LICENSE file.
 
 import("../../../../../gn/build_rules.gni")
+if (is_fuchsia) {
+  import("//garnet/lib/vulkan/image_pipe_swapchain.gni")
+}
 
 #
 # spinel_vk_svg: exercise the Spinel API with basic SVGs
@@ -21,6 +24,9 @@ graphics_compute_vulkan_executable("spinel_vk_svg") {
     "${graphics_compute_dir}/spinel/ext/transform_stack/transform_stack.h",
     "lion_cub.c",
     "main.c",
+    "presentation.c",
+    "presentation.h",
+    "triangle_shaders.h"
   ]
   if (current_toolchain == host_toolchain) {
     defines = [ "SPN_VK_SHADER_INFO_AMD_STATISTICS" ]
@@ -41,4 +47,11 @@ graphics_compute_vulkan_executable("spinel_vk_svg") {
   public_deps = [
     "${graphics_compute_dir}/spinel",
   ]
+  # Anything that depends on vk_app_state.c for presentation needs this,
+  # and there is no way to express this with GN that I know of :-/
+  if (is_fuchsia) {
+    public_deps += image_pipe_swapchain_fb.public_deps
+    loadable_modules = image_pipe_swapchain_fb.loadable_modules
+    resources = image_pipe_swapchain_fb.resources
+  }
 }
