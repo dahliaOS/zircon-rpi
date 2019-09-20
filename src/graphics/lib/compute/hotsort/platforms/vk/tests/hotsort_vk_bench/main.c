@@ -545,7 +545,10 @@ main(int argc, char const * argv[])
 #if defined(HOTSORT_VK_SHADER_INFO_AMD_STATISTICS) ||                                              \
   defined(HOTSORT_VK_SHADER_INFO_AMD_DISASSEMBLY)
   if (phy_device_props.vendorID == 0x1002)
-    device_enabled_extension_count = 1;
+    {
+      device_enabled_extension_count = 1;
+      vk_shader_info_amd_statistics_set_enabled(true);
+    }
 #endif
 
   //

@@ -383,7 +383,10 @@ main(int argc, char const * argv[])
 
 #if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
   if (pdp.vendorID == 0x1002)
-    device_enabled_extension_count = 1;
+    {
+      device_enabled_extension_count = 1;
+      vk_shader_info_amd_statistics_set_enabled(true);
+    }
 #endif
 
   //

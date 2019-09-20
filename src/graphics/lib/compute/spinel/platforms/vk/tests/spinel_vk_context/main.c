@@ -49,7 +49,7 @@ main(int argc, char const * argv[])
                                        .engineVersion      = 0,
                                        .apiVersion         = VK_API_VERSION_1_1 };
 
-  char const * const instance_enabled_layers[] = { "VK_LAYER_KHRONOS_validation", NULL };
+  char const * const instance_enabled_layers[] = { "VK_LAYER_LUNARG_standard_validation", NULL };
 
   char const * const instance_enabled_extensions[] = { VK_EXT_DEBUG_REPORT_EXTENSION_NAME, NULL };
 
@@ -216,7 +216,10 @@ main(int argc, char const * argv[])
 
 #if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
   if (pdp.vendorID == 0x1002)
-    device_enabled_extension_count = 1;
+    {
+      device_enabled_extension_count = 1;
+      vk_shader_info_amd_statistics_set_enabled(true);
+    }
 #endif
 
   //
