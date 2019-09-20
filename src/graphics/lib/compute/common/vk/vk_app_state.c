@@ -377,7 +377,7 @@ vk_swapchain_state_setup(vk_swapchain_state_t *        state,
   // annoying validation layer messages, hence why they are kept here.
 
   state->surface_format = (VkSurfaceFormatKHR){
-    .format     = VK_FORMAT_B8G8R8A8_UNORM,
+    .format     = VK_FORMAT_R8G8B8A8_UNORM,
     .colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
   };
 
