@@ -37,6 +37,7 @@ typedef struct
   const char * app_name;           // Optional application name.
   bool         enable_validation;  // True to enable validation layers.
   bool enable_debug_report;        // True to enable debug report callbacks (failure is not fatal).
+  bool         enable_pipeline_cache;  // True to enable on-disk pipeline cache.
   bool
     enable_amd_statistics;  // True to enable AMD statistics, if available (failure is not fatal).
 

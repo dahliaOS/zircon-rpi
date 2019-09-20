@@ -956,11 +956,12 @@ vk_app_state_init(vk_app_state_t * app_state, const vk_app_state_config_t * conf
   //
   // create the pipeline cache
   //
-  vk(_pipeline_cache_create(app_state->d,
-                            NULL,
-                            VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
-                            &app_state->pc));
-
+  if (config->enable_pipeline_cache) {
+    vk(_pipeline_cache_create(app_state->d,
+                              NULL,
+                              VK_PIPELINE_CACHE_PREFIX_STRING "vk_cache",
+                              &app_state->pc));
+  }
   return true;
 }
 

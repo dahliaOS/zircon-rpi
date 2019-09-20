@@ -183,6 +183,8 @@ spn_buffer_to_ppm(void * mapped, uint32_t const surface_width, uint32_t const su
 //
 //
 
+#define APP_LOG(...)  fprintf(stderr, __VA_ARGS__)
+
 int
 main(int argc, char const * argv[])
 {
@@ -192,11 +194,12 @@ main(int argc, char const * argv[])
 
   const vk_app_state_config_t app_config = {
     .app_name = "Fuchsia Spinel/VK Test",
-    .enable_validation = true,
+    .enable_validation = false,
     .enable_debug_report = true,
 #if defined(SPN_VK_SHADER_INFO_AMD_STATISTICS) || defined(SPN_VK_SHADER_INFO_AMD_DISASSEMBLY)
     .enable_amd_statistics = true,
 #endif
+    .enable_pipeline_cache = true,
     .swapchain_config = &(const vk_swapchain_config_t){
       .window_width = SPN_BUFFER_SURFACE_WIDTH,
       .window_height = SPN_BUFFER_SURFACE_HEIGHT,
@@ -308,12 +311,15 @@ main(int argc, char const * argv[])
   //
   spn_context_t context;
 
+  APP_LOG("CREATING SPINEL CONTEXT\n");
   spn(vk_context_create(&environment, &create_info, &context));
 
   ////////////////////////////////////
   //
   // PRESENTATION AND GRAPHICS PIPELINE SETUP
   //
+  APP_LOG("SETTING UP PRESENTATION\n");
+
   VkDevice                     device = app_state.d;
   const VkAllocationCallbacks* allocator = app_state.ac;
   VkSurfaceFormatKHR           surface_format = app_state.swapchain_state.surface_format;
