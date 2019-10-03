@@ -61,6 +61,15 @@ void DeviceControllerConnection::Suspend(uint32_t flags, SuspendCompleter::Sync 
   completer.Reply(r);
 }
 
+void DeviceControllerConnection::Resume(uint32_t target_system_state, ResumeCompleter::Sync completer) {
+  zx_status_t r;
+  {
+    ApiAutoLock lock;
+    r = devhost_device_resume(this->dev(), target_system_state);
+  }
+  completer.Reply(r);
+}
+
 void DeviceControllerConnection::ConnectProxy(::zx::channel shadow,
                                               ConnectProxyCompleter::Sync _completer) {
   log(RPC_SDW, "devhost connect proxy rpc\n");

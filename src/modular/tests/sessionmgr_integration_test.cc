@@ -17,6 +17,7 @@ class SessionmgrIntegrationTest : public modular::testing::TestHarnessFixture {}
 class MockAdmin : public fuchsia::device::manager::Administrator {
  public:
   bool suspend_called() { return suspend_called_; }
+  bool resume_called() { return resume_called_; }
 
  private:
   void Suspend(uint32_t flags, SuspendCallback callback) override {
@@ -26,7 +27,15 @@ class MockAdmin : public fuchsia::device::manager::Administrator {
     callback(ZX_OK);
   }
 
+  void Resume(fuchsia::device::manager::SystemPowerState target_state,
+              ResumeCallback callback) override {
+    ASSERT_FALSE(resume_called_);
+    resume_called_ = true;
+    callback(ZX_OK);
+  }
+
   bool suspend_called_ = false;
+  bool resume_called_ = false;
 };
 
 TEST_F(SessionmgrIntegrationTest, RebootCalledIfSessionmgrCrashNumberReachesRetryLimit) {

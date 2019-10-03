@@ -18,14 +18,15 @@ const uint32 SUSPEND_FLAG_SUSPEND_RAM = 0xdcdc0400;
 // remove the suspend flags. For now, treat each suspend flag as a system
 // power state.
 enum SystemPowerState : uint8 {
-    SYSTEM_POWER_STATE_REBOOT = 0;
-    SYSTEM_POWER_STATE_REBOOT_BOOTLOADER = 1;
-    SYSTEM_POWER_STATE_REBOOT_RECOVERY = 2;
-    SYSTEM_POWER_STATE_POWEROFF = 3;
-    SYSTEM_POWER_STATE_MEXEC = 4;
-    SYSTEM_POWER_STATE_SUSPEND_RAM = 5;
+  SYSTEM_POWER_STATE_FULLY_ON = 0;
+  SYSTEM_POWER_STATE_REBOOT = 1;
+  SYSTEM_POWER_STATE_REBOOT_BOOTLOADER = 2;
+  SYSTEM_POWER_STATE_REBOOT_RECOVERY = 3;
+  SYSTEM_POWER_STATE_POWEROFF = 4;
+  SYSTEM_POWER_STATE_MEXEC = 5;
+  SYSTEM_POWER_STATE_SUSPEND_RAM = 6;
 };
-const uint32 MAX_SYSTEM_POWER_STATES = 6;
+const uint32 MAX_SYSTEM_POWER_STATES = 7;
 
 /// Provides administration services for the device manager service and the device tree it controls.
 [Discoverable, Layout = "Simple"]
@@ -33,4 +34,6 @@ protocol Administrator {
     /// Ask all devices to enter the suspend state indicated by `flags`. Flags should be some
     /// combination of `DEVICE_SUSPEND_FLAG_*` from the DDK.
     Suspend(uint32 flags) -> (zx.status status);
+    /// Ask all devices to resume to active state indicated by the state.
+    Resume(SystemPowerState state) -> (zx.status status);
 };

@@ -20,10 +20,10 @@ using llcpp::fuchsia::device::DevicePowerState;
 using llcpp::fuchsia::device::DevicePowerStateInfo;
 using llcpp::fuchsia::device::MAX_DEVICE_POWER_STATES;
 using llcpp::fuchsia::device::SystemPowerStateInfo;
-using llcpp::fuchsia::device::power::test::TestDevice;
+using llcpp::fuchsia::device::manager::Administrator;
 using llcpp::fuchsia::device::manager::MAX_SYSTEM_POWER_STATES;
 using llcpp::fuchsia::device::manager::SystemPowerState;
-using llcpp::fuchsia::device::manager::Administrator;
+using llcpp::fuchsia::device::power::test::TestDevice;
 
 class PowerTestCase : public zxtest::Test {
  public:
@@ -501,8 +501,8 @@ TEST_F(PowerTestCase, SystemSuspend) {
   ASSERT_OK(fdio_service_connect_at(devmgr.svc_root_dir().get(), service_name, remote.release()));
   ASSERT_NE(devmgr.svc_root_dir().get(), ZX_HANDLE_INVALID);
 
-  auto suspend_result = Administrator::Call::Suspend(zx::unowned(local),
-                      ::llcpp::fuchsia::device::manager::SUSPEND_FLAG_REBOOT);
+  auto suspend_result = Administrator::Call::Suspend(
+      zx::unowned(local), ::llcpp::fuchsia::device::manager::SUSPEND_FLAG_REBOOT);
   ASSERT_OK(suspend_result.status());
   const auto &suspend_response = suspend_result.value();
   ASSERT_OK(suspend_response.status);
@@ -530,4 +530,104 @@ TEST_F(PowerTestCase, SystemSuspend) {
   ASSERT_OK(call_status);
   ASSERT_EQ(parent_dev_suspend_response->result.response().cur_state,
             DevicePowerState::DEVICE_POWER_STATE_D1);
+}
+
+TEST_F(PowerTestCase, SystemResume) {
+  // Add Capabilities
+  DevicePowerStateInfo states[3];
+  states[0].state_id = DevicePowerState::DEVICE_POWER_STATE_D0;
+  states[0].is_supported = true;
+  states[0].restore_latency = 0;
+  states[1].state_id = DevicePowerState::DEVICE_POWER_STATE_D2;
+  states[1].is_supported = true;
+  states[1].restore_latency = 100;
+  states[2].state_id = DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+  states[2].is_supported = true;
+  states[2].restore_latency = 1000;
+  AddChildWithPowerArgs(states, fbl::count_of(states));
+
+  ::fidl::Array<SystemPowerStateInfo, MAX_SYSTEM_POWER_STATES> mapping{};
+  for (size_t i = 0; i < MAX_SYSTEM_POWER_STATES; i++) {
+    mapping[i].dev_state = DevicePowerState::DEVICE_POWER_STATE_D2;
+    mapping[i].wakeup_enable = false;
+  }
+  mapping[static_cast<size_t>(SystemPowerState::SYSTEM_POWER_STATE_FULLY_ON)].dev_state =
+      DevicePowerState::DEVICE_POWER_STATE_D0;
+  auto update_result =
+      Controller::Call::UpdatePowerStateMapping(zx::unowned(child2_device_handle), mapping);
+  ASSERT_OK(update_result.status());
+  zx_status_t call_status = ZX_OK;
+  if (update_result->result.is_err()) {
+    call_status = update_result->result.err();
+  }
+  ASSERT_OK(call_status);
+
+  zx::channel local, remote;
+  ASSERT_OK(zx::channel::create(0, &local, &remote));
+
+  char service_name[100];
+  snprintf(service_name, sizeof(service_name), "svc/%s",
+           ::llcpp::fuchsia::device::manager::Administrator::Name);
+  ASSERT_OK(fdio_service_connect_at(devmgr.svc_root_dir().get(), service_name, remote.release()));
+  ASSERT_NE(devmgr.svc_root_dir().get(), ZX_HANDLE_INVALID);
+
+  auto suspend_result = Administrator::Call::Suspend(
+      zx::unowned(local), ::llcpp::fuchsia::device::manager::SUSPEND_FLAG_REBOOT);
+  ASSERT_OK(suspend_result.status());
+  const auto &suspend_response = suspend_result.value();
+  ASSERT_OK(suspend_response.status);
+
+  // Verify the child's DdkSuspendNew routine gets called.
+  auto child_dev_suspend_response =
+      TestDevice::Call::GetCurrentDevicePowerState(zx::unowned(child2_device_handle));
+  ASSERT_OK(child_dev_suspend_response.status());
+  call_status = ZX_OK;
+  if (child_dev_suspend_response->result.is_err()) {
+    call_status = child_dev_suspend_response->result.err();
+  }
+  ASSERT_OK(call_status);
+  ASSERT_EQ(child_dev_suspend_response->result.response().cur_state,
+            DevicePowerState::DEVICE_POWER_STATE_D2);
+
+  // Verify the parent'd DdkSuspend routine gets called.
+  auto parent_dev_suspend_response =
+      TestDevice::Call::GetCurrentDevicePowerState(zx::unowned(parent_device_handle));
+  ASSERT_OK(parent_dev_suspend_response.status());
+  call_status = ZX_OK;
+  if (parent_dev_suspend_response->result.is_err()) {
+    call_status = parent_dev_suspend_response->result.err();
+  }
+  ASSERT_OK(call_status);
+  ASSERT_EQ(parent_dev_suspend_response->result.response().cur_state,
+            DevicePowerState::DEVICE_POWER_STATE_D1);
+
+  auto resume_result = Administrator::Call::Resume(zx::unowned(local),
+                                                   SystemPowerState::SYSTEM_POWER_STATE_FULLY_ON);
+  ASSERT_OK(resume_result.status());
+  const auto &resume_response = resume_result.value();
+  ASSERT_OK(resume_response.status);
+
+  // Verify the child's DdkResumeNew routine gets called.
+  auto child_dev_resume_response =
+      TestDevice::Call::GetCurrentDevicePowerState(zx::unowned(child2_device_handle));
+  ASSERT_OK(child_dev_resume_response.status());
+  call_status = ZX_OK;
+  if (child_dev_resume_response->result.is_err()) {
+    call_status = child_dev_resume_response->result.err();
+  }
+  ASSERT_OK(call_status);
+  ASSERT_EQ(child_dev_resume_response->result.response().cur_state,
+            DevicePowerState::DEVICE_POWER_STATE_D0);
+
+  // Verify the parent'd DdkSuspend routine gets called.
+  auto parent_dev_resume_response =
+      TestDevice::Call::GetCurrentDevicePowerState(zx::unowned(parent_device_handle));
+  ASSERT_OK(parent_dev_resume_response.status());
+  call_status = ZX_OK;
+  if (parent_dev_resume_response->result.is_err()) {
+    call_status = parent_dev_resume_response->result.err();
+  }
+  ASSERT_OK(call_status);
+  ASSERT_EQ(parent_dev_resume_response->result.response().cur_state,
+            DevicePowerState::DEVICE_POWER_STATE_D0);
 }

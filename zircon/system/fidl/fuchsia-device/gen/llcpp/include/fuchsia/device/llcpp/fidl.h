@@ -365,11 +365,11 @@ extern "C" const fidl_type_t fuchsia_device_Controller_GetPowerStateMapping_Resp
 struct Controller_GetPowerStateMapping_Response {
   static constexpr const fidl_type_t* Type = &fuchsia_device_Controller_GetPowerStateMapping_ResponseTable;
   static constexpr uint32_t MaxNumHandles = 0;
-  static constexpr uint32_t PrimarySize = 48;
+  static constexpr uint32_t PrimarySize = 56;
   [[maybe_unused]]
   static constexpr uint32_t MaxOutOfLine = 0;
 
-  ::fidl::Array<SystemPowerStateInfo, 6> mapping = {};
+  ::fidl::Array<SystemPowerStateInfo, 7> mapping = {};
 };
 
 extern "C" const fidl_type_t fuchsia_device_Controller_GetPowerStateMapping_ResultTable;
@@ -452,7 +452,7 @@ struct Controller_GetPowerStateMapping_Result {
 
   static constexpr const fidl_type_t* Type = &fuchsia_device_Controller_GetPowerStateMapping_ResultTable;
   static constexpr uint32_t MaxNumHandles = 0;
-  static constexpr uint32_t PrimarySize = 52;
+  static constexpr uint32_t PrimarySize = 60;
   [[maybe_unused]]
   static constexpr uint32_t MaxOutOfLine = 0;
 
@@ -1104,11 +1104,11 @@ class Controller final {
   struct UpdatePowerStateMappingRequest final {
     FIDL_ALIGNDECL
     fidl_message_header_t _hdr;
-    ::fidl::Array<SystemPowerStateInfo, 6> mapping;
+    ::fidl::Array<SystemPowerStateInfo, 7> mapping;
 
     static constexpr const fidl_type_t* Type = &fuchsia_device_ControllerUpdatePowerStateMappingRequestTable;
     static constexpr uint32_t MaxNumHandles = 0;
-    static constexpr uint32_t PrimarySize = 64;
+    static constexpr uint32_t PrimarySize = 72;
     static constexpr uint32_t MaxOutOfLine = 0;
     static constexpr bool HasFlexibleEnvelope = false;
     static constexpr ::fidl::internal::TransactionalMessageKind MessageKind =
@@ -1123,7 +1123,7 @@ class Controller final {
 
     static constexpr const fidl_type_t* Type = &fuchsia_device_ControllerGetPowerStateMappingResponseTable;
     static constexpr uint32_t MaxNumHandles = 0;
-    static constexpr uint32_t PrimarySize = 72;
+    static constexpr uint32_t PrimarySize = 80;
     static constexpr uint32_t MaxOutOfLine = 0;
     static constexpr bool HasFlexibleEnvelope = false;
     static constexpr ::fidl::internal::TransactionalMessageKind MessageKind =
@@ -1389,7 +1389,7 @@ class Controller final {
     class UpdatePowerStateMapping_Impl final : private ::fidl::internal::OwnedSyncCallBase<ResponseType> {
       using Super = ::fidl::internal::OwnedSyncCallBase<ResponseType>;
      public:
-      UpdatePowerStateMapping_Impl(zx::unowned_channel _client_end, ::fidl::Array<SystemPowerStateInfo, 6> mapping);
+      UpdatePowerStateMapping_Impl(zx::unowned_channel _client_end, ::fidl::Array<SystemPowerStateInfo, 7> mapping);
       ~UpdatePowerStateMapping_Impl() = default;
       UpdatePowerStateMapping_Impl(UpdatePowerStateMapping_Impl&& other) = default;
       UpdatePowerStateMapping_Impl& operator=(UpdatePowerStateMapping_Impl&& other) = default;
@@ -1670,7 +1670,7 @@ class Controller final {
     class UpdatePowerStateMapping_Impl final : private ::fidl::internal::UnownedSyncCallBase<ResponseType> {
       using Super = ::fidl::internal::UnownedSyncCallBase<ResponseType>;
      public:
-      UpdatePowerStateMapping_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 6> mapping, ::fidl::BytePart _response_buffer);
+      UpdatePowerStateMapping_Impl(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 7> mapping, ::fidl::BytePart _response_buffer);
       ~UpdatePowerStateMapping_Impl() = default;
       UpdatePowerStateMapping_Impl(UpdatePowerStateMapping_Impl&& other) = default;
       UpdatePowerStateMapping_Impl& operator=(UpdatePowerStateMapping_Impl&& other) = default;
@@ -1873,17 +1873,17 @@ class Controller final {
 
     // Updates the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device
-    // Allocates 88 bytes of message buffer on the stack. No heap allocation necessary.
-    ResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(::fidl::Array<SystemPowerStateInfo, 6> mapping);
+    // Allocates 96 bytes of message buffer on the stack. No heap allocation necessary.
+    ResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(::fidl::Array<SystemPowerStateInfo, 7> mapping);
 
     // Updates the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device
     // Caller provides the backing storage for FIDL message via request and response buffers.
-    UnownedResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 6> mapping, ::fidl::BytePart _response_buffer);
+    UnownedResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 7> mapping, ::fidl::BytePart _response_buffer);
 
     // Get the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device.
-    // Allocates 88 bytes of message buffer on the stack. No heap allocation necessary.
+    // Allocates 96 bytes of message buffer on the stack. No heap allocation necessary.
     ResultOf::GetPowerStateMapping GetPowerStateMapping();
 
     // Get the mapping between system power states to device power states. Used by the system
@@ -2030,17 +2030,17 @@ class Controller final {
 
     // Updates the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device
-    // Allocates 88 bytes of message buffer on the stack. No heap allocation necessary.
-    static ResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(zx::unowned_channel _client_end, ::fidl::Array<SystemPowerStateInfo, 6> mapping);
+    // Allocates 96 bytes of message buffer on the stack. No heap allocation necessary.
+    static ResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(zx::unowned_channel _client_end, ::fidl::Array<SystemPowerStateInfo, 7> mapping);
 
     // Updates the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device
     // Caller provides the backing storage for FIDL message via request and response buffers.
-    static UnownedResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 6> mapping, ::fidl::BytePart _response_buffer);
+    static UnownedResultOf::UpdatePowerStateMapping UpdatePowerStateMapping(zx::unowned_channel _client_end, ::fidl::BytePart _request_buffer, ::fidl::Array<SystemPowerStateInfo, 7> mapping, ::fidl::BytePart _response_buffer);
 
     // Get the mapping between system power states to device power states. Used by the system
     // wide power manager to manage power for this device.
-    // Allocates 88 bytes of message buffer on the stack. No heap allocation necessary.
+    // Allocates 96 bytes of message buffer on the stack. No heap allocation necessary.
     static ResultOf::GetPowerStateMapping GetPowerStateMapping(zx::unowned_channel _client_end);
 
     // Get the mapping between system power states to device power states. Used by the system
@@ -2328,15 +2328,15 @@ class Controller final {
 
     using UpdatePowerStateMappingCompleter = ::fidl::Completer<UpdatePowerStateMappingCompleterBase>;
 
-    virtual void UpdatePowerStateMapping(::fidl::Array<SystemPowerStateInfo, 6> mapping, UpdatePowerStateMappingCompleter::Sync _completer) = 0;
+    virtual void UpdatePowerStateMapping(::fidl::Array<SystemPowerStateInfo, 7> mapping, UpdatePowerStateMappingCompleter::Sync _completer) = 0;
 
     class GetPowerStateMappingCompleterBase : public _Base {
      public:
       void Reply(Controller_GetPowerStateMapping_Result result);
-      void ReplySuccess(::fidl::Array<SystemPowerStateInfo, 6> mapping);
+      void ReplySuccess(::fidl::Array<SystemPowerStateInfo, 7> mapping);
       void ReplyError(int32_t error);
       void Reply(::fidl::BytePart _buffer, Controller_GetPowerStateMapping_Result result);
-      void ReplySuccess(::fidl::BytePart _buffer, ::fidl::Array<SystemPowerStateInfo, 6> mapping);
+      void ReplySuccess(::fidl::BytePart _buffer, ::fidl::Array<SystemPowerStateInfo, 7> mapping);
       void Reply(::fidl::DecodedMessage<GetPowerStateMappingResponse> params);
 
      protected:

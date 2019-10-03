@@ -20,7 +20,7 @@ using llcpp::fuchsia::device::power::test::TestDevice;
 
 class TestPowerDriver;
 using DeviceType =
-    ddk::Device<TestPowerDriver, ddk::Unbindable, ddk::Suspendable, ddk::Messageable>;
+    ddk::Device<TestPowerDriver, ddk::Unbindable, ddk::Suspendable, ddk::Resumable, ddk::Messageable>;
 class TestPowerDriver : public DeviceType,
                         public ddk::EmptyProtocol<ZX_PROTOCOL_TEST_POWER_CHILD>,
                         public TestDevice::Interface {
@@ -32,6 +32,11 @@ class TestPowerDriver : public DeviceType,
   zx_status_t DdkSuspend(uint32_t flags) {
     // Set current_power_state to indicate that the suspend is called.
     current_power_state_ = DevicePowerState::DEVICE_POWER_STATE_D1;
+    return ZX_OK;
+  }
+  zx_status_t DdkResume(uint32_t flags) {
+    // Set current_power_state to indicate that resume is called.
+    current_power_state_ = DevicePowerState::DEVICE_POWER_STATE_D0;
     return ZX_OK;
   }
   void AddDeviceWithPowerArgs(::fidl::VectorView<DevicePowerStateInfo> info,

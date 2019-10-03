@@ -36,14 +36,15 @@
 #include <zircon/syscalls/policy.h>
 #include <zircon/syscalls/system.h>
 
+#include <cstdint>
 #include <utility>
 
 #include <ddk/driver.h>
 #include <driver-info/driver-info.h>
 #include <fbl/auto_call.h>
 #include <fbl/unique_ptr.h>
-#include <libzbi/zbi-cpp.h>
 #include <inspector/inspector.h>
+#include <libzbi/zbi-cpp.h>
 
 #include "composite-device.h"
 #include "devfs.h"
@@ -1175,8 +1176,7 @@ static void dump_suspend_task_dependencies(const SuspendTask& task, int depth = 
     }
     zx::unowned_process process = task.device().host()->proc();
     char process_name[ZX_MAX_NAME_LEN];
-    zx_status_t status = process->get_property(ZX_PROP_NAME, process_name,
-                                                sizeof(process_name));
+    zx_status_t status = process->get_property(ZX_PROP_NAME, process_name, sizeof(process_name));
     if (status != ZX_OK) {
       strlcpy(process_name, "unknown", sizeof(process_name));
     }
@@ -1233,30 +1233,66 @@ void Coordinator::Suspend(SuspendContext ctx, std::function<void(zx_status_t)> c
   auto task = SuspendTask::Create(sys_device(), ctx.sflags(), std::move(completion));
   suspend_context().set_task(std::move(task));
 
-  auto status = async::PostDelayedTask(
-      dispatcher(),
-      [this, callback] {
-        if (!InSuspend()) {
-          return;  // Suspend failed to complete.
-        }
-        auto& ctx = suspend_context();
-        log(ERROR, "devcoordinator: DEVICE SUSPEND TIMED OUT\n");
-        log(ERROR, "  sflags: 0x%08x\n", ctx.sflags());
-        dump_suspend_task_dependencies(ctx.task());
-        if (suspend_fallback()) {
-          ::suspend_fallback(root_resource(), ctx.sflags());
-          // Unless in test env, we should not reach here.
-          callback(ZX_ERR_TIMED_OUT);
-        }
-      },
-      zx::sec(30));
+  auto status = async::PostDelayedTask(dispatcher(),
+                                       [this, callback] {
+                                         if (!InSuspend()) {
+                                           return;  // Suspend failed to complete.
+                                         }
+                                         auto& ctx = suspend_context();
+                                         log(ERROR, "devcoordinator: DEVICE SUSPEND TIMED OUT\n");
+                                         log(ERROR, "  sflags: 0x%08x\n", ctx.sflags());
+                                         dump_suspend_task_dependencies(ctx.task());
+                                         if (suspend_fallback()) {
+                                           ::suspend_fallback(root_resource(), ctx.sflags());
+                                           // Unless in test env, we should not reach here.
+                                           callback(ZX_ERR_TIMED_OUT);
+                                         }
+                                       },
+                                       zx::sec(30));
   if (status != ZX_OK) {
     log(ERROR, "devcoordinator: Failed to create suspend timeout watchdog\n");
   }
 }
 
+void Coordinator::Resume(ResumeContext ctx, std::function<void(zx_status_t)> callback) {
+  // The sys device should have a proxy. If not, the system hasn't fully initialized yet and
+  // cannot go to suspend.
+  if (!sys_device_->proxy()) {
+    return;
+  }
+  if (InSuspend()) {
+    return;
+  }
+
+  resume_context() = std::move(ctx);
+
+  auto completion = [this, callback](zx_status_t status) {
+    auto& ctx = resume_context();
+    if (status != ZX_OK) {
+      // do not continue to resume as this indicates a driver resume
+      // problem and should show as a bug
+      log(ERROR, "devcoordinator: failed to resume: %s\n", zx_status_get_string(status));
+      ctx.set_flags(devmgr::ResumeContext::Flags::kSuspended);
+      callback(status);
+      return;
+    }
+    callback(status);
+  };
+
+  printf("MINE MINE Reached Resume: Hippity Hoppity mood\n");
+  // We don't need to resume anything except sys_device and it's children,
+  // since we do not run suspend hooks for children of test or misc
+  auto task = ResumeTask::Create(sys_device(), static_cast<uint32_t>(ctx.target_state()),
+                                 std::move(completion));
+  resume_context().set_task(std::move(task));
+}
+
 void Coordinator::Suspend(uint32_t flags) {
   Suspend(SuspendContext(SuspendContext::Flags::kSuspend, flags), [](zx_status_t) {});
+}
+
+void Coordinator::Resume(SystemPowerState target_state) {
+  Resume(ResumeContext(ResumeContext::Flags::kResume, target_state), [](zx_status_t) {});
 }
 
 fbl::unique_ptr<Driver> Coordinator::ValidateDriver(fbl::unique_ptr<Driver> drv) {
@@ -1544,6 +1580,20 @@ void Coordinator::InitOutgoingServices() {
                   });
               return ZX_ERR_ASYNC;
             },
+        .Resume =
+            [](void* ctx, fuchsia_device_manager_SystemPowerState target_state, fidl_txn_t* txn) {
+              auto* async_txn = fidl_async_txn_create(txn);
+              static_cast<Coordinator*>(ctx)->Resume(
+                  ResumeContext(
+                      ResumeContext::Flags::kResume,
+                      static_cast<llcpp::fuchsia::device::manager::SystemPowerState>(target_state)),
+                  [async_txn](zx_status_t status) {
+                    fuchsia_device_manager_AdministratorResume_reply(
+                        fidl_async_txn_borrow(async_txn), status);
+                    fidl_async_txn_complete(async_txn, true);
+                  });
+              return ZX_ERR_ASYNC;
+            },
     };
 
     const auto status =
@@ -1554,7 +1604,7 @@ void Coordinator::InitOutgoingServices() {
       printf("Failed to bind to client channel: %d \n", status);
     }
     return status;
-  };
+  };  // namespace devmgr
   svc_dir->AddEntry(fuchsia_device_manager_Administrator_Name,
                     fbl::MakeRefCounted<fs::Service>(admin));
 
@@ -1594,7 +1644,7 @@ void Coordinator::InitOutgoingServices() {
   };
   svc_dir->AddEntry(fuchsia_device_manager_DebugDumper_Name,
                     fbl::MakeRefCounted<fs::Service>(debug));
-}
+}  // namespace devmgr
 
 void Coordinator::OnOOMEvent(async_dispatcher_t* dispatcher, async::WaitBase* wait,
                              zx_status_t status, const zx_packet_signal_t* signal) {

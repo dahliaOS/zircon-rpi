@@ -4,10 +4,7 @@
 
 #include "factory_reset.h"
 
-#include <fbl/algorithm.h>
 #include <fcntl.h>
-#include <fs-management/fvm.h>
-#include <fs-management/mount.h>
 #include <fuchsia/device/manager/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <lib/async-loop/default.h>
@@ -17,8 +14,12 @@
 #include <lib/fidl/cpp/binding_set.h>
 #include <lib/fzl/fdio.h>
 #include <lib/zx/vmo.h>
-#include <ramdevice-client/ramdisk.h>
 #include <zircon/hw/gpt.h>
+
+#include <fbl/algorithm.h>
+#include <fs-management/fvm.h>
+#include <fs-management/mount.h>
+#include <ramdevice-client/ramdisk.h>
 
 #include "gtest/gtest.h"
 
@@ -37,6 +38,7 @@ const char* kRamdiskPath = "misc/ramctl";
 class MockAdmin : public fuchsia::device::manager::Administrator {
  public:
   bool suspend_called() { return suspend_called_; }
+  bool resume_called() { return resume_called_; }
 
  private:
   void Suspend(uint32_t flags, SuspendCallback callback) override {
@@ -46,7 +48,14 @@ class MockAdmin : public fuchsia::device::manager::Administrator {
     callback(ZX_OK);
   }
 
+  void Resume(fuchsia::device::manager::SystemPowerState state, ResumeCallback callback) override {
+    ASSERT_FALSE(resume_called_);
+    resume_called_ = true;
+    callback(ZX_OK);
+  }
+
   bool suspend_called_ = false;
+  bool resume_called_ = false;
 };
 
 class FactoryResetTest : public Test {

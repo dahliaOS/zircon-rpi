@@ -349,11 +349,17 @@ impl MockRebootService {
         mut stream: fidl_fuchsia_device_manager::AdministratorRequestStream,
     ) -> Result<(), Error> {
         while let Some(event) = stream.try_next().await? {
-            let fidl_fuchsia_device_manager::AdministratorRequest::Suspend { flags, responder } =
-                event;
-            eprintln!("TEST: Got reboot request with flags {:?}", flags);
-            *self.called.lock() += 1;
-            responder.send(Status::OK.into_raw())?;
+            match event {
+                fidl_fuchsia_device_manager::AdministratorRequest::Suspend { flags, responder } => {
+                    eprintln!("TEST: Got reboot request with flags {:?}", flags);
+                    *self.called.lock() += 1;
+                    responder.send(Status::OK.into_raw())?;
+                }
+                fidl_fuchsia_device_manager::AdministratorRequest::Resume { state, responder } => {
+                     eprintln!("TEST: Got Resume request with state {:?}", state);
+                     responder.send(Status::OK.into_raw())?;
+                }
+            }
         }
 
         Ok(())
