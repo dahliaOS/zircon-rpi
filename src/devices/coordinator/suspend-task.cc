@@ -73,11 +73,11 @@ void SuspendTask::Run() {
   }
 
   // The device is about to be resumed, wait for it to complete.
-  if (device_->state() == Device::State::kResuming) {
+  /*if (device_->state() == Device::State::kResuming) {
     auto resume_task = device_->GetActiveResume();
     AddDependency(resume_task);
     return;
-  }
+  }*/
 
   // Check if this device is not in a devhost.  This happens for the
   // top-level devices like /sys provided by devcoordinator,
@@ -88,7 +88,7 @@ void SuspendTask::Run() {
   }
 
   auto completion = [this](zx_status_t status) {
-    device_->set_state(Device::State::kSuspended);
+    // device_->set_state(Device::State::kSuspended);
     Complete(status);
   };
   zx_status_t status = device_->SendSuspend(flags_, std::move(completion));
