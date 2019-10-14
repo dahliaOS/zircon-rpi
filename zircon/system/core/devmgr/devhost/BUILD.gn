@@ -95,7 +95,6 @@ zx_library("driver") {
 zx_test("devhost-test") {
   test_group = "ddk"
   sources = [
-    "core-test.cc",
     "device-api-test.cc",
     "device-controller-connection-test.cc",
     "device-controller-integration-test.cc",
