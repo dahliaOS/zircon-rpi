@@ -35,7 +35,7 @@ declare_args() {
 
   # Select an available scheduler.
   # Valid values are: "legacy", "fair", "unified"
-  select_scheduler = "fair"
+  select_scheduler = "unified"
 
   # Enable detailed scheduler traces.
   detailed_scheduler_tracing = false
