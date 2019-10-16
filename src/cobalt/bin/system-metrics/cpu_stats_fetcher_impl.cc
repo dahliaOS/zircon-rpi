@@ -10,6 +10,8 @@
 #include <lib/fdio/fdio.h>
 #include <lib/zx/resource.h>
 #include <zircon/status.h>
+#include <zircon/time.h>
+#include <chrono>
 
 #include <trace/event.h>
 
@@ -24,6 +26,7 @@ bool CpuStatsFetcherImpl::FetchCpuPercentage(double *cpu_percentage) {
   if (FetchCpuStats() == false) {
     return false;
   }
+  ReportRaplReadings();
   bool success = CalculateCpuPercentage(cpu_percentage);
   last_cpu_stats_buffer_.swap(cpu_stats_buffer_);
   last_cpu_stats_ = cpu_stats_;
@@ -101,6 +104,47 @@ void CpuStatsFetcherImpl::InitializeKernelStats() {
   last_cpu_stats_buffer_ =
       std::make_unique<fidl::Buffer<llcpp::fuchsia::kernel::Stats::GetCpuStatsResponse>>();
   stats_service_ = std::make_unique<llcpp::fuchsia::kernel::Stats::SyncClient>(std::move(local));
+}
+
+static uint64_t RaplToMilliWatts(uint64_t rapl_value, uint64_t joule_quotient,
+                                 std::chrono::milliseconds duration) {
+  uint64_t milli_joules = (rapl_value * 1000) / joule_quotient;
+  return (milli_joules / duration.count() / 1000);
+}
+
+void CpuStatsFetcherImpl::ReportRaplReadings() {
+  uint8_t rapl_energy_unit = 0xFF & (cpu_stats_->per_cpu_stats[0].rapl_unit() >> 8);
+  uint64_t joule_quotient = 1 << rapl_energy_unit;
+  std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      cpu_fetch_time_ - last_cpu_fetch_time_);
+  TRACE_COUNTER("system_metrics", "cpu_power", 0,
+                "pkg_power",
+                RaplToMilliWatts(
+                    cpu_stats_->per_cpu_stats[0].rapl_pkg()
+                        - last_cpu_stats_->per_cpu_stats[0].rapl_pkg(),
+                    joule_quotient,
+                    duration));
+  TRACE_COUNTER("system_metrics", "cpu_power", 0,
+                "core_power",
+                RaplToMilliWatts(
+                    cpu_stats_->per_cpu_stats[0].rapl_core()
+                        - last_cpu_stats_->per_cpu_stats[0].rapl_core(),
+                    joule_quotient,
+                    duration));
+  TRACE_COUNTER("system_metrics", "cpu_power", 0,
+                "dram_power",
+                RaplToMilliWatts(
+                    cpu_stats_->per_cpu_stats[0].rapl_dram()
+                        - last_cpu_stats_->per_cpu_stats[0].rapl_dram(),
+                    joule_quotient,
+                    duration));
+  TRACE_COUNTER("system_metrics", "cpu_power", 0,
+                "gpu_power",
+                RaplToMilliWatts(
+                    cpu_stats_->per_cpu_stats[0].rapl_gpu()
+                        - last_cpu_stats_->per_cpu_stats[0].rapl_gpu(),
+                    joule_quotient,
+                    duration));
 }
 
 }  // namespace cobalt

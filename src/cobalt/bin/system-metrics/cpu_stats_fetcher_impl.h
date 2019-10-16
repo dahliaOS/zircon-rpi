@@ -27,6 +27,7 @@ class CpuStatsFetcherImpl : public CpuStatsFetcher {
   bool FetchCpuStats();
   bool CalculateCpuPercentage(double* cpu_percentage);
   void InitializeKernelStats();
+  void ReportRaplReadings();
 
   size_t num_cpu_cores_ = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> cpu_fetch_time_;
