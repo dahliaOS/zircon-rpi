@@ -468,6 +468,10 @@ zx_status_t sys_object_get_info(zx_handle_t handle, uint32_t topic, user_out_ptr
         stats.syscalls = cpu->stats.syscalls;
         stats.reschedule_ipis = cpu->stats.reschedule_ipis;
         stats.generic_ipis = cpu->stats.generic_ipis;
+        stats.rapl_pkg = cpu->stats.rapl_pkg;
+        stats.rapl_core = cpu->stats.rapl_core;
+        stats.rapl_gpu = cpu->stats.rapl_gpu;
+        stats.rapl_dram = cpu->stats.rapl_dram;
 
         // copy out one at a time
         if (cpu_buf.copy_array_to_user(&stats, 1, i) != ZX_OK)

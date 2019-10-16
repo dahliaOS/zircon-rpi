@@ -32,6 +32,13 @@ struct cpu_stats {
   // inter-processor interrupts
   ulong reschedule_ipis;
   ulong generic_ipis;
+
+  // power counters
+  ulong rapl_unit;
+  ulong rapl_pkg;
+  ulong rapl_core;
+  ulong rapl_gpu;
+  ulong rapl_dram;
 };
 
 __END_CDECLS

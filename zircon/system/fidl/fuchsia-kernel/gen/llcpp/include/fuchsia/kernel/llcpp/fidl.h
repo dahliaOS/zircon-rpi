@@ -222,6 +222,66 @@ struct PerCpuStats final : private ::fidl::VectorView<fidl_envelope_t> {
     return EnvelopesView::count() >= 15 && EnvelopesView::at(15 - 1).data != nullptr;
   }
 
+  const uint64_t& rapl_unit() const {
+    ZX_ASSERT(has_rapl_unit());
+    return *reinterpret_cast<const uint64_t*>(EnvelopesView::at(16 - 1).data);
+  }
+  uint64_t& rapl_unit() {
+    ZX_ASSERT(has_rapl_unit());
+    return *reinterpret_cast<uint64_t*>(EnvelopesView::at(16 - 1).data);
+  }
+  bool has_rapl_unit() const {
+    return EnvelopesView::count() >= 16 && EnvelopesView::at(16 - 1).data != nullptr;
+  }
+
+  const uint64_t& rapl_pkg() const {
+    ZX_ASSERT(has_rapl_pkg());
+    return *reinterpret_cast<const uint64_t*>(EnvelopesView::at(17 - 1).data);
+  }
+  uint64_t& rapl_pkg() {
+    ZX_ASSERT(has_rapl_pkg());
+    return *reinterpret_cast<uint64_t*>(EnvelopesView::at(17 - 1).data);
+  }
+  bool has_rapl_pkg() const {
+    return EnvelopesView::count() >= 17 && EnvelopesView::at(17 - 1).data != nullptr;
+  }
+
+  const uint64_t& rapl_core() const {
+    ZX_ASSERT(has_rapl_core());
+    return *reinterpret_cast<const uint64_t*>(EnvelopesView::at(18 - 1).data);
+  }
+  uint64_t& rapl_core() {
+    ZX_ASSERT(has_rapl_core());
+    return *reinterpret_cast<uint64_t*>(EnvelopesView::at(18 - 1).data);
+  }
+  bool has_rapl_core() const {
+    return EnvelopesView::count() >= 18 && EnvelopesView::at(18 - 1).data != nullptr;
+  }
+
+  const uint64_t& rapl_gpu() const {
+    ZX_ASSERT(has_rapl_gpu());
+    return *reinterpret_cast<const uint64_t*>(EnvelopesView::at(19 - 1).data);
+  }
+  uint64_t& rapl_gpu() {
+    ZX_ASSERT(has_rapl_gpu());
+    return *reinterpret_cast<uint64_t*>(EnvelopesView::at(19 - 1).data);
+  }
+  bool has_rapl_gpu() const {
+    return EnvelopesView::count() >= 19 && EnvelopesView::at(19 - 1).data != nullptr;
+  }
+
+  const uint64_t& rapl_dram() const {
+    ZX_ASSERT(has_rapl_dram());
+    return *reinterpret_cast<const uint64_t*>(EnvelopesView::at(20 - 1).data);
+  }
+  uint64_t& rapl_dram() {
+    ZX_ASSERT(has_rapl_dram());
+    return *reinterpret_cast<uint64_t*>(EnvelopesView::at(20 - 1).data);
+  }
+  bool has_rapl_dram() const {
+    return EnvelopesView::count() >= 20 && EnvelopesView::at(20 - 1).data != nullptr;
+  }
+
   PerCpuStats() = default;
   ~PerCpuStats() = default;
   PerCpuStats(PerCpuStats&& other) noexcept = default;
@@ -235,10 +295,10 @@ struct PerCpuStats final : private ::fidl::VectorView<fidl_envelope_t> {
   static constexpr uint32_t MaxNumHandles = 0;
   static constexpr uint32_t PrimarySize = 16;
   [[maybe_unused]]
-  static constexpr uint32_t MaxOutOfLine = 360;
+  static constexpr uint32_t MaxOutOfLine = 480;
   static constexpr uint32_t AltPrimarySize = 16;
   [[maybe_unused]]
-  static constexpr uint32_t AltMaxOutOfLine = 360;
+  static constexpr uint32_t AltMaxOutOfLine = 480;
 
  private:
   PerCpuStats(uint64_t max_ordinal, fidl_envelope_t* data) : EnvelopesView(data, max_ordinal) {}
@@ -281,12 +341,22 @@ class PerCpuStats::Builder {
 
   Builder&& set_generic_ipis(uint64_t* elem);
 
+  Builder&& set_rapl_unit(uint64_t* elem);
+
+  Builder&& set_rapl_pkg(uint64_t* elem);
+
+  Builder&& set_rapl_core(uint64_t* elem);
+
+  Builder&& set_rapl_gpu(uint64_t* elem);
+
+  Builder&& set_rapl_dram(uint64_t* elem);
+
  private:
   Builder() = default;
   friend Builder PerCpuStats::Build();
 
   uint64_t max_ordinal_ = 0;
-  ::fidl::Array<fidl_envelope_t, 15> envelopes_ = {};
+  ::fidl::Array<fidl_envelope_t, 20> envelopes_ = {};
 };
 
 extern "C" const fidl_type_t fuchsia_kernel_MemoryStatsTable;
@@ -470,10 +540,10 @@ struct CpuStats {
   static constexpr uint32_t MaxNumHandles = 0;
   static constexpr uint32_t PrimarySize = 24;
   [[maybe_unused]]
-  static constexpr uint32_t MaxOutOfLine = 192512;
+  static constexpr uint32_t MaxOutOfLine = 253952;
   static constexpr uint32_t AltPrimarySize = 24;
   [[maybe_unused]]
-  static constexpr uint32_t AltMaxOutOfLine = 192512;
+  static constexpr uint32_t AltMaxOutOfLine = 253952;
 
   uint64_t actual_num_cpus = {};
 
@@ -1299,9 +1369,9 @@ class Stats final {
     static constexpr const fidl_type_t* AltType = &v1_fuchsia_kernel_StatsGetCpuStatsResponseTable;
     static constexpr uint32_t MaxNumHandles = 0;
     static constexpr uint32_t PrimarySize = 40;
-    static constexpr uint32_t MaxOutOfLine = 192512;
+    static constexpr uint32_t MaxOutOfLine = 253952;
     static constexpr uint32_t AltPrimarySize = 40;
-    static constexpr uint32_t AltMaxOutOfLine = 192512;
+    static constexpr uint32_t AltMaxOutOfLine = 253952;
     static constexpr bool HasFlexibleEnvelope = true;
     static constexpr bool ContainsUnion = false;
     static constexpr ::fidl::internal::TransactionalMessageKind MessageKind =

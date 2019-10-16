@@ -333,6 +333,11 @@ void KernelStatsImpl::GetCpuStats(GetCpuStatsCompleter::Sync completer) {
     builder->set_syscalls(&cpu_stat.syscalls);
     builder->set_reschedule_ipis(&cpu_stat.reschedule_ipis);
     builder->set_generic_ipis(&cpu_stat.generic_ipis);
+    builder->set_rapl_unit(&cpu_stat.rapl_unit);
+    builder->set_rapl_pkg(&cpu_stat.rapl_pkg);
+    builder->set_rapl_core(&cpu_stat.rapl_core);
+    builder->set_rapl_gpu(&cpu_stat.rapl_gpu);
+    builder->set_rapl_dram(&cpu_stat.rapl_dram);
     per_cpu_stats[cpu_num] = builder->view();
   }
   completer.Reply(stats);

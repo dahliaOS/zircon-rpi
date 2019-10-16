@@ -38,6 +38,11 @@ table PerCpuStats {
   13: uint64 syscalls;
   14: uint64 reschedule_ipis;
   15: uint64 generic_ipis;
+  16: uint64 rapl_unit;
+  17: uint64 rapl_pkg;
+  18: uint64 rapl_core;
+  19: uint64 rapl_gpu;
+  20: uint64 rapl_dram;
 };
 
 struct CpuStats {

@@ -420,6 +420,13 @@ typedef struct zx_info_cpu_stats {
     // inter-processor interrupts
     uint64_t reschedule_ipis;
     uint64_t generic_ipis;
+
+    // power counters
+    uint64_t rapl_unit;
+    uint64_t rapl_pkg;
+    uint64_t rapl_core;
+    uint64_t rapl_gpu;
+    uint64_t rapl_dram;
 } zx_info_cpu_stats_t;
 
 // Information about kernel memory usage.

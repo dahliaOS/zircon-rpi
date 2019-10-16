@@ -147,6 +147,51 @@ auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_generic_ipis(uint64_t* 
   return std::move(*this);
 }
 
+auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_rapl_unit(uint64_t* elem) -> Builder&& {
+  ZX_ASSERT(elem);
+  envelopes_[16 - 1].data = static_cast<void*>(elem);
+  if (max_ordinal_ < 16) {
+    max_ordinal_ = 16;
+  }
+  return std::move(*this);
+}
+
+auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_rapl_pkg(uint64_t* elem) -> Builder&& {
+  ZX_ASSERT(elem);
+  envelopes_[17 - 1].data = static_cast<void*>(elem);
+  if (max_ordinal_ < 17) {
+    max_ordinal_ = 17;
+  }
+  return std::move(*this);
+}
+
+auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_rapl_core(uint64_t* elem) -> Builder&& {
+  ZX_ASSERT(elem);
+  envelopes_[18 - 1].data = static_cast<void*>(elem);
+  if (max_ordinal_ < 18) {
+    max_ordinal_ = 18;
+  }
+  return std::move(*this);
+}
+
+auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_rapl_gpu(uint64_t* elem) -> Builder&& {
+  ZX_ASSERT(elem);
+  envelopes_[19 - 1].data = static_cast<void*>(elem);
+  if (max_ordinal_ < 19) {
+    max_ordinal_ = 19;
+  }
+  return std::move(*this);
+}
+
+auto ::llcpp::fuchsia::kernel::PerCpuStats::Builder::set_rapl_dram(uint64_t* elem) -> Builder&& {
+  ZX_ASSERT(elem);
+  envelopes_[20 - 1].data = static_cast<void*>(elem);
+  if (max_ordinal_ < 20) {
+    max_ordinal_ = 20;
+  }
+  return std::move(*this);
+}
+
 namespace {
 
 [[maybe_unused]]

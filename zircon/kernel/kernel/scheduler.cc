@@ -347,6 +347,13 @@ void Scheduler::RescheduleCommon(SchedTime now, void* outer_trace) {
   DEBUG_ASSERT_MSG(current_cpu == this_cpu(), "current_cpu=%u this_cpu=%u", current_cpu,
                    this_cpu());
 
+  auto& stats = percpu::Get(current_cpu).stats;
+  stats.rapl_unit = read_msr(X86_MSR_RAPL_POWER_UNIT);
+  stats.rapl_pkg = read_msr(X86_MSR_PKG_ENERGY_STATUS);
+  stats.rapl_core = read_msr(X86_MSR_PP0_ENERGY_STATUS);
+  stats.rapl_gpu = read_msr(X86_MSR_PP1_ENERGY_STATUS);
+  stats.rapl_dram = read_msr(X86_MSR_DRAM_ENERGY_STATUS);
+
   CPU_STATS_INC(reschedules);
 
   UpdateTimeline(now);
