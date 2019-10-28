@@ -14,6 +14,7 @@
 #include "msd_defs.h"
 #include "platform_buffer.h"
 #include "platform_event.h"
+#include "platform_handle.h"
 #include "platform_object.h"
 #include "platform_semaphore.h"
 #include "platform_thread.h"
@@ -49,14 +50,20 @@ class PlatformConnection {
   };
 
   PlatformConnection(std::shared_ptr<magma::PlatformEvent> shutdown_event,
-                     msd_client_id_t client_id)
-      : client_id_(client_id), shutdown_event_(std::move(shutdown_event)) {}
+                     msd_client_id_t client_id,
+                     std::unique_ptr<magma::PlatformHandle> thread_profile = nullptr)
+      : client_id_(client_id),
+        shutdown_event_(std::move(shutdown_event)),
+        thread_profile_(std::move(thread_profile)) {}
 
   virtual ~PlatformConnection() {}
 
-  static std::shared_ptr<PlatformConnection> Create(std::unique_ptr<Delegate> Delegate,
-                                                    msd_client_id_t client_id);
+  static std::shared_ptr<PlatformConnection> Create(
+      std::unique_ptr<Delegate> Delegate, msd_client_id_t client_id,
+      std::unique_ptr<magma::PlatformHandle> thread_profile = nullptr);
+
   virtual uint32_t GetClientEndpoint() = 0;
+
   // This handle is used to asynchronously return information to the client.
   virtual uint32_t GetClientNotificationEndpoint() = 0;
 
@@ -69,6 +76,12 @@ class PlatformConnection {
   static void RunLoop(std::shared_ptr<magma::PlatformConnection> connection) {
     magma::PlatformThreadHelper::SetCurrentThreadName("ConnectionThread " +
                                                       std::to_string(connection->client_id_));
+
+    // Apply the thread profile before entering the handler loop.
+    if (connection->thread_profile_) {
+      magma::PlatformThreadHelper::SetProfile(connection->thread_profile_.get());
+    }
+
     while (connection->HandleRequest())
       ;
     // the runloop terminates when the remote closes, or an error is experienced
@@ -78,6 +91,7 @@ class PlatformConnection {
  private:
   msd_client_id_t client_id_;
   std::shared_ptr<magma::PlatformEvent> shutdown_event_;
+  std::unique_ptr<magma::PlatformHandle> thread_profile_;
 };
 
 }  // namespace magma
