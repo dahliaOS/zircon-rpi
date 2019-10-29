@@ -27,9 +27,11 @@ AudioOutput::AudioOutput(ThreadingModel* threading_model, DeviceRegistry* regist
 }
 
 void AudioOutput::Process() {
-  TRACE_DURATION("audio", "AudioOutput::Process");
   auto now = async::Now(mix_domain().dispatcher());
   bool needs_trim = true;
+
+  int64_t trace_wake_delta = next_sched_time_known_ ?  (now - next_sched_time_).get() : 0;
+  TRACE_DURATION("audio", "AudioOutput::Process", "wake delta", TA_INT64(trace_wake_delta));
 
   // At this point, we should always know when our implementation would like to be called to do some
   // mixing work next. If we do not know, then we should have already shut down.
