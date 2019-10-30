@@ -36,11 +36,13 @@ std::vector<Hit> HitTester::HitTest(Node* node, const escher::ray4& ray) {
   std::sort(hits_.begin(), hits_.end(),
             [](const Hit& a, const Hit& b) { return a.distance < b.distance; });
 
+  /*
   // Warn if there are objects at the same distance as that is a user error.
   const std::string warning_message = GetDistanceCollisionsWarning(hits_);
   if (!warning_message.empty()) {
     FXL_LOG(WARNING) << warning_message;
   }
+  */
 
   return std::move(hits_);
 }
