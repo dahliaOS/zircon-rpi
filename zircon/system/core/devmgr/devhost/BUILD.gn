@@ -32,9 +32,10 @@ source_set("common") {
   public_deps = [
     "$zx/system/banjo/ddk.protocol.composite",
     "$zx/system/fidl/fuchsia-device:c",
+    "$zx/system/fidl/fuchsia-device:llcpp",
     "$zx/system/fidl/fuchsia-device-manager:c",
     "$zx/system/fidl/fuchsia-device-manager:llcpp",
-    "$zx/system/fidl/fuchsia-io:c",
+    "$zx/system/fidl/fuchsia-io:llcpp",
     "$zx/system/fidl/fuchsia-scheduler:c",
     "$zx/system/ulib/async:async-cpp.static",
     "$zx/system/ulib/async:async-default.static",

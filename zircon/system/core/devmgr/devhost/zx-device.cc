@@ -48,24 +48,19 @@ bool zx_device::PopTestCompatibilityConn(fs::FidlConnection* conn) {
   return true;
 }
 
-const std::array<fuchsia_device_DevicePowerStateInfo, fuchsia_device_MAX_DEVICE_POWER_STATES>&
-zx_device::GetPowerStates() const {
-  return power_states_;
-}
+const zx_device::DevicePowerStates& zx_device::GetPowerStates() const { return power_states_; }
 
-const std::array<fuchsia_device_SystemPowerStateInfo,
-                 fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>&
-zx_device::GetSystemPowerStateMapping() const {
+const zx_device::SystemPowerStateMapping& zx_device::GetSystemPowerStateMapping() const {
   return system_power_states_mapping_;
 }
 
 zx_status_t zx_device::SetPowerStates(const device_power_state_info_t* power_states,
                                       uint8_t count) {
-  if (count < fuchsia_device_MIN_DEVICE_POWER_STATES ||
-      count > fuchsia_device_MAX_DEVICE_POWER_STATES) {
+  if (count < ::llcpp::fuchsia::device::MIN_DEVICE_POWER_STATES ||
+      count > ::llcpp::fuchsia::device::MAX_DEVICE_POWER_STATES) {
     return ZX_ERR_INVALID_ARGS;
   }
-  bool visited[fuchsia_device_MAX_DEVICE_POWER_STATES] = {false};
+  bool visited[::llcpp::fuchsia::device::MAX_DEVICE_POWER_STATES] = {false};
   for (uint8_t i = 0; i < count; i++) {
     const auto& info = power_states[i];
     if (info.state_id >= fbl::count_of(visited)) {
@@ -74,27 +69,29 @@ zx_status_t zx_device::SetPowerStates(const device_power_state_info_t* power_sta
     if (visited[info.state_id]) {
       return ZX_ERR_INVALID_ARGS;
     }
-    fuchsia_device_DevicePowerStateInfo* state = &(power_states_[info.state_id]);
-    state->state_id = info.state_id;
+    auto state = &power_states_[info.state_id];
+    state->state_id = static_cast<::llcpp::fuchsia::device::DevicePowerState>(info.state_id);
     state->is_supported = true;
     state->restore_latency = info.restore_latency;
     state->wakeup_capable = info.wakeup_capable;
     state->system_wake_state = info.system_wake_state;
     visited[info.state_id] = true;
   }
-  if (!(power_states_[fuchsia_device_DevicePowerState_DEVICE_POWER_STATE_D0].is_supported) ||
-      !(power_states_[fuchsia_device_DevicePowerState_DEVICE_POWER_STATE_D3COLD].is_supported)) {
-    return ZX_ERR_INVALID_ARGS;
+  constexpr ::llcpp::fuchsia::device::DevicePowerStateInfo kMustBeSupported[] = {
+      ::llcpp::fuchsia::device::DevicePowerState::DEVICE_POWER_STATE_D0,
+      ::llcpp::fuchsia::device::DevicePowerState::DEVICE_POWER_STATE_D3COLD};
+  for (auto state : kMustBeSupported) {
+    if (!power_states_[static_cast<uint8_t>(state)].is_supported) {
+      return ZX_ERR_INVALID_ARGS;
+    }
   }
   return ZX_OK;
 }
 
-zx_status_t zx_device::SetSystemPowerStateMapping(
-    const std::array<fuchsia_device_SystemPowerStateInfo,
-                     fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>& mapping) {
-  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
-    const fuchsia_device_SystemPowerStateInfo* info = &mapping[i];
-    if (!(power_states_[info->dev_state].is_supported)) {
+zx_status_t zx_device::SetSystemPowerStateMapping(const SystemPowerStateMapping& mapping) {
+  for (size_t i = 0; i < mapping.size(); i++) {
+    auto info = &mapping[i];
+    if (!power_states_[info->dev_state].is_supported) {
       return ZX_ERR_INVALID_ARGS;
     }
     if (info->wakeup_enable && !power_states_[info->dev_state].wakeup_capable) {

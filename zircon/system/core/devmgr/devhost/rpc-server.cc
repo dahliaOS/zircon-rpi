@@ -5,9 +5,10 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <fuchsia/device/c/fidl.h>
+#include <fuchsia/device/llcpp/fidl.h>
 #include <fuchsia/device/manager/c/fidl.h>
 #include <fuchsia/device/manager/llcpp/fidl.h>
-#include <fuchsia/io/c/fidl.h>
+#include <fuchsia/io/llcpp/fidl.h>
 #include <lib/fdio/io.h>
 #include <lib/fdio/vfs.h>
 #include <lib/fidl/coding.h>
@@ -511,207 +512,175 @@ static const fuchsia_io_Node_ops_t kNodeOps = {
     .NodeSetFlags = fidl_node_setflags,
 };
 
-static zx_status_t fidl_DeviceControllerBind(void* ctx, const char* driver_data,
-                                             size_t driver_count, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-
+void DevfsConnection::Bind(::fidl::StringView driver, BindCompleter::Sync completer) {
   char drv_libname[fuchsia_device_MAX_DRIVER_PATH_LEN + 1];
-  memcpy(drv_libname, driver_data, driver_count);
-  drv_libname[driver_count] = 0;
+  ZX_ASSERT(driver.size() <= sizeof(drv_libname));
+  memcpy(drv_libname, driver.data(), driver.size());
+  drv_libname[driver.size()] = 0;
 
-  zx_status_t status = device_bind(conn->dev, drv_libname);
+  zx_status_t status = device_bind(this->dev, drv_libname);
   if (status != ZX_OK) {
-    fuchsia_device_ControllerBind_reply(txn, status);
-  } else {
-    conn->dev->set_bind_conn(fs::FidlConnection::CopyTxn(txn));
+    return completer.Reply(status);
   }
-  return ZX_OK;
+
+  this->dev->set_bind_conn(completer.ToAsync());
 }
 
-static zx_status_t fidl_DeviceControllerRunCompatibilityTests(void* ctx, int64_t hook_wait_time,
-                                                              fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  conn->dev->PushTestCompatibilityConn(fs::FidlConnection::CopyTxn(txn));
-  return device_run_compatibility_tests(conn->dev, hook_wait_time);
+void DevfsConnection::ScheduleUnbind(ScheduleUnbindCompleter::Sync completer) {
+  zx_status_t status = device_schedule_remove(this->dev, true /* unbind_self */);
+  return completer.Reply(status);
 }
 
-static zx_status_t fidl_DeviceControllerScheduleUnbind(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  zx_status_t status = device_schedule_remove(conn->dev, true /* unbind_self */);
-  return fuchsia_device_ControllerScheduleUnbind_reply(txn, status);
-}
-
-static zx_status_t fidl_DeviceControllerGetDriverName(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  if (!conn->dev->driver) {
-    return fuchsia_device_ControllerGetDriverName_reply(txn, ZX_ERR_NOT_SUPPORTED, nullptr, 0);
+void DevfsConnection::GetDriverName(GetDriverNameCompleter::Sync completer) {
+  if (!this->dev->driver) {
+    return completer.Reply(ZX_ERR_NOT_SUPPORTED, {});
   }
-  const char* name = conn->dev->driver->name();
+  const char* name = this->dev->driver->name();
   if (name == nullptr) {
     name = "unknown";
   }
-  return fuchsia_device_ControllerGetDriverName_reply(txn, ZX_OK, name, strlen(name));
+  completer.Reply(ZX_OK, {name, strlen(name)});
 }
 
-static zx_status_t fidl_DeviceControllerGetDeviceName(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  return fuchsia_device_ControllerGetDeviceName_reply(txn, conn->dev->name,
-                                                      strlen(conn->dev->name));
+void DevfsConnection::GetDeviceName(GetDeviceNameCompleter::Sync completer) {
+  completer.Reply({this->dev->name, strlen(this->dev->name)});
 }
 
-static zx_status_t fidl_DeviceControllerGetTopologicalPath(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
+void DevfsConnection::GetTopologicalPath(GetTopologicalPathCompleter::Sync completer) {
   char buf[fuchsia_device_MAX_DEVICE_PATH_LEN + 1];
   size_t actual;
-  zx_status_t status = devhost_get_topo_path(conn->dev, buf, sizeof(buf), &actual);
+  zx_status_t status = devhost_get_topo_path(this->dev, buf, sizeof(buf), &actual);
   if (status != ZX_OK) {
-    return fuchsia_device_ControllerGetTopologicalPath_reply(txn, status, nullptr, 0);
+    return completer.Reply(status, {});
   }
   if (actual > 0) {
     // Remove the accounting for the null byte
     actual--;
   }
-  return fuchsia_device_ControllerGetTopologicalPath_reply(txn, ZX_OK, buf, actual);
+  completer.Reply(ZX_OK, {buf, actual});
 }
 
-static zx_status_t fidl_DeviceControllerGetDevicePowerCaps(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  fuchsia_device_Controller_GetDevicePowerCaps_Result result{};
-  auto& states = conn->dev->GetPowerStates();
-
-  ZX_DEBUG_ASSERT(states.size() == fuchsia_device_MAX_DEVICE_POWER_STATES);
-  // For now, the result is always a successful response because the device itself is not added
-  // without power states validation. In future, we may add more checks for validation, and the
-  // error result will be put to use.
-  result.tag = fuchsia_device_Controller_GetDevicePowerCaps_ResultTag_response;
-  for (size_t i = 0; i < fuchsia_device_MAX_DEVICE_POWER_STATES; i++) {
-    result.response.dpstates[i] = states[i];
-  }
-  return fuchsia_device_ControllerGetDevicePowerCaps_reply(txn, &result);
-}
-
-static zx_status_t fidl_DeviceControllerSuspend(void* ctx,
-                                                fuchsia_device_DevicePowerState requested_state,
-                                                fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  fuchsia_device_DevicePowerState out_state;
-  zx_status_t status = devhost_device_suspend_new(conn->dev, requested_state, &out_state);
-  return fuchsia_device_ControllerSuspend_reply(txn, status, out_state);
-}
-
-static zx_status_t fidl_DeviceControllerResume(void* ctx,
-                                               fuchsia_device_DevicePowerState requested_state,
-                                               fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  fuchsia_device_Controller_Resume_Result result{};
-  fuchsia_device_DevicePowerState out_state;
-  zx_status_t status = devhost_device_resume_new(conn->dev, requested_state, &out_state);
-  if (status == ZX_OK) {
-    result.tag = fuchsia_device_Controller_Resume_ResultTag_response;
-    result.response.out_state = out_state;
-  } else {
-    result.tag = fuchsia_device_Controller_Resume_ResultTag_err;
-  }
-  return fuchsia_device_ControllerResume_reply(txn, &result);
-}
-
-static zx_status_t fidl_DeviceControllerUpdatePowerStateMapping(
-    void* ctx, const fuchsia_device_SystemPowerStateInfo mapping[6], fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  fuchsia_device_Controller_UpdatePowerStateMapping_Result result{};
-  std::array<fuchsia_device_SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>
-      states_mapping;
-  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
-    states_mapping[i] = mapping[i];
-  }
-  zx_status_t status = conn->dev->SetSystemPowerStateMapping(states_mapping);
-  if (status == ZX_OK) {
-    result.tag = fuchsia_device_Controller_UpdatePowerStateMapping_ResultTag_response;
-  } else {
-    result.tag = fuchsia_device_Controller_UpdatePowerStateMapping_ResultTag_err;
-    result.err = status;
-  }
-  return fuchsia_device_ControllerUpdatePowerStateMapping_reply(txn, &result);
-}
-
-static zx_status_t fidl_DeviceControllerGetPowerStateMapping(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  fuchsia_device_Controller_GetPowerStateMapping_Result result{};
-
-  auto& mapping = conn->dev->GetSystemPowerStateMapping();
-  ZX_DEBUG_ASSERT(mapping.size() == fuchsia_device_manager_MAX_SYSTEM_POWER_STATES);
-
-  result.tag = fuchsia_device_Controller_GetPowerStateMapping_ResultTag_response;
-  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
-    result.response.mapping[i] = mapping[i];
-  }
-  return fuchsia_device_ControllerGetPowerStateMapping_reply(txn, &result);
-}
-
-static zx_status_t fidl_DeviceControllerGetEventHandle(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
+void DevfsConnection::GetEventHandle(GetEventHandleCompleter::Sync completer) {
   zx::eventpair event;
-  zx_status_t status = conn->dev->event.duplicate(ZX_RIGHTS_BASIC, &event);
+  zx_status_t status = this->dev->event.duplicate(ZX_RIGHTS_BASIC, &event);
   static_assert(fuchsia_device_DEVICE_SIGNAL_READABLE == DEV_STATE_READABLE);
   static_assert(fuchsia_device_DEVICE_SIGNAL_WRITABLE == DEV_STATE_WRITABLE);
   static_assert(fuchsia_device_DEVICE_SIGNAL_ERROR == DEV_STATE_ERROR);
   static_assert(fuchsia_device_DEVICE_SIGNAL_HANGUP == DEV_STATE_HANGUP);
   static_assert(fuchsia_device_DEVICE_SIGNAL_OOB == DEV_STATE_OOB);
-  return fuchsia_device_ControllerGetEventHandle_reply(txn, status, event.release());
+  // TODO(teisenbe): The FIDL definition erroneously describes this as an event rather than
+  // eventpair.
+  completer.Reply(status, zx::event(event.release()));
 }
 
-static zx_status_t fidl_DeviceControllerGetDriverLogFlags(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  if (!conn->dev->driver) {
-    return fuchsia_device_ControllerGetDriverLogFlags_reply(txn, ZX_ERR_UNAVAILABLE, 0);
+void DevfsConnection::GetDriverLogFlags(GetDriverLogFlagsCompleter::Sync completer) {
+  if (!this->dev->driver) {
+    return completer.Reply(ZX_ERR_UNAVAILABLE, 0);
   }
-  uint32_t flags = conn->dev->driver->driver_rec()->log_flags;
-  return fuchsia_device_ControllerGetDriverLogFlags_reply(txn, ZX_OK, flags);
+  uint32_t flags = this->dev->driver->driver_rec()->log_flags;
+  completer.Reply(ZX_OK, flags);
 }
 
-static zx_status_t fidl_DeviceControllerSetDriverLogFlags(void* ctx, uint32_t clear_flags,
-                                                          uint32_t set_flags, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  if (!conn->dev->driver) {
-    return fuchsia_device_ControllerSetDriverLogFlags_reply(txn, ZX_ERR_UNAVAILABLE);
+void DevfsConnection::SetDriverLogFlags(uint32_t clear_flags, uint32_t set_flags,
+                                        SetDriverLogFlagsCompleter::Sync completer) {
+  if (!this->dev->driver) {
+    return completer.Reply(ZX_ERR_UNAVAILABLE);
   }
-  uint32_t flags = conn->dev->driver->driver_rec()->log_flags;
+  uint32_t flags = this->dev->driver->driver_rec()->log_flags;
   flags &= ~clear_flags;
   flags |= set_flags;
-  conn->dev->driver->driver_rec()->log_flags = flags;
-  return fuchsia_device_ControllerSetDriverLogFlags_reply(txn, ZX_OK);
+  this->dev->driver->driver_rec()->log_flags = flags;
+  completer.Reply(ZX_OK);
 }
 
-static zx_status_t fidl_DeviceControllerDebugSuspend(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  return fuchsia_device_ControllerDebugSuspend_reply(txn, conn->dev->SuspendOp(0));
+void DevfsConnection::DebugSuspend(DebugSuspendCompleter::Sync completer) {
+  completer.Reply(this->dev->SuspendOp(0));
 }
 
-static zx_status_t fidl_DeviceControllerDebugResume(void* ctx, fidl_txn_t* txn) {
-  auto conn = static_cast<DevfsConnection*>(ctx);
-  return fuchsia_device_ControllerDebugResume_reply(txn, conn->dev->ResumeOp(0));
+void DevfsConnection::DebugResume(DebugResumeCompleter::Sync completer) {
+  completer.Reply(this->dev->ResumeOp(0));
 }
 
-static const fuchsia_device_Controller_ops_t kDeviceControllerOps = {
-    .Bind = fidl_DeviceControllerBind,
-    .ScheduleUnbind = fidl_DeviceControllerScheduleUnbind,
-    .GetDriverName = fidl_DeviceControllerGetDriverName,
-    .GetDeviceName = fidl_DeviceControllerGetDeviceName,
-    .GetTopologicalPath = fidl_DeviceControllerGetTopologicalPath,
-    .GetEventHandle = fidl_DeviceControllerGetEventHandle,
-    .GetDriverLogFlags = fidl_DeviceControllerGetDriverLogFlags,
-    .SetDriverLogFlags = fidl_DeviceControllerSetDriverLogFlags,
-    .DebugSuspend = fidl_DeviceControllerDebugSuspend,
-    .DebugResume = fidl_DeviceControllerDebugResume,
-    .RunCompatibilityTests = fidl_DeviceControllerRunCompatibilityTests,
-    .GetDevicePowerCaps = fidl_DeviceControllerGetDevicePowerCaps,
-    .UpdatePowerStateMapping = fidl_DeviceControllerUpdatePowerStateMapping,
-    .GetPowerStateMapping = fidl_DeviceControllerGetPowerStateMapping,
-    .Suspend = fidl_DeviceControllerSuspend,
-    .Resume = fidl_DeviceControllerResume,
-};
+void DevfsConnection::RunCompatibilityTests(int64_t hook_wait_time,
+                                            RunCompatibilityTestsCompleter::Sync completer) {
+  this->dev->PushTestCompatibilityConn(completer.ToAsync());
+  device_run_compatibility_tests(this->dev, hook_wait_time);
+}
+
+void DevfsConnection::GetDevicePowerCaps(GetDevicePowerCapsCompleter::Sync completer) {
+  // For now, the result is always a successful response because the device itself is not added
+  // without power states validation. In future, we may add more checks for validation, and the
+  // error result will be put to use.
+  ::llcpp::fuchsia::device::Controller_GetDevicePowerCaps_Response response{};
+  auto& states = this->dev->GetPowerStates();
+
+  ZX_DEBUG_ASSERT(states.size() == fuchsia_device_MAX_DEVICE_POWER_STATES);
+  for (size_t i = 0; i < fuchsia_device_MAX_DEVICE_POWER_STATES; i++) {
+    response.dpstates[i] = states[i];
+  }
+  completer.Reply(::llcpp::fuchsia::device::Controller_GetDevicePowerCaps_Result::WithResponse(
+      std::move(response)));
+}
+
+void DevfsConnection::UpdatePowerStateMapping(
+    ::fidl::Array<::llcpp::fuchsia::device::SystemPowerStateInfo,
+                  ::llcpp::fuchsia::device::manager::MAX_SYSTEM_POWER_STATES>
+        mapping,
+    UpdatePowerStateMappingCompleter::Sync completer) {
+  ::llcpp::fuchsia::device::Controller_UpdatePowerStateMapping_Response response;
+
+  std::array<fuchsia_device_SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>
+      states_mapping;
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    states_mapping[i] = mapping[i];
+  }
+  zx_status_t status = this->dev->SetSystemPowerStateMapping(states_mapping);
+  if (status != ZX_OK) {
+    return completer.Reply(
+        ::llcpp::fuchsia::device::Controller_UpdatePowerStateMapping_Result::WithErr(
+            std::move(status)));
+  }
+  completer.Reply(
+      ::llcpp::fuchsia::device::Controller_UpdatePowerStateMapping_Result::WithResult());
+}
+
+void DevfsConnection::GetPowerStateMapping(GetPowerStateMappingCompleter::Sync completer) {
+  ::llcpp::fuchsia::device::Controller_GetPowerStateMapping_Response response;
+
+  auto& mapping = this->dev->GetSystemPowerStateMapping();
+  ZX_DEBUG_ASSERT(mapping.size() == fuchsia_device_manager_MAX_SYSTEM_POWER_STATES);
+
+  for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
+    response.mapping[i] = mapping[i];
+  }
+  completer.Reply(::llcpp::fuchsia::device_Controller::GetPowerStateMapping_Result::WithResult(
+      std::move(response)));
+}
+
+void DevfsConnection::Suspend(::llcpp::fuchsia::device::DevicePowerState requested_state,
+                              SuspendCompleter::Sync completer) {
+  fuchsia_device_DevicePowerState out_state;
+  zx_status_t status = devhost_device_suspend_new(this->dev, requested_state, &out_state);
+  completer.Reply(status, out_state);
+}
+
+void DevfsConnection::Resume(::llcpp::fuchsia::device::DevicePowerState requested_state,
+                             ResumeCompleter::Sync completer) {
+  ::llcpp::fuchsia::device::DevicePowerState out_state;
+  zx_status_t status = devhost_device_resume_new(this->dev, requested_state, &out_state);
+  if (status != ZX_OK) {
+    return completer.Reply(
+        ::llcpp::fuchsia::device::Controller_Resume_Result::WithErr(std::move(status)));
+  }
+
+  ::llcpp::fuchsia::device::Controller_Resume_Response response;
+  response.out_state = out_state;
+  completer.Reply(
+      ::llcpp::fuchsia::device::Controller_Resume_Result::WithResponse(std::move(response)));
+}
 
 zx_status_t devhost_fidl_handler(fidl_msg_t* msg, fidl_txn_t* txn, void* cookie) {
+  auto conn = static_cast<DevfsConnection*>(cookie);
   zx_status_t status = fuchsia_io_Node_try_dispatch(cookie, txn, msg, &kNodeOps);
   if (status != ZX_ERR_NOT_SUPPORTED) {
     return status;
@@ -728,12 +697,11 @@ zx_status_t devhost_fidl_handler(fidl_msg_t* msg, fidl_txn_t* txn, void* cookie)
   if (status != ZX_ERR_NOT_SUPPORTED) {
     return status;
   }
-  status = fuchsia_device_Controller_try_dispatch(cookie, txn, msg, &kDeviceControllerOps);
+  status = ::llcpp::fuchsia::device::Controller::TryDispatch(conn, msg, txn);
   if (status != ZX_ERR_NOT_SUPPORTED) {
     return status;
   }
 
-  auto conn = static_cast<DevfsConnection*>(cookie);
   return conn->dev->MessageOp(msg, txn);
 }
 

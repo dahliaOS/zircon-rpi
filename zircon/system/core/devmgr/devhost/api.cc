@@ -94,11 +94,10 @@ __EXPORT zx_status_t device_add_from_driver(zx_driver_t* drv, zx_device_t* paren
 
     // Set default system to device power state mapping. This can be later
     // updated by the system power manager.
-    std::array<fuchsia_device_SystemPowerStateInfo, fuchsia_device_manager_MAX_SYSTEM_POWER_STATES>
-        states_mapping{};
-    for (size_t i = 0; i < fuchsia_device_manager_MAX_SYSTEM_POWER_STATES; i++) {
-      states_mapping[i].dev_state = fuchsia_device_DevicePowerState_DEVICE_POWER_STATE_D3COLD;
-      states_mapping[i].wakeup_enable = false;
+    zx_device::SystemPowerStateMapping states_mapping{};
+    for (auto& entry : states_mapping) {
+      entry.dev_state = ::llcpp::fuchsia::device::DevicePowerState::DEVICE_POWER_STATE_D3COLD;
+      entry.wakeup_enable = false;
     }
     r = dev->SetSystemPowerStateMapping(states_mapping);
     if (r != ZX_OK) {
