@@ -16,11 +16,6 @@ namespace sysmem = llcpp::fuchsia::sysmem;
 
 zx_handle_t get_root_resource(void) { return ZX_HANDLE_INVALID; }
 
-zx_status_t device_get_profile(zx_device_t* device, uint32_t priority, const char* name,
-                               zx_handle_t* out_profile) {
-  return ZX_ERR_NOT_SUPPORTED;
-}
-
 namespace {
 class MockNoCpuBufferCollection : public mock_sysmem::MockBufferCollection {
  public:
