@@ -118,13 +118,18 @@ static bt_hci_protocol_ops_t hci_protocol_ops = {
 zx_status_t Device::Bind() {
   logf(TRACE, "bind\n");
 
+  // We add the device as invisible so that it cannot be interfaced with until initialization is
+  // complete, e.g. once we have started the loop_ thread. This ensures that the device `unbind()`
+  // operation is not called before this function returns. This guarantees ordering between `bind()`
+  // and `unbind()` and prevents race conditions between objects (such as `loop_`) that are
+  // initialized here and deinitialized in `unbind()`.
   device_add_args_t args = {
       .version = DEVICE_ADD_ARGS_VERSION,
       .name = "bt_hci_emulator",
       .ctx = this,
       .ops = &bt_emulator_device_ops,
       .proto_id = ZX_PROTOCOL_BT_EMULATOR,
-      .flags = DEVICE_ADD_NON_BINDABLE,
+      .flags = DEVICE_ADD_NON_BINDABLE | DEVICE_ADD_INVISIBLE,
   };
   zx_status_t status = device_add(parent_, &args, &emulator_dev_);
   if (status != ZX_OK) {
@@ -141,6 +146,9 @@ zx_status_t Device::Bind() {
       fit::bind_member(this, &Device::OnPeerConnectionStateChanged));
 
   loop_.StartThread("bt_hci_emulator");
+
+  // The device is now fully intialized, so it is safe to make it visible
+  device_make_visible(emulator_dev_);
 
   return status;
 }
