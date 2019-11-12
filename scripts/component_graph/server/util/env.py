@@ -10,6 +10,8 @@ import os
 def get_fuchsia_root():
     """Returns the fuchsia the from the environment."""
     fuchsia_dir = os.environ.get("FUCHSIA_DIR")
+    if not fuchsia_dir:
+        return None
     if not os.path.exists(fuchsia_dir):
         return None
     if not fuchsia_dir.endswith("/"):

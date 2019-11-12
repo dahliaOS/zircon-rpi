@@ -2,6 +2,7 @@ mod graph;
 
 use failure::{Error, Fail};
 use graph::Graph;
+use reqwest;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use structopt::StructOpt;
@@ -10,6 +11,7 @@ use structopt::StructOpt;
 enum ComponentType {
     Binary(String),
     Data(String),
+    Unknown,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,15 +42,18 @@ fn guess_package_name(name: &str) -> String {
 
 fn parse_cmx_string(filename: &str, data: &str) -> Result<Component, Error> {
     let json: serde_json::Value = serde_json::from_str(data)?;
+    parse_cmx_json(filename, &json)
+}
 
+fn parse_cmx_json(filename: &str, json: &serde_json::Value) -> Result<Component, Error> {
     // Determine component type.
     let type_ = if let Value::String(binary) = &json["program"]["binary"] {
-        Ok(ComponentType::Binary(binary.to_string()))
+        ComponentType::Binary(binary.to_string())
     } else if let Value::String(data) = &json["program"]["data"] {
-        Ok(ComponentType::Data(data.to_string()))
+        ComponentType::Data(data.to_string())
     } else {
-        Err(ParseError::Generic { details: "No `program.binary` or `program.data`.".to_string() })
-    }?;
+        ComponentType::Unknown
+    };
 
     // Parse input services
     let no_services = vec![];
@@ -148,6 +153,10 @@ struct Opt {
     #[structopt(long = "cmx", name = "cmx")]
     files: Vec<String>,
 
+    /// Component server to connect to.
+    #[structopt(short = "s", long = "server", name = "server")]
+    server: Option<String>,
+
     /// ".cmx" files to use as roots. If none specified, show all.
     #[structopt(long = "roots", name = "roots")]
     roots: Vec<String>,
@@ -229,13 +238,17 @@ fn print_graph(graph: &Graph<String, NodeType>, roots: &[String]) {
     println!("}}");
 }
 
-fn main() -> Result<(), Error> {
-    let opt = Opt::from_args();
+struct ParsedResults {
+    services: HashMap<String, String>,
+    startup_services: HashSet<String>,
+    cmx_files: Vec<Component>,
+}
 
+fn parse_from_files(service_configs: &Vec<String>, cmx_files: &Vec<String>) -> ParsedResults {
     // Parse the services directory.
     let mut services = HashMap::new();
     let mut startup_services = HashSet::new();
-    for service_file in &opt.services {
+    for service_file in service_configs {
         match parse_services_file(service_file) {
             Ok(config) => {
                 merge_into(&mut services, config.services);
@@ -250,9 +263,9 @@ fn main() -> Result<(), Error> {
     }
 
     // Parse cmx files.
-    let mut cmx_files = vec![];
+    let mut parsed_cmx_files = vec![];
     let mut seen_names: HashMap<String, String> = HashMap::new();
-    for filename in opt.files {
+    for filename in cmx_files {
         let cmx = match parse_cmx_file(&filename) {
             Ok(cmx) => cmx,
             Err(e) => {
@@ -264,29 +277,88 @@ fn main() -> Result<(), Error> {
             eprintln!("Duplicate CMX file: {}, {}", filename, orig_name);
             continue;
         }
-        seen_names.insert(cmx.filename.to_string(), filename);
-        cmx_files.push(cmx);
+        seen_names.insert(cmx.filename.to_string(), filename.to_string());
+        parsed_cmx_files.push(cmx);
     }
 
     // Ensure we have all the services listed in the services file.
     let needed_cmx_files = services.values().collect::<HashSet<_>>();
-    let available_cmx_files = cmx_files.iter().map(|x| &x.filename).collect::<HashSet<_>>();
+    let available_cmx_files = parsed_cmx_files.iter().map(|x| &x.filename).collect::<HashSet<_>>();
     for file in needed_cmx_files.difference(&available_cmx_files) {
         eprintln!("Could not find expected file: {}", file);
     }
+
+    ParsedResults { services, startup_services, cmx_files: parsed_cmx_files }
+}
+
+fn parse_from_server(address: &str) -> Result<ParsedResults, Error> {
+    // Parse services.
+    let services_body: serde_json::map::Map<_, _> =
+        reqwest::get(&format!("http://{}/api/component/services", address))?.json()?;
+    let services = services_body
+        .iter()
+        .filter_map(|v| match v {
+            (k, Value::String(v)) => Some((k.to_string(), guess_package_name(&v))),
+            _ => None,
+        })
+        .collect::<HashMap<String, String>>();
+
+    // Parse components.
+    let components_body: Vec<serde_json::map::Map<_, _>> =
+        reqwest::get(&format!("http://{}/api/component/packages", address))?.json()?;
+    let mut components = Vec::new();
+    for component in components_body {
+        // If we have a manifest, parse that.
+        if let (Some(serde_json::Value::String(url)), Some(value)) =
+            (component.get("url"), component.get("manifest"))
+        {
+            components.push(parse_cmx_json(&guess_package_name(url), value)?);
+            continue;
+        }
+
+        // Otherwise, match any CMX file we find inside.
+        match &component["files"] {
+            serde_json::Value::Object(map) => {
+                for (filename, data) in map {
+                    if filename.ends_with(".cmx") {
+                        components.push(parse_cmx_json(filename, data)?);
+                    }
+                }
+            }
+            _ => {
+                return Err(ParseError::Generic {
+                    details: "Could not parse 'file' stanza.".to_string(),
+                }
+                .into())
+            }
+        }
+    }
+
+    // Return results.
+    Ok(ParsedResults { services, startup_services: HashSet::new(), cmx_files: components })
+}
+
+fn main() -> Result<(), Error> {
+    let opt = Opt::from_args();
+
+    // Parse config files.
+    let system = match opt.server {
+        Some(server) => parse_from_server(&server)?,
+        None => parse_from_files(&opt.services, &opt.files),
+    };
 
     // Generate a graph.
     let mut graph = Graph::new();
 
     // Add service nodes (but not edges).
-    for service in services.iter() {
+    for service in system.services.iter() {
         graph
             .add_node(service.0.clone(), NodeType::Interface)
             .unwrap_or_else(|_| panic!("Duplicate service found: {}", service.0));
     }
 
     // Add component nodes and edges.
-    for node in cmx_files {
+    for node in system.cmx_files {
         let node = std::rc::Rc::new(node);
         graph
             .add_node(node.filename.to_string(), NodeType::Component(node.clone()))
@@ -300,9 +372,9 @@ fn main() -> Result<(), Error> {
     }
 
     // Add fake "startup" node.
-    eprintln!("Startup services: {:?}", &startup_services);
+    eprintln!("Startup services: {:?}", &system.startup_services);
     graph.add_node("startup".to_string(), NodeType::UnknownComponent)?;
-    for service in startup_services {
+    for service in system.startup_services {
         match graph.add_edge(&"startup".to_string(), &service) {
             Ok(()) => (),
             Err(_) => eprintln!("Could not find startup service: {}", service),
@@ -313,7 +385,7 @@ fn main() -> Result<(), Error> {
     //
     // Even if we don't want to show them, we still need to track them to find CMX -> CMX
     // connections.
-    for (service, provider) in services.iter() {
+    for (service, provider) in system.services.iter() {
         if !graph.node_exists(provider) {
             graph.add_node(provider.to_string(), NodeType::UnknownComponent).unwrap();
         }
