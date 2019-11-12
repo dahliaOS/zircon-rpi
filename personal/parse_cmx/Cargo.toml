@@ -1,0 +1,10 @@
+[package]
+name = "parse_cmx"
+version = "0.1.0"
+authors = ["David Greenaway <dgreenaway@google.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "*"
+serde_json = "1"
+structopt = "0.2"
