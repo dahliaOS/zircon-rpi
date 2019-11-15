@@ -31,9 +31,6 @@ constexpr trace_ticks_t kInheritPriorityFlowOffset = 10;
 // Synthetic width for the futex events.
 constexpr trace_ticks_t kFutexOpPriorityDurationWidth = 50;
 
-// Synthetic width for the kernel mutex events.
-constexpr trace_ticks_t kKernelMutexOpPriorityDurationWidth = 50;
-
 // The kernel reports different thread state values through ktrace.
 // These values must line up with those in "kernel/include/kernel/thread.h".
 constexpr trace_thread_state_t ToTraceThreadState(int value) {
@@ -770,8 +767,6 @@ bool Importer::HandleKernelMutexEvent(trace_ticks_t event_time, uint32_t which_e
                      trace_make_uint32_arg_value(waiter_count)),
   };
 
-  const trace_ticks_t end_time = event_time + kKernelMutexOpPriorityDurationWidth;
-
   const trace_string_ref_t* event_name = nullptr;
   switch (which_event) {
     case KTRACE_EVENT(TAG_KERNEL_MUTEX_ACQUIRE):
@@ -788,9 +783,9 @@ bool Importer::HandleKernelMutexEvent(trace_ticks_t event_time, uint32_t which_e
       break;
   }
 
-  trace_context_write_duration_event_record(context_, event_time, end_time, &thread_ref,
-                                            &sched_category_ref_, event_name, args,
-                                            fbl::count_of(args));
+  trace_context_write_instant_event_record(context_, event_time, &thread_ref, &sched_category_ref_,
+                                           event_name, TRACE_SCOPE_THREAD, args,
+                                           fbl::count_of(args));
 
   return true;
 }

@@ -44,7 +44,7 @@ enum class KernelMutexTracingLevel {
 };
 
 // By default, kernel mutex tracing is disabled.
-template <KernelMutexTracingLevel = KernelMutexTracingLevel::None, typename = void>
+template <KernelMutexTracingLevel = KernelMutexTracingLevel::All, typename = void>
 class KTracer;
 
 template <>

@@ -40,20 +40,22 @@ using ffl::Round;
 // Enable/disable ktraces local to this file.
 #define LOCAL_KTRACE_ENABLE 0 || WITH_DETAILED_SCHEDULER_TRACING
 
-#define LOCAL_KTRACE(string, args...)                                                         \
-  ktrace_probe(LocalTrace<LOCAL_KTRACE_ENABLE>, TraceContext::Cpu, KTRACE_STRING_REF(string), \
-               ##args)
+#define LOCAL_KTRACE(string, args...) \
+  ktrace_probe(TraceNever, TraceContext::Cpu, KTRACE_STRING_REF(string), ##args)
 
-#define LOCAL_KTRACE_FLOW_BEGIN(string, flow_id)                                              \
-  ktrace_flow_begin(LocalTrace<LOCAL_KTRACE_ENABLE>, TraceContext::Cpu, KTRACE_GRP_SCHEDULER, \
+#define LOCAL_KTRACE_FLOW_BEGIN(string, flow_id)                         \
+  ktrace_flow_begin(TraceNever, TraceContext::Cpu, KTRACE_GRP_SCHEDULER, \
                     KTRACE_STRING_REF(string), flow_id)
 
-#define LOCAL_KTRACE_FLOW_END(string, flow_id)                                              \
-  ktrace_flow_end(LocalTrace<LOCAL_KTRACE_ENABLE>, TraceContext::Cpu, KTRACE_GRP_SCHEDULER, \
-                  KTRACE_STRING_REF(string), flow_id)
+#define LOCAL_KTRACE_FLOW_END(string, flow_id)                                                    \
+  ktrace_flow_end(TraceNever, TraceContext::Cpu, KTRACE_GRP_SCHEDULER, KTRACE_STRING_REF(string), \
+                  flow_id)
 
 using LocalTraceDuration =
-    TraceDuration<TraceEnabled<LOCAL_KTRACE_ENABLE>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
+    TraceDuration<TraceEnabled<false>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
+
+using LocalTraceDurationAlways =
+    TraceDuration<TraceEnabled<true>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
 
 // Enable/disable console traces local to this file.
 #define LOCAL_TRACE 0
@@ -1076,7 +1078,7 @@ void Scheduler::Remove(thread_t* thread) {
 }
 
 void Scheduler::Block() {
-  LocalTraceDuration trace{"sched_block"_stringref};
+  LocalTraceDurationAlways trace{"sched_block"_stringref};
 
   DEBUG_ASSERT(spin_lock_held(&thread_lock));
 
@@ -1092,7 +1094,7 @@ void Scheduler::Block() {
 }
 
 bool Scheduler::Unblock(thread_t* thread) {
-  LocalTraceDuration trace{"sched_unblock"_stringref};
+  LocalTraceDurationAlways trace{"sched_unblock"_stringref};
 
   DEBUG_ASSERT(thread->magic == THREAD_MAGIC);
   DEBUG_ASSERT(spin_lock_held(&thread_lock));
@@ -1115,7 +1117,7 @@ bool Scheduler::Unblock(thread_t* thread) {
 }
 
 bool Scheduler::Unblock(list_node* list) {
-  LocalTraceDuration trace{"sched_unblock_list"_stringref};
+  LocalTraceDurationAlways trace{"sched_unblock_list"_stringref};
 
   DEBUG_ASSERT(list);
   DEBUG_ASSERT(spin_lock_held(&thread_lock));
@@ -1195,7 +1197,7 @@ void Scheduler::Yield() {
 }
 
 void Scheduler::Preempt() {
-  LocalTraceDuration trace{"sched_preempt"_stringref};
+  LocalTraceDurationAlways trace{"sched_preempt"_stringref};
 
   DEBUG_ASSERT(spin_lock_held(&thread_lock));
 
@@ -1213,7 +1215,7 @@ void Scheduler::Preempt() {
 }
 
 void Scheduler::Reschedule() {
-  LocalTraceDuration trace{"sched_reschedule"_stringref};
+  LocalTraceDurationAlways trace{"sched_reschedule"_stringref};
 
   DEBUG_ASSERT(spin_lock_held(&thread_lock));
 

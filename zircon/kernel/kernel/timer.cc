@@ -26,6 +26,7 @@
 #include <inttypes.h>
 #include <lib/affine/ratio.h>
 #include <lib/counters.h>
+#include <lib/ktrace.h>
 #include <list.h>
 #include <malloc.h>
 #include <platform.h>
@@ -45,6 +46,9 @@
 #include <platform/timer.h>
 
 #define LOCAL_TRACE 0
+
+using LocalTraceDurationAlways =
+    TraceDuration<TraceEnabled<false>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
 
 // Total number of timers set. Always increasing.
 KCOUNTER(timer_created_counter, "timer.created")
@@ -108,6 +112,9 @@ static void update_platform_timer(uint cpu, zx_time_t new_deadline) {
 
 static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_deadline,
                                   zx_time_t latest_deadline) {
+  LocalTraceDurationAlways trace{"insert_timer_in_queue"_stringref,
+                                 static_cast<uint64_t>(earliest_deadline),
+                                 static_cast<uint64_t>(latest_deadline)};
   DEBUG_ASSERT(arch_ints_disabled());
   LTRACEF("timer %p, cpu %u, scheduled %" PRIi64 "\n", timer, cpu, timer->scheduled_time);
 
@@ -128,6 +135,9 @@ static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_d
 
   list_for_every_entry (&percpu::Get(cpu).timer_queue, entry, timer_t, node) {
     if (entry->scheduled_time > latest_deadline) {
+      LocalTraceDurationAlways trace_earlier{"earlier"_stringref,
+                                             static_cast<uint64_t>(latest_deadline),
+                                             static_cast<uint64_t>(entry->scheduled_time)};
       // New timer latest is earlier than the current timer.
       // Just add upfront as is, without slack.
       //
@@ -139,6 +149,9 @@ static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_d
     }
 
     if (entry->scheduled_time >= timer->scheduled_time) {
+      LocalTraceDurationAlways trace_left{"left_overlap"_stringref,
+                                          static_cast<uint64_t>(timer->scheduled_time),
+                                          static_cast<uint64_t>(entry->scheduled_time)};
       //  New timer slack overlaps and is to the left (or equal). We
       //  coalesce with current by scheduling late.
       //
@@ -152,6 +165,9 @@ static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_d
     }
 
     if (entry->scheduled_time < earliest_deadline) {
+      LocalTraceDurationAlways trace_later{"later"_stringref,
+                                           static_cast<uint64_t>(earliest_deadline),
+                                           static_cast<uint64_t>(entry->scheduled_time)};
       // new timer earliest is later than the current timer. This case
       // is handled in a future iteration.
       //
@@ -172,6 +188,9 @@ static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_d
 
     if (next != NULL) {
       if (next->scheduled_time <= timer->scheduled_time) {
+        LocalTraceDurationAlways trace_right{"right"_stringref,
+                                            static_cast<uint64_t>(timer->scheduled_time),
+                                            static_cast<uint64_t>(entry->scheduled_time)};
         // The new timer is to the right of the next timer. There is no
         // chance the current timer is a better fit.
         //
@@ -181,6 +200,9 @@ static void insert_timer_in_queue(uint cpu, timer_t* timer, zx_time_t earliest_d
       }
 
       if (next->scheduled_time < latest_deadline) {
+        LocalTraceDurationAlways trace_between{"between"_stringref,
+                                            static_cast<uint64_t>(latest_deadline),
+                                            static_cast<uint64_t>(next->scheduled_time)};
         // There is slack overlap with the next timer, and also with the
         // current timer. Which coalescing is a better match?
         //
