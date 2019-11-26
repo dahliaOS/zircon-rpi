@@ -55,7 +55,7 @@ using LocalTraceDuration =
     TraceDuration<TraceEnabled<false>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
 
 using LocalTraceDurationAlways =
-    TraceDuration<TraceEnabled<false>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
+    TraceDuration<TraceEnabled<true>, KTRACE_GRP_SCHEDULER, TraceContext::Cpu>;
 
 // Enable/disable console traces local to this file.
 #define LOCAL_TRACE 0
