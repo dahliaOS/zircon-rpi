@@ -20,7 +20,7 @@ use {
     fuchsia_bluetooth::{
         self as bt,
         inspect::{DebugExt, Inspectable, ToProperty},
-        types::{Address, BondingData, HostInfo, Identity, Peer, PeerId},
+        types::{Address, BondingData, HostInfo, Id, Identity, Peer, PeerId},
     },
     fuchsia_inspect::{self as inspect, Property},
     fuchsia_syslog::{fx_log_err, fx_log_info, fx_log_warn, fx_vlog},
@@ -44,8 +44,9 @@ use crate::{
     generic_access_service,
     host_device::{self, HostDevice, HostListener},
     services,
+    services::pairing_delegate::{PairingDispatcher, PairingDispatcherHandle},
     store::stash::Stash,
-    types,
+    types::{self, HostId},
 };
 
 pub static HOST_INIT_TIMEOUT: i64 = 5; // Seconds
@@ -153,7 +154,9 @@ struct HostDispatcherState {
     // them along a clone of this channel to GAS
     gas_channel_sender: mpsc::Sender<LocalServiceDelegateRequest>,
 
-    pub pairing_delegate: Option<PairingDelegateProxy>,
+    pairing_delegate: Option<PairingDelegateProxy>,
+    pairing_dispatcher: Option<PairingDispatcherHandle>,
+
     pub event_listeners: Vec<Weak<ControlControlHandle>>,
 
     // Pending requests to obtain a Host.
@@ -194,14 +197,44 @@ impl HostDispatcherState {
                     Some(ref pd) => pd.is_closed(),
                 };
                 if assign {
-                    self.pairing_delegate = Some(delegate);
+                    self.pairing_delegate = Some(delegate.clone());
+                    self.set_pairing_delegate_internal(Some(delegate), self.input, self.output);
                 }
                 assign
             }
             None => {
                 self.pairing_delegate = None;
+                self.set_pairing_delegate_internal(None, self.input, self.output);
                 false
             }
+        }
+    }
+
+    pub fn set_pairing_delegate_internal(
+        &mut self,
+        delegate: Option<PairingDelegateProxy>,
+        input: InputCapabilityType,
+        output: OutputCapabilityType,
+    ) {
+        match delegate {
+            Some(delegate) => {
+                let (dispatcher, mut handle) = PairingDispatcher::new(delegate, input, output);
+                for (host) in self.host_devices.values() {
+                    let (id,proxy) = {
+                        let host = host.read();
+                        let proxy = host.get_host().clone();
+                        let info = host.get_info();
+                        (HostId::from(info.id), proxy)
+                    };
+                    handle.add_host(id, proxy.clone());
+                }
+                // Old pairing dispatcher dropped; This drops all host pairings
+                self.pairing_dispatcher = Some(handle);
+                // Spawn handling of the new pairing requests
+                fasync::spawn(dispatcher.run());
+            },
+            // Old pairing dispatcher dropped; This drops all host pairings
+            None => self.pairing_dispatcher = None,
         }
     }
 
@@ -223,6 +256,8 @@ impl HostDispatcherState {
         self.output = output;
         self.inspect.input_capability.set(&input.debug());
         self.inspect.output_capability.set(&output.debug());
+
+        self.set_pairing_delegate_internal(self.pairing_delegate.clone(), self.input, self.output);
     }
 
     /// Return the active id. If the ID is currently not set,
@@ -336,6 +371,7 @@ impl HostDispatcher {
             discovery: None,
             discoverable: None,
             pairing_delegate: None,
+            pairing_dispatcher: None,
             event_listeners: vec![],
             host_requests: Slab::new(),
             inspect: HostDispatcherInspect::new(inspect),
@@ -588,7 +624,7 @@ impl HostDispatcher {
     }
 
     pub fn on_device_updated(&self, peer: Peer) {
-        // TODO(825): generic method for this pattern
+        // TODO(NET-1297): generic method for this pattern
         let mut d = control::RemoteDevice::from(peer.clone());
         self.notify_event_listeners(|listener| {
             let _res = listener
@@ -697,7 +733,7 @@ impl HostDispatcher {
         // Enable privacy by default.
         host_device.read().enable_privacy(true).map_err(|e| e.as_failure())?;
 
-        // TODO(845): Only the active host should be made connectable and scanning in the background.
+        // TODO(NET-1445): Only the active host should be made connectable and scanning in the background.
         host_device
             .read()
             .set_connectable(true)
@@ -708,8 +744,8 @@ impl HostDispatcher {
             .enable_background_scan(true)
             .map_err(|_| format_err!("failed to enable background scan"))?;
 
-        // Initialize bt-gap as this host's pairing delegate.
-        start_pairing_delegate(self.clone(), host_device.clone())?;
+        // Ensure the current active pairing delegate (if it exists) handles this host
+        self.start_pairing_delegate(host_device.clone());
 
         // TODO(fxb/36378): Remove conversions to String when fuchsia.bluetooth.sys is supported.
         let id = host_device.read().get_info().id.value.to_string();
@@ -755,6 +791,24 @@ impl HostDispatcher {
         // Try to assign a new active adapter. This may send an "OnActiveAdapterChanged" event.
         if hd.active_id.is_none() {
             let _ = hd.get_active_id();
+        }
+    }
+
+    fn start_pairing_delegate(&self, host: Arc<RwLock<HostDevice>>) {
+        // Initialize bt-gap as this host's pairing delegate.
+        // TODO(NET-1445): Do this only for the active host. This will make sure that non-active hosts
+        // always reject pairing.
+
+        let mut dispatcher = self.state.write();
+
+        if let Some(handle) = &mut dispatcher.pairing_dispatcher {
+            let (id,proxy) = {
+                let host = host.read();
+                let proxy = host.get_host().clone();
+                let info = host.get_info();
+                (HostId::from(info.id), proxy)
+            };
+            handle.add_host(id, proxy);
         }
     }
 }
@@ -895,26 +949,6 @@ async fn assign_host_data(
     };
     let host = host_device.read();
     host.set_local_data(data).map_err(|e| e.into())
-}
-
-fn start_pairing_delegate(
-    hd: HostDispatcher,
-    host_device: Arc<RwLock<HostDevice>>,
-) -> Result<(), Error> {
-    // Initialize bt-gap as this host's pairing delegate.
-    // TODO(845): Do this only for the active host. This will make sure that non-active hosts
-    // always reject pairing.
-    let (delegate_client_end, delegate_stream) = endpoints::create_request_stream()?;
-    host_device.read().set_host_pairing_delegate(
-        hd.state.read().input,
-        hd.state.read().output,
-        delegate_client_end,
-    );
-    fasync::spawn(
-        services::start_pairing_delegate(hd.clone(), delegate_stream)
-            .unwrap_or_else(|e| eprintln!("Failed to spawn {:?}", e)),
-    );
-    Ok(())
 }
 
 #[cfg(test)]

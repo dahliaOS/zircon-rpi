@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use {anyhow::format_err, fidl_fuchsia_bluetooth as bt, fuchsia_bluetooth::bt_fidl_status};
+use {anyhow::format_err, fidl_fuchsia_bluetooth as bt, fuchsia_bluetooth::bt_fidl_status, std::fmt};
 
 /// Type representing Possible errors raised in the operation of BT-GAP
 #[derive(Debug)]
@@ -97,5 +97,21 @@ pub fn status_response(result: Result<()>) -> bt::Status {
     match result {
         Ok(()) => bt_fidl_status!(),
         Err(err) => err.as_status(),
+    }
+}
+
+/// A unique identifier for a bt-host device
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HostId(pub u64);
+
+impl fmt::Display for HostId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<bt::Id> for HostId {
+    fn from(id: bt::Id) -> HostId {
+        HostId(id.value)
     }
 }

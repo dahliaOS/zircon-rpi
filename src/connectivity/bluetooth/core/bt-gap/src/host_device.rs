@@ -47,15 +47,6 @@ impl HostDevice {
         &self.host
     }
 
-    pub fn set_host_pairing_delegate(
-        &self,
-        input: InputCapabilityType,
-        output: OutputCapabilityType,
-        delegate: ClientEnd<PairingDelegateMarker>,
-    ) {
-        let _ = self.host.set_pairing_delegate(input, output, Some(delegate));
-    }
-
     pub fn get_info(&self) -> &HostInfo {
         &self.info
     }

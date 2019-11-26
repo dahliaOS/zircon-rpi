@@ -4,6 +4,7 @@
 
 pub mod bootstrap;
 mod control;
-mod pairing_delegate;
+mod pairing;
+pub mod pairing_delegate;
 
-pub use self::{control::start_control_service, pairing_delegate::start_pairing_delegate};
+pub use self::control::start_control_service;
