@@ -34,6 +34,7 @@
 #include <dev/interrupt.h>
 #include <kernel/event.h>
 #include <kernel/timer.h>
+#include <vm/vmalloc.h>
 
 #define LOCAL_TRACE 0
 
@@ -104,19 +105,20 @@ zx_status_t x86_allocate_ap_structures(uint32_t* apic_ids, uint8_t cpu_count) {
   }
 
   if (cpu_count > 1) {
+    // allocate an array of per cpu structures out of the VM
     size_t len = sizeof(*ap_percpus) * (cpu_count - 1);
-    ap_percpus = (x86_percpu*)memalign(MAX_CACHE_LINE, len);
+    ap_percpus = (x86_percpu*)vmalloc(len, "x86 percpu");
     if (ap_percpus == nullptr) {
       return ZX_ERR_NO_MEMORY;
     }
-    memset(ap_percpus, 0, len);
 
     if ((use_monitor = x86_feature_test(X86_FEATURE_MON))) {
       uint16_t monitor_size = x86_get_cpuid_leaf(X86_CPUID_MON)->b & 0xffff;
       if (monitor_size < MAX_CACHE_LINE) {
         monitor_size = MAX_CACHE_LINE;
       }
-      uint8_t* monitors = (uint8_t*)memalign(monitor_size, monitor_size * cpu_count);
+      DEBUG_ASSERT(monitor_size <= PAGE_SIZE);
+      uint8_t* monitors = (uint8_t*)vmalloc(monitor_size * cpu_count, "x86 percpu monitor");
       if (monitors == nullptr) {
         return ZX_ERR_NO_MEMORY;
       }
