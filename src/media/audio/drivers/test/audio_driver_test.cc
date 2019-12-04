@@ -6,7 +6,6 @@
 
 #include <dirent.h>
 #include <fcntl.h>
-#include <fuchsia/hardware/audio/cpp/fidl.h>
 #include <lib/fdio/fdio.h>
 #include <lib/fzl/vmo-mapper.h>
 #include <lib/zx/vmo.h>
@@ -22,8 +21,8 @@ static const struct {
   const char* path;
   DeviceType device_type;
 } AUDIO_DEVNODES[] = {
-    {.path = "/dev/class/audio-input", .device_type = DeviceType::Input},
-    {.path = "/dev/class/audio-output", .device_type = DeviceType::Output},
+    {.path = "/dev/class/audio-input-2", .device_type = DeviceType::Input},
+    {.path = "/dev/class/audio-output-2", .device_type = DeviceType::Output},
 };
 
 // static
@@ -33,35 +32,13 @@ bool AudioDriverTest::no_output_devices_found_ = false;
 // static
 void AudioDriverTest::SetUpTestSuite() {
   // For verbose logging, set to -media::audio::TRACE or -media::audio::SPEW
-#ifdef NDEBUG
-  Logging::Init(FX_LOG_WARNING, {"audio_driver_test"});
-#else
   Logging::Init(FX_LOG_INFO, {"audio_driver_test"});
-#endif
 }
 
 // static
 std::atomic_uint32_t AudioDriverTest::unique_transaction_id_ = 0;
 
-// static
-zx_txid_t AudioDriverTest::NextTransactionId() {
-  uint32_t trans_id = ++unique_transaction_id_;
-  if (trans_id == AUDIO_INVALID_TRANSACTION_ID) {
-    trans_id = ++unique_transaction_id_;
-  }
-  return trans_id;
-}
-
-void AudioDriverTest::SetUp() {
-  TestFixture::SetUp();
-
-  stream_channel_.reset();
-}
-
 void AudioDriverTest::TearDown() {
-  ring_buffer_transceiver_.Close();
-  stream_transceiver_.Close();
-
   watchers_.clear();
 
   TestFixture::TearDown();
@@ -109,7 +86,7 @@ bool AudioDriverTest::WaitForDevice(DeviceType device_type) {
   RunLoopUntil([&enumeration_done]() { return enumeration_done; });
 
   // If we timed out waiting for devices, this target may not have any. Don't waste further time.
-  if (!stream_channel_ready_) {
+  if (!stream_config_ready_) {
     if (device_type == DeviceType::Input) {
       AudioDriverTest::no_input_devices_found_ = true;
     } else {
@@ -117,24 +94,14 @@ bool AudioDriverTest::WaitForDevice(DeviceType device_type) {
     }
     FX_LOGS(WARNING) << "*** No audio " << ((device_type == DeviceType::Input) ? "input" : "output")
                      << " devices detected on this target. ***";
-    return false;
   }
 
-  // ASSERT that we can communicate with the driver at all.
-  EXPECT_TRUE(stream_channel_.is_valid());
-  EXPECT_TRUE(stream_channel_ready_);
-
-  zx_status_t status = stream_transceiver_.Init(
-      std::move(stream_channel_), fit::bind_member(this, &AudioDriverTest::OnInboundStreamMessage),
-      ErrorHandler());
-  EXPECT_EQ(ZX_OK, status);
-
-  return stream_channel_ready_ && (status == ZX_OK);
+  return stream_config_ready_;
 }
 
 void AudioDriverTest::AddDevice(int dir_fd, const std::string& name, DeviceType device_type) {
   // TODO(mpuryear): on systems with more than one audio device of a given type, test them all.
-  if (stream_channel_ready_) {
+  if (stream_config_ready_) {
     FX_LOGS(WARNING) << "More than one device detected. For now, we need to ignore it.";
     return;
   }
@@ -142,8 +109,8 @@ void AudioDriverTest::AddDevice(int dir_fd, const std::string& name, DeviceType 
   // Open the device node.
   fbl::unique_fd dev_node(openat(dir_fd, name.c_str(), O_RDONLY));
   if (!dev_node.is_valid()) {
-    FX_LOGS(ERROR) << "AudioDriverTest failed to open device node at \"" << name << "\". ("
-                   << strerror(errno) << " : " << errno << ")";
+    FX_PLOGS(ERROR, errno) << "AudioDriverTest failed to open device node at \"" << name << "\". ("
+                           << strerror(errno) << " : " << errno << ")";
     FAIL();
   }
 
@@ -168,104 +135,98 @@ void AudioDriverTest::AddDevice(int dir_fd, const std::string& name, DeviceType 
                             << ((device_type == DeviceType::Input) ? "input" : "output");
     FAIL();
   }
-  stream_channel_ = intf.TakeChannel();
+  auto channel = intf.TakeChannel();
 
   AUD_VLOG(TRACE) << "Successfully opened devnode '" << name << "' for audio "
                   << ((device_type == DeviceType::Input) ? "input" : "output");
-  stream_channel_ready_ = true;
+
+  stream_config_intf_ =
+      fidl::InterfaceHandle<fuchsia::hardware::audio::StreamConfig>(std::move(channel)).Bind();
+  if (!stream_config_intf_.is_bound()) {
+    FX_LOGS(ERROR) << "Failed to get stream channel";
+    FAIL();
+  }
+  stream_config_intf_.set_error_handler([](zx_status_t status) {
+    FX_PLOGS(ERROR, status) << "Test failed with error: " << status;
+    FAIL();
+  });
+
+  stream_config_ready_ = true;
 }
 
 // Stream channel requests
 //
-// Request the driver's unique ID.
+// Request the stream properties including the driver's unique ID which must be unique between input
+// and output.
 // TODO(mpuryear): ensure that this differs between input and output.
-void AudioDriverTest::RequestUniqueId() {
-  if (error_occurred_) {
-    return;
-  }
+void AudioDriverTest::RequestStreamProperties() {
+  stream_config_intf_->GetProperties([this](fuchsia::hardware::audio::StreamProperties prop) {
+    memcpy(unique_id_.data(), prop.unique_id().data(), kUniqueIdLength);
 
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_unique_id_req_t>();
-  unique_id_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = unique_id_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_UNIQUE_ID;
+    char id_buf[2 * kUniqueIdLength + 1];
+    std::snprintf(id_buf, sizeof(id_buf),
+                  "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", unique_id_[0],
+                  unique_id_[1], unique_id_[2], unique_id_[3], unique_id_[4], unique_id_[5],
+                  unique_id_[6], unique_id_[7], unique_id_[8], unique_id_[9], unique_id_[10],
+                  unique_id_[11], unique_id_[12], unique_id_[13], unique_id_[14], unique_id_[15]);
+    AUD_VLOG(TRACE) << "Received unique_id " << id_buf;
 
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
+    if (device_type_ == DeviceType::Input) {
+      ASSERT_TRUE(prop.is_input());
+    } else {
+      ASSERT_FALSE(prop.is_input());
+    }
 
-  RunLoopUntil([this]() { return received_get_unique_id_; });
-}
+    can_mute_ = prop.can_mute();
+    can_agc_ = prop.can_agc();
+    min_gain_ = prop.min_gain_db();
+    max_gain_ = prop.max_gain_db();
+    gain_step_ = prop.gain_step_db();
 
-// Request that the driver return its manufacturer string.
-void AudioDriverTest::RequestManufacturerString() {
-  if (error_occurred_) {
-    return;
-  }
+    ASSERT_TRUE(min_gain_ <= max_gain_);
+    ASSERT_TRUE(gain_step_ >= 0);
+    ASSERT_TRUE(gain_step_ <= std::abs(max_gain_ - min_gain_));
 
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_string_req_t>();
-  manufacturer_string_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = manufacturer_string_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_STRING;
+    plug_detect_capabilities_ = prop.plug_detect_capabilities();
 
-  request.id = AUDIO_STREAM_STR_ID_MANUFACTURER;
+    AUD_VLOG(TRACE) << "Received manufacturer " << prop.manufacturer();
+    AUD_VLOG(TRACE) << "Received product " << prop.product();
 
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_get_string_manufacturer_ || error_occurred_; });
-}
-
-// Request that the driver return its product string.
-void AudioDriverTest::RequestProductString() {
-  if (error_occurred_) {
-    return;
-  }
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_string_req_t>();
-  product_string_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = product_string_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_STRING;
-
-  request.id = AUDIO_STREAM_STR_ID_PRODUCT;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_get_string_product_ || error_occurred_; });
-}
-
-// Request that the driver return its clock domain.
-void AudioDriverTest::RequestClockDomain() {
-  if (error_occurred_) {
-    return;
-  }
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_clock_domain_req_t>();
-  get_clock_domain_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = get_clock_domain_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_CLOCK_DOMAIN;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  RunLoopUntil([this]() { return received_get_clock_domain_; });
+    received_get_stream_properties_ = true;
+  });
+  RunLoopUntil([this]() { return received_get_stream_properties_; });
 }
 
 // Request that the driver return its gain capabilities and current state.
 void AudioDriverTest::RequestGain() {
-  if (error_occurred_) {
-    return;
-  }
+  // Since we reconnect to the audio stream every time we run this test and we are guaranteed by the
+  // audio driver interface definition that the driver will reply to the first watch request, we
+  // can get the gain state by issuing a watch FIDL call.
+  stream_config_intf_->WatchGainState([this](fuchsia::hardware::audio::GainState gain_state) {
+    AUD_VLOG(TRACE) << "Received gain " << gain_state.gain_db();
 
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_gain_req_t>();
-  get_gain_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = get_gain_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_GAIN;
+    cur_mute_ = gain_state.has_muted() && gain_state.muted();
+    cur_agc_ = gain_state.has_agc_enabled() && gain_state.agc_enabled();
+    cur_gain_ = gain_state.gain_db();
 
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
+    EXPECT_EQ(can_mute_, gain_state.has_muted());
+    EXPECT_EQ(can_agc_, gain_state.has_agc_enabled());
 
+    if (cur_mute_) {
+      EXPECT_TRUE(can_mute_);
+    }
+    if (cur_agc_) {
+      EXPECT_TRUE(can_agc_);
+    }
+    EXPECT_GE(cur_gain_, min_gain_);
+    EXPECT_LE(cur_gain_, max_gain_);
+    if (max_gain_ > min_gain_) {
+      EXPECT_GT(gain_step_, 0.0f);
+    } else {
+      EXPECT_EQ(gain_step_, 0.0f);
+    }
+    received_get_gain_ = true;
+  });
   RunLoopUntil([this]() { return received_get_gain_; });
 }
 
@@ -273,10 +234,6 @@ void AudioDriverTest::RequestGain() {
 // driver. This method assumes that the driver has already successfully responded to a GetGain
 // request.
 void AudioDriverTest::RequestSetGain() {
-  if (error_occurred_) {
-    return;
-  }
-
   ASSERT_TRUE(received_get_gain_);
 
   if (max_gain_ == min_gain_) {
@@ -290,737 +247,198 @@ void AudioDriverTest::RequestSetGain() {
     set_gain_ += gain_step_;
   }
 
-  audio_set_gain_flags_t flags = AUDIO_SGF_GAIN_VALID;
-  if (can_mute_) {
-    flags |= AUDIO_SGF_MUTE_VALID;
-    if (!cur_mute_) {
-      flags |= AUDIO_SGF_MUTE;
-    }
-  }
-  if (can_agc_) {
-    flags |= AUDIO_SGF_AGC_VALID;
-    if (!cur_agc_) {
-      flags |= AUDIO_SGF_AGC;
-    }
-  }
-  RequestSetGain(flags, set_gain_);
-}
+  set_mute_ = cur_mute_;
+  set_agc_ = cur_agc_;
+  set_gain_ = cur_gain_;
 
-// Request that the driver set its gain state to the specified gain_db and flags.
-// This method assumes that the driver has already successfully responded to a GetGain request.
-void AudioDriverTest::RequestSetGain(audio_set_gain_flags_t flags, float gain_db) {
-  if (error_occurred_) {
-    return;
-  }
+  fuchsia::hardware::audio::GainState gain_state = {};
+  gain_state.set_muted(set_mute_);
+  gain_state.set_agc_enabled(set_agc_);
+  gain_state.set_gain_db(set_gain_);
 
-  ASSERT_TRUE(received_get_gain_);
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_set_gain_req_t>();
-  set_gain_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = set_gain_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_SET_GAIN;
-
-  request.flags = flags;
-  request.gain = gain_db;
-  set_mute_ = (flags & AUDIO_SGF_MUTE_VALID) ? (flags & AUDIO_SGF_MUTE) : cur_mute_;
-  set_agc_ = (flags & AUDIO_SGF_AGC_VALID) ? (flags & AUDIO_SGF_AGC) : cur_agc_;
-  set_gain_ = (flags & AUDIO_SGF_GAIN_VALID) ? gain_db : cur_gain_;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_set_gain_ || error_occurred_; });
+  AUD_VLOG(TRACE) << "Sent gain " << gain_state.gain_db();
+  stream_config_intf_->SetGain(std::move(gain_state));
 }
 
 // Request that the driver return the format ranges that it supports.
 void AudioDriverTest::RequestFormats() {
-  if (error_occurred_) {
-    return;
-  }
+  stream_config_intf_->GetSupportedFormats(
+      [this](std::vector<fuchsia::hardware::audio::SupportedFormats> supported_formats) {
+        EXPECT_GT(supported_formats.size(), 0u);
 
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_get_formats_req_t>();
-  get_formats_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = get_formats_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_GET_FORMATS;
+        for (size_t i = 0; i < supported_formats.size(); ++i) {
+          auto& format = supported_formats[i].pcm_supported_formats();
 
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
+          uint8_t largest_bytes_per_sample = 0;
+          EXPECT_NE(format.bytes_per_sample.size(), 0u);
+          for (size_t j = 0; j < format.bytes_per_sample.size(); ++j) {
+            EXPECT_NE(format.bytes_per_sample[j], 0u);
+            if (format.bytes_per_sample[j] > largest_bytes_per_sample) {
+              largest_bytes_per_sample = format.bytes_per_sample[j];
+            }
+          }
+          for (size_t j = 0; j < format.valid_bits_per_sample.size(); ++j) {
+            EXPECT_LE(format.valid_bits_per_sample[j], largest_bytes_per_sample * 8);
+          }
 
+          EXPECT_NE(format.frame_rates.size(), 0u);
+          for (size_t j = 0; j < format.frame_rates.size(); ++j) {
+            EXPECT_GE(format.frame_rates[j], fuchsia::media::MIN_PCM_FRAMES_PER_SECOND);
+            EXPECT_LE(format.frame_rates[j], fuchsia::media::MAX_PCM_FRAMES_PER_SECOND);
+          }
+
+          EXPECT_NE(format.number_of_channels.size(), 0u);
+          for (size_t j = 0; j < format.number_of_channels.size(); ++j) {
+            EXPECT_GE(format.number_of_channels[j], fuchsia::media::MIN_PCM_CHANNEL_COUNT);
+            EXPECT_LE(format.number_of_channels[j], fuchsia::media::MAX_PCM_CHANNEL_COUNT);
+          }
+
+          pcm_formats_.push_back(format);
+        }
+
+        received_get_formats_ = true;
+      });
   RunLoopUntil([this]() { return received_get_formats_; });
 }
 
 // For the channelization and sample_format that we've set, determine the size of each frame.
-// This method assumes that the driver has already successfully responded to a SetFormat request.
+// This method assumes that SetFormat has already been sent to the driver.
 void AudioDriverTest::CalculateFrameSize() {
-  if (error_occurred_ || !received_set_format_) {
+  if (!format_is_set_) {
     return;
   }
-
-  switch (sample_format_) {
-    case AUDIO_SAMPLE_FORMAT_8BIT:
-      frame_size_ = num_channels_;
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_16BIT:
-      frame_size_ = num_channels_ * sizeof(int16_t);
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_20BIT_PACKED:
-      frame_size_ = (num_channels_ * 5 + 3) / 4;
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_24BIT_PACKED:
-      frame_size_ = num_channels_ * 3;
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_20BIT_IN32:
-    case AUDIO_SAMPLE_FORMAT_24BIT_IN32:
-    case AUDIO_SAMPLE_FORMAT_32BIT:
-      frame_size_ = num_channels_ * sizeof(int32_t);
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_32BIT_FLOAT:
-      frame_size_ = num_channels_ * sizeof(float);
-      break;
-
-    case AUDIO_SAMPLE_FORMAT_BITSTREAM:
-    default:
-      ASSERT_TRUE(false) << "Unknown sample_format_ " << std::hex << sample_format_;
-      frame_size_ = 0;
-      break;
-  }
+  EXPECT_LE(pcm_format_.valid_bits_per_sample, pcm_format_.bytes_per_sample * 8);
+  frame_size_ = pcm_format_.number_of_channels * pcm_format_.bytes_per_sample;
 }
 
 void AudioDriverTest::SelectFirstFormat() {
   if (received_get_formats_) {
-    // strip off the UNSIGNED and INVERT_ENDIAN bits...
-    auto first_range = format_ranges_.front();
-    auto first_format = first_range.sample_formats & ~AUDIO_SAMPLE_FORMAT_FLAG_MASK;
-    ASSERT_NE(first_format, 0u);
+    ASSERT_NE(pcm_formats_.size(), 0u);
 
-    // just keep the lowest sample format bit.
-    audio_sample_format_t bit = 1;
-    while ((first_format & bit) == 0) {
-      bit <<= 1;
-    }
-    first_format &= bit;
-
-    frame_rate_ = first_range.min_frames_per_second;
-    sample_format_ = first_format;
-    num_channels_ = first_range.min_channels;
+    auto& first_format = pcm_formats_[0];
+    pcm_format_.number_of_channels = first_format.number_of_channels[0];
+    pcm_format_.channels_to_use_bitmask = (1 << pcm_format_.number_of_channels) - 1;  // Use all.
+    pcm_format_.sample_format = first_format.sample_formats[0];
+    pcm_format_.bytes_per_sample = first_format.bytes_per_sample[0];
+    pcm_format_.valid_bits_per_sample = first_format.valid_bits_per_sample[0];
+    pcm_format_.frame_rate = first_format.frame_rates[0];
   }
 }
 
 void AudioDriverTest::SelectLastFormat() {
   if (received_get_formats_) {
-    // strip off the UNSIGNED and INVERT_ENDIAN bits...
-    auto last_range = format_ranges_.back();
-    auto last_format = last_range.sample_formats & ~AUDIO_SAMPLE_FORMAT_FLAG_MASK;
-    ASSERT_NE(last_format, 0u);
+    ASSERT_NE(pcm_formats_.size(), 0u);
 
-    // and just keep the highest remaining sample format bit.
-    while (last_format & (last_format - 1)) {
-      last_format &= (last_format - 1);
-    }
-
-    frame_rate_ = last_range.max_frames_per_second;
-    sample_format_ = last_format;
-    num_channels_ = last_range.max_channels;
+    auto& last_format = pcm_formats_[pcm_formats_.size() - 1];
+    pcm_format_.number_of_channels =
+        last_format.number_of_channels[last_format.number_of_channels.size() - 1];
+    pcm_format_.channels_to_use_bitmask = (1 << pcm_format_.number_of_channels) - 1;  // Use all.
+    pcm_format_.sample_format = last_format.sample_formats[last_format.sample_formats.size() - 1];
+    pcm_format_.bytes_per_sample =
+        last_format.bytes_per_sample[last_format.bytes_per_sample.size() - 1];
+    pcm_format_.valid_bits_per_sample =
+        last_format.valid_bits_per_sample[last_format.valid_bits_per_sample.size() - 1];
+    pcm_format_.frame_rate = last_format.frame_rates[last_format.frame_rates.size() - 1];
   }
+}
+
+void AudioDriverTest::RequestRingBuffer() {
+  fuchsia::hardware::audio::Format format = {};
+  format.set_pcm_format(pcm_format_);
+
+  fidl::InterfaceHandle<fuchsia::hardware::audio::RingBuffer> ring_buffer_handle;
+  stream_config_intf_->CreateRingBuffer(std::move(format), ring_buffer_handle.NewRequest());
+
+  zx::channel channel = ring_buffer_handle.TakeChannel();
+  ring_buffer_intf_ =
+      fidl::InterfaceHandle<fuchsia::hardware::audio::RingBuffer>(std::move(channel)).Bind();
+  if (!stream_config_intf_.is_bound()) {
+    FX_LOGS(ERROR) << "Failed to get ring buffer channel";
+    FAIL();
+  }
+  ring_buffer_intf_.set_error_handler([](zx_status_t status) {
+    FX_PLOGS(ERROR, status) << "Test failed with error: " << status;
+    FAIL();
+  });
+  format_is_set_ = true;
+  ring_buffer_ready_ = true;
 }
 
 // Request that driver set format to the lowest rate/channelization of the first range reported.
 // This method assumes that the driver has already successfully responded to a GetFormats request.
-void AudioDriverTest::RequestSetFormatMin() {
-  if (error_occurred_) {
-    return;
-  }
-
+void AudioDriverTest::RequestRingBufferMin() {
   ASSERT_TRUE(received_get_formats_);
-  ASSERT_GT(format_ranges_.size(), 0u);
+  ASSERT_GT(pcm_formats_.size(), 0u);
 
   SelectFirstFormat();
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_set_format_req_t>();
-  set_format_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = set_format_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_SET_FORMAT;
-
-  request.frames_per_second = frame_rate_;
-  request.sample_format = sample_format_;
-  request.channels = num_channels_;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil(
-      [this]() { return (received_set_format_ && ring_buffer_channel_ready_) || error_occurred_; });
+  RequestRingBuffer();
   CalculateFrameSize();
 }
 
 // Request that driver set format to the highest rate/channelization of the final range reported.
 // This method assumes that the driver has already successfully responded to a GetFormats request.
-void AudioDriverTest::RequestSetFormatMax() {
-  if (error_occurred_) {
-    return;
-  }
-
+void AudioDriverTest::RequestRingBufferMax() {
   ASSERT_TRUE(received_get_formats_);
-  ASSERT_GT(format_ranges_.size(), 0u);
+  ASSERT_GT(pcm_formats_.size(), 0u);
 
   SelectLastFormat();
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_set_format_req_t>();
-  set_format_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = set_format_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_SET_FORMAT;
-
-  request.frames_per_second = frame_rate_;
-  request.sample_format = sample_format_;
-  request.channels = num_channels_;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil(
-      [this]() { return (received_set_format_ && ring_buffer_channel_ready_) || error_occurred_; });
+  RequestRingBuffer();
   CalculateFrameSize();
 }
 
-// Request that driver retrieve the current plug detection state and capabilities.
+// Request that driver retrieve the current plug detection state.
 void AudioDriverTest::RequestPlugDetect() {
-  if (error_occurred_) {
-    return;
-  }
+  // Since we reconnect to the audio stream every time we run this test and we are guaranteed by the
+  // audio driver interface definition that the driver will reply to the first watch request, we
+  // can get the plug state by issuing a watch FIDL call.
+  stream_config_intf_->WatchPlugState([this](fuchsia::hardware::audio::PlugState state) {
+    plugged_ = state.plugged();
+    plug_state_time_ = state.plug_state_time();
+    EXPECT_LT(plug_state_time_, zx::clock::get_monotonic().get());
 
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_stream_cmd_plug_detect_req_t>();
-  plug_detect_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = plug_detect_transaction_id_;
-  request.hdr.cmd = AUDIO_STREAM_CMD_PLUG_DETECT;
-
-  request.flags = AUDIO_PDF_ENABLE_NOTIFICATIONS;
-  should_plug_notify_ = true;
-
-  EXPECT_EQ(ZX_OK, stream_transceiver_.SendMessage(request_message));
-
+    AUD_VLOG(TRACE) << "Plug_state_time: " << plug_state_time_;
+    received_plug_detect_ = true;
+  });
   RunLoopUntil([this]() { return received_plug_detect_; });
 }
 
 // Ring-buffer channel requests
 //
 // Request that the driver return the FIFO depth (in bytes), at the currently set format.
-// This method relies on the ring buffer channel, received with response to a successful
-// SetFormat.
-void AudioDriverTest::RequestFifoDepth() {
-  if (error_occurred_) {
-    return;
-  }
+// This method relies on the ring buffer channel.
+void AudioDriverTest::RequestRingBufferProperties() {
+  ASSERT_TRUE(ring_buffer_ready_);
 
-  ASSERT_TRUE(ring_buffer_channel_ready_);
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_rb_cmd_get_fifo_depth_req_t>();
-  get_fifo_depth_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = get_fifo_depth_transaction_id_;
-  request.hdr.cmd = AUDIO_RB_CMD_GET_FIFO_DEPTH;
-
-  EXPECT_EQ(ZX_OK, ring_buffer_transceiver_.SendMessage(request_message));
+  ring_buffer_intf_->GetProperties([this](fuchsia::hardware::audio::RingBufferProperties prop) {
+    external_delay_nsec_ = prop.external_delay();
+    fifo_depth_ = prop.fifo_depth();
+    clock_domain_ = prop.clock_domain();
+    needs_cache_flush_or_invalidate_ = prop.needs_cache_flush_or_invalidate();
+    received_get_ring_buffer_properties_ = true;
+  });
 
   // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_get_fifo_depth_ || error_occurred_; });
+  RunLoopUntil([this]() { return received_get_ring_buffer_properties_; });
 }
 
 // Request that the driver return a VMO handle for the ring buffer, at the currently set format.
-// This method relies on the ring buffer channel, received with response to a successful
-// SetFormat.
+// This method relies on the ring buffer channel.
 void AudioDriverTest::RequestBuffer(uint32_t min_ring_buffer_frames,
                                     uint32_t notifications_per_ring) {
-  if (error_occurred_) {
-    return;
-  }
-
-  ASSERT_TRUE(ring_buffer_channel_ready_);
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_rb_cmd_get_buffer_req_t>();
-  get_buffer_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = get_buffer_transaction_id_;
-  request.hdr.cmd = AUDIO_RB_CMD_GET_BUFFER;
-
-  request.min_ring_buffer_frames = min_ring_buffer_frames;
   min_ring_buffer_frames_ = min_ring_buffer_frames;
-
-  request.notifications_per_ring = notifications_per_ring;
   notifications_per_ring_ = notifications_per_ring;
-
-  EXPECT_EQ(ZX_OK, ring_buffer_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_get_buffer_ || error_occurred_; });
-}
-
-// Request that the driver start the ring buffer engine, responding with the start_time.
-// This method assumes that the ring buffer VMO was received in a successful GetBuffer response.
-void AudioDriverTest::RequestStart() {
-  if (error_occurred_) {
-    return;
-  }
-
-  ASSERT_TRUE(ring_buffer_ready_);
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_rb_cmd_start_req_t>();
-  start_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = start_transaction_id_;
-  request.hdr.cmd = AUDIO_RB_CMD_START;
-
-  auto send_time = zx::clock::get_monotonic().get();
-  EXPECT_EQ(ZX_OK, ring_buffer_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_start_ || error_occurred_; });
-
-  EXPECT_GT(start_time_, send_time);
-  // TODO(mpuryear): validate start_time is not too far in the future (it includes FIFO delay).
-}
-
-// Request that the driver stop the ring buffer engine, including quieting position notifications.
-// This method assumes that the ring buffer engine has previously been successfully started.
-void AudioDriverTest::RequestStop() {
-  if (error_occurred_) {
-    return;
-  }
-
-  ASSERT_TRUE(received_start_);
-
-  MessageTransceiver::Message request_message;
-  auto& request = request_message.ResizeBytesAs<audio_rb_cmd_stop_req_t>();
-  stop_transaction_id_ = NextTransactionId();
-  request.hdr.transaction_id = stop_transaction_id_;
-  request.hdr.cmd = AUDIO_RB_CMD_STOP;
-
-  EXPECT_EQ(ZX_OK, ring_buffer_transceiver_.SendMessage(request_message));
-
-  // This command can return an error, so we check for error_occurred_ as well
-  RunLoopUntil([this]() { return received_stop_ || error_occurred_; });
-}
-
-// Handle an incoming stream channel message (generally a response from a previous request)
-void AudioDriverTest::OnInboundStreamMessage(MessageTransceiver::Message message) {
-  auto& header = message.BytesAs<audio_cmd_hdr_t>();
-  switch (header.cmd) {
-    case AUDIO_STREAM_CMD_GET_UNIQUE_ID:
-      HandleGetUniqueIdResponse(message.BytesAs<audio_stream_cmd_get_unique_id_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_GET_STRING:
-      HandleGetStringResponse(message.BytesAs<audio_stream_cmd_get_string_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_GET_CLOCK_DOMAIN:
-      HandleGetClockDomainResponse(message.BytesAs<audio_stream_cmd_get_clock_domain_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_GET_GAIN:
-      HandleGetGainResponse(message.BytesAs<audio_stream_cmd_get_gain_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_SET_GAIN:
-      HandleSetGainResponse(message.BytesAs<audio_stream_cmd_set_gain_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_GET_FORMATS:
-      HandleGetFormatsResponse(message.BytesAs<audio_stream_cmd_get_formats_resp_t>());
-      break;
-
-    case AUDIO_STREAM_CMD_SET_FORMAT:
-      HandleSetFormatResponse(message.BytesAs<audio_stream_cmd_set_format_resp_t>());
-      // On success, a channel used to control the audio buffer will be returned.
-      ExtractRingBufferChannel(message);
-      break;
-
-    case AUDIO_STREAM_CMD_PLUG_DETECT:
-      HandlePlugDetectResponse(message.BytesAs<audio_stream_cmd_plug_detect_resp_t>());
-      break;
-
-    case AUDIO_STREAM_PLUG_DETECT_NOTIFY:
-      HandlePlugDetectNotify(message.BytesAs<audio_stream_cmd_plug_detect_resp_t>());
-      break;
-
-    default:
-      EXPECT_TRUE(false) << "Unrecognized header.cmd value " << header.cmd;
-      break;
-  }
-}
-
-// Validate just the command portion of the response header.
-bool AudioDriverTest::ValidateResponseCommand(audio_cmd_hdr header, audio_cmd_t expected_command) {
-  EXPECT_EQ(header.cmd, expected_command) << "Unexpected command!";
-
-  return (expected_command == header.cmd);
-}
-
-// Validate just the transaction ID portion of the response header.
-void AudioDriverTest::ValidateResponseTransaction(audio_cmd_hdr header,
-                                                  zx_txid_t expected_transaction_id) {
-  EXPECT_EQ(header.transaction_id, expected_transaction_id) << "Unexpected transaction ID!";
-}
-
-// Validate the entire response header.
-bool AudioDriverTest::ValidateResponseHeader(audio_cmd_hdr header,
-                                             zx_txid_t expected_transaction_id,
-                                             audio_cmd_t expected_command) {
-  ValidateResponseTransaction(header, expected_transaction_id);
-  return ValidateResponseCommand(header, expected_command);
-}
-
-// Handle a get_unique_id response on the stream channel.
-void AudioDriverTest::HandleGetUniqueIdResponse(
-    const audio_stream_cmd_get_unique_id_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, unique_id_transaction_id_,
-                              AUDIO_STREAM_CMD_GET_UNIQUE_ID)) {
-    return;
-  }
-
-  EXPECT_EQ(sizeof(response.unique_id.data), sizeof(audio_stream_unique_id_t));
-  memcpy(unique_id_.data(), response.unique_id.data, kUniqueIdLength);
-
-  char id_buf[2 * kUniqueIdLength + 1];
-  std::snprintf(id_buf, sizeof(id_buf),
-                "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", unique_id_[0],
-                unique_id_[1], unique_id_[2], unique_id_[3], unique_id_[4], unique_id_[5],
-                unique_id_[6], unique_id_[7], unique_id_[8], unique_id_[9], unique_id_[10],
-                unique_id_[11], unique_id_[12], unique_id_[13], unique_id_[14], unique_id_[15]);
-  AUD_VLOG(TRACE) << "Received unique_id " << id_buf;
-
-  received_get_unique_id_ = true;
-}
-
-// Handle a get_string response on the stream channel (either mfr or prod).
-void AudioDriverTest::HandleGetStringResponse(const audio_stream_cmd_get_string_resp_t& response) {
-  if (!ValidateResponseCommand(response.hdr, AUDIO_STREAM_CMD_GET_STRING)) {
-    return;
-  }
-
-  constexpr auto kMaxStringLength =
-      sizeof(audio_stream_cmd_get_string_resp_t) - sizeof(audio_cmd_hdr_t) - (3 * sizeof(uint32_t));
-  EXPECT_LE(response.strlen, kMaxStringLength);
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  auto response_str = reinterpret_cast<const char*>(response.str);
-  if (response.id == AUDIO_STREAM_STR_ID_MANUFACTURER) {
-    ValidateResponseTransaction(response.hdr, manufacturer_string_transaction_id_);
-
-    manufacturer_ = std::string(response_str, response.strlen);
-    received_get_string_manufacturer_ = true;
-  } else if (response.id == AUDIO_STREAM_STR_ID_PRODUCT) {
-    ValidateResponseTransaction(response.hdr, product_string_transaction_id_);
-
-    product_ = std::string(response_str, response.strlen);
-    received_get_string_product_ = true;
-  } else {
-    ASSERT_TRUE(false) << "Unrecognized string ID received: " << response.id;
-  }
-}
-
-// Handle a get_clock_domain response on the stream channel.
-void AudioDriverTest::HandleGetClockDomainResponse(
-    const audio_stream_cmd_get_clock_domain_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, get_clock_domain_transaction_id_,
-                              AUDIO_STREAM_CMD_GET_CLOCK_DOMAIN)) {
-    return;
-  }
-
-  EXPECT_NE(response.clock_domain, kInvalidClockDomain);
-  clock_domain_ = response.clock_domain;
-
-  received_get_clock_domain_ = true;
-}
-
-// Handle a get_gain response on the stream channel.
-void AudioDriverTest::HandleGetGainResponse(const audio_stream_cmd_get_gain_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, get_gain_transaction_id_, AUDIO_STREAM_CMD_GET_GAIN)) {
-    return;
-  }
-
-  cur_mute_ = response.cur_mute;
-  can_mute_ = response.can_mute;
-  cur_agc_ = response.cur_agc;
-  can_agc_ = response.can_agc;
-  cur_gain_ = response.cur_gain;
-  min_gain_ = response.min_gain;
-  max_gain_ = response.max_gain;
-  gain_step_ = response.gain_step;
-
-  if (cur_mute_) {
-    EXPECT_TRUE(can_mute_);
-  }
-  if (cur_agc_) {
-    EXPECT_TRUE(can_agc_);
-  }
-  EXPECT_GE(cur_gain_, min_gain_);
-  EXPECT_LE(cur_gain_, max_gain_);
-  if (max_gain_ > min_gain_) {
-    EXPECT_GT(gain_step_, 0.0f);
-  } else {
-    EXPECT_EQ(gain_step_, 0.0f);
-  }
-
-  received_get_gain_ = true;
-}
-
-// Handle a set_gain response on the stream channel.
-void AudioDriverTest::HandleSetGainResponse(const audio_stream_cmd_set_gain_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, set_gain_transaction_id_, AUDIO_STREAM_CMD_SET_GAIN)) {
-    return;
-  }
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  cur_mute_ = response.cur_mute;
-  EXPECT_EQ(cur_mute_, set_mute_);
-  if (cur_mute_) {
-    EXPECT_TRUE(can_mute_);
-  }
-
-  cur_agc_ = response.cur_agc;
-  EXPECT_EQ(cur_agc_, set_agc_);
-  if (cur_agc_) {
-    EXPECT_TRUE(can_agc_);
-  }
-
-  cur_gain_ = response.cur_gain;
-  EXPECT_EQ(cur_gain_, set_gain_);
-  EXPECT_GE(cur_gain_, min_gain_);
-  EXPECT_LE(cur_gain_, max_gain_);
-
-  received_set_gain_ = true;
-}
-
-// Handle a get_formats response on the stream channel. This response may be a multi-part.
-void AudioDriverTest::HandleGetFormatsResponse(
-    const audio_stream_cmd_get_formats_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, get_formats_transaction_id_,
-                              AUDIO_STREAM_CMD_GET_FORMATS)) {
-    return;
-  }
-
-  EXPECT_GT(response.format_range_count, 0u);
-  EXPECT_LT(response.first_format_range_ndx, response.format_range_count);
-  EXPECT_EQ(response.first_format_range_ndx, next_format_range_ndx_);
-
-  if (response.first_format_range_ndx == 0) {
-    get_formats_range_count_ = response.format_range_count;
-    format_ranges_.clear();
-  } else {
-    EXPECT_EQ(response.format_range_count, get_formats_range_count_)
-        << "Format range count cannot change over multiple get_formats responses";
-  }
-  auto num_ranges =
-      std::min<uint16_t>(response.format_range_count - response.first_format_range_ndx,
-                         AUDIO_STREAM_CMD_GET_FORMATS_MAX_RANGES_PER_RESPONSE);
-
-  for (auto i = 0; i < num_ranges; ++i) {
-    EXPECT_NE(response.format_ranges[i].sample_formats & ~AUDIO_SAMPLE_FORMAT_FLAG_MASK, 0u);
-
-    EXPECT_GE(response.format_ranges[i].min_frames_per_second,
-              fuchsia::media::MIN_PCM_FRAMES_PER_SECOND);
-    EXPECT_LE(response.format_ranges[i].max_frames_per_second,
-              fuchsia::media::MAX_PCM_FRAMES_PER_SECOND);
-    EXPECT_LE(response.format_ranges[i].min_frames_per_second,
-              response.format_ranges[i].max_frames_per_second);
-
-    EXPECT_GE(response.format_ranges[i].min_channels, fuchsia::media::MIN_PCM_CHANNEL_COUNT);
-    EXPECT_LE(response.format_ranges[i].max_channels, fuchsia::media::MAX_PCM_CHANNEL_COUNT);
-    EXPECT_LE(response.format_ranges[i].min_channels, response.format_ranges[i].max_channels);
-
-    EXPECT_NE(response.format_ranges[i].flags, 0u);
-
-    format_ranges_.push_back(response.format_ranges[i]);
-  }
-
-  next_format_range_ndx_ += num_ranges;
-  if (next_format_range_ndx_ == response.format_range_count) {
-    EXPECT_EQ(response.format_range_count, format_ranges_.size());
-    received_get_formats_ = true;
-  }
-}
-
-// Handle a set_format response on the stream channel. After, we will extract a ring buffer
-// channel.
-void AudioDriverTest::HandleSetFormatResponse(const audio_stream_cmd_set_format_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, set_format_transaction_id_,
-                              AUDIO_STREAM_CMD_SET_FORMAT)) {
-    return;
-  }
-
-  if (response.result != ZX_OK) {
-    if (response.result == ZX_ERR_ACCESS_DENIED) {
-      AUD_LOG(WARNING)
-          << "ZX_ERR_ACCESS_DENIED: audio_core may already be connected to this device";
-    }
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  external_delay_nsec_ = response.external_delay_nsec;
-
-  received_set_format_ = true;
-}
-
-// In concert with incoming SetFormat response on stream channel, extract the ring-buffer channel.
-// With it, initialize the message transceiver that will handle messages to/from this channel.
-void AudioDriverTest::ExtractRingBufferChannel(MessageTransceiver::Message message) {
-  if (!received_set_format_) {
-    return;
-  }
-
-  ASSERT_EQ(message.handles_.size(), 1u);
-
-  EXPECT_EQ(
-      ring_buffer_transceiver_.Init(
-          zx::channel(message.handles_[0]),
-          fit::bind_member(this, &AudioDriverTest::OnInboundRingBufferMessage), ErrorHandler()),
-      ZX_OK);
-  message.handles_.clear();
-
-  ring_buffer_channel_ready_ = true;
-}
-
-// Handle plug_detection on the stream channel (shared across response and notification).
-void AudioDriverTest::HandlePlugDetect(audio_pd_notify_flags_t flags, zx_time_t plug_state_time) {
-  if (received_plug_detect_) {
-    EXPECT_EQ(hardwired_, (flags & AUDIO_PDNF_HARDWIRED));
-  }
-  hardwired_ = flags & AUDIO_PDNF_HARDWIRED;
-
-  if (received_plug_detect_) {
-    EXPECT_EQ(can_plug_notify_, (flags & AUDIO_PDNF_CAN_NOTIFY));
-  }
-  can_plug_notify_ = flags & AUDIO_PDNF_CAN_NOTIFY;
-  plugged_ = flags & AUDIO_PDNF_PLUGGED;
-
-  plug_state_time_ = plug_state_time;
-  EXPECT_LT(plug_state_time_, zx::clock::get_monotonic().get());
-
-  AUD_VLOG(TRACE) << "Plug_state_time: " << plug_state_time;
-}
-
-// Handle a plug_detect response on the stream channel (response solicited by client).
-void AudioDriverTest::HandlePlugDetectResponse(
-    const audio_stream_cmd_plug_detect_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, plug_detect_transaction_id_,
-                              AUDIO_STREAM_CMD_PLUG_DETECT)) {
-    return;
-  }
-
-  HandlePlugDetect(response.flags, response.plug_state_time);
-  received_plug_detect_ = true;
-}
-
-// Handle a plug_detect notification on the stream channel (async message not solicited by
-// client).
-void AudioDriverTest::HandlePlugDetectNotify(const audio_stream_cmd_plug_detect_resp_t& notify) {
-  if (!ValidateResponseHeader(notify.hdr, AUDIO_INVALID_TRANSACTION_ID,
-                              AUDIO_STREAM_PLUG_DETECT_NOTIFY)) {
-    return;
-  }
-
-  EXPECT_FALSE(hardwired_);
-  EXPECT_TRUE(can_plug_notify_);
-  EXPECT_TRUE(should_plug_notify_);
-
-  HandlePlugDetect(notify.flags, notify.plug_state_time);
-  received_plug_detect_notify_ = true;
-
-  AUD_LOG(ERROR) << "Driver autonomously generated an asynchronous plug detect notification";
-}
-
-// Handle all incoming response message types, on the ring buffer channel.
-void AudioDriverTest::OnInboundRingBufferMessage(MessageTransceiver::Message message) {
-  auto& header = message.BytesAs<audio_cmd_hdr_t>();
-  switch (header.cmd) {
-    case AUDIO_RB_CMD_GET_FIFO_DEPTH:
-      HandleGetFifoDepthResponse(message.BytesAs<audio_rb_cmd_get_fifo_depth_resp_t>());
-      break;
-
-    case AUDIO_RB_CMD_GET_BUFFER:
-      HandleGetBufferResponse(message.BytesAs<audio_rb_cmd_get_buffer_resp_t>());
-
-      // On success, a VMO for the ring buffer will be returned.
-      ExtractRingBuffer(message);
-      break;
-
-    case AUDIO_RB_CMD_START:
-      HandleStartResponse(message.BytesAs<audio_rb_cmd_start_resp_t>());
-      break;
-
-    case AUDIO_RB_CMD_STOP:
-      HandleStopResponse(message.BytesAs<audio_rb_cmd_stop_resp_t>());
-      break;
-
-    case AUDIO_RB_POSITION_NOTIFY:
-      HandlePositionNotify(message.BytesAs<audio_rb_position_notify_t>());
-      break;
-
-    default:
-      EXPECT_TRUE(false) << "Unrecognized header.cmd value " << header.cmd;
-      break;
-  }
-}
-
-// Handle a get_fifo_depth response on the ring buffer channel.
-void AudioDriverTest::HandleGetFifoDepthResponse(
-    const audio_rb_cmd_get_fifo_depth_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, get_fifo_depth_transaction_id_,
-                              AUDIO_RB_CMD_GET_FIFO_DEPTH)) {
-    return;
-  }
-
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  fifo_depth_ = response.fifo_depth;
-
-  received_get_fifo_depth_ = true;
-}
-
-// Handle a get_buffer response on the ring buffer channel.
-void AudioDriverTest::HandleGetBufferResponse(const audio_rb_cmd_get_buffer_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, get_buffer_transaction_id_, AUDIO_RB_CMD_GET_BUFFER)) {
-    return;
-  }
-
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  EXPECT_GE(response.num_ring_buffer_frames, min_ring_buffer_frames_);
-  ring_buffer_frames_ = response.num_ring_buffer_frames;
-
-  received_get_buffer_ = true;
-}
-
-// Given the GET_BUFFER response message, retrieve the ring buffer VMO handle and save it.
-void AudioDriverTest::ExtractRingBuffer(MessageTransceiver::Message get_buffer_response) {
-  ASSERT_TRUE(received_get_buffer_);
-
-  EXPECT_EQ(get_buffer_response.handles_.size(), 1u);
-  zx::vmo ring_buffer_vmo = zx::vmo(get_buffer_response.handles_[0]);
-  get_buffer_response.handles_.clear();
-  EXPECT_TRUE(ring_buffer_vmo.is_valid());
+  zx::vmo ring_buffer_vmo;
+  ring_buffer_intf_->GetVmo(
+      min_ring_buffer_frames, notifications_per_ring,
+      [this, &ring_buffer_vmo](fuchsia::hardware::audio::RingBuffer_GetVmo_Result result) {
+        EXPECT_GE(result.response().num_frames, min_ring_buffer_frames_);
+        ring_buffer_frames_ = result.response().num_frames;
+        ring_buffer_vmo = std::move(result.response().ring_buffer);
+        EXPECT_TRUE(ring_buffer_vmo.is_valid());
+        received_get_buffer_ = true;
+      });
+
+  RunLoopUntil([this]() { return received_get_buffer_; });
 
   const zx_vm_option_t option_flags = ZX_VM_PERM_READ | ZX_VM_PERM_WRITE;
   EXPECT_EQ(
@@ -1029,111 +447,97 @@ void AudioDriverTest::ExtractRingBuffer(MessageTransceiver::Message get_buffer_r
       ZX_OK);
 
   AUD_VLOG(TRACE) << "Mapping size: " << ring_buffer_frames_ * frame_size_;
-
-  ring_buffer_ready_ = true;
 }
 
-// Handle a start response on the ring buffer channel.
-void AudioDriverTest::HandleStartResponse(const audio_rb_cmd_start_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, start_transaction_id_, AUDIO_RB_CMD_START)) {
-    return;
-  }
+// Request that the driver start the ring buffer engine, responding with the start_time.
+// This method assumes that the ring buffer VMO was received in a successful GetBuffer response.
+void AudioDriverTest::RequestStart() {
+  ASSERT_TRUE(ring_buffer_ready_);
 
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  ASSERT_GT(response.start_time, 0u);
-  start_time_ = response.start_time;
-
-  received_start_ = true;
+  auto send_time = zx::clock::get_monotonic().get();
+  ring_buffer_intf_->Start([this](int64_t start_time) {
+    start_time_ = start_time;
+    received_start_ = true;
+  });
+  RunLoopUntil([this]() { return received_start_; });
+  EXPECT_GT(start_time_, send_time);
+  // TODO(mpuryear): validate start_time is not too far in the future (it includes FIFO delay).
 }
 
-// Handle a stop response on the ring buffer channel. Clear out any previous position notification
-// count, to enable us to detect whether any were received after the STOP command was processed.
-void AudioDriverTest::HandleStopResponse(const audio_rb_cmd_stop_resp_t& response) {
-  if (!ValidateResponseHeader(response.hdr, stop_transaction_id_, AUDIO_RB_CMD_STOP)) {
-    return;
-  }
+// Request that the driver stop the ring buffer engine, including quieting position notifications.
+// This method assumes that the ring buffer engine has previously been successfully started.
+void AudioDriverTest::RequestStop() {
+  ASSERT_TRUE(received_start_);
 
-  if (response.result != ZX_OK) {
-    error_occurred_ = true;
-    FAIL();
-  }
-
-  position_notification_count_ = 0;
-  received_stop_ = true;
-}
-
-// Handle a position notification on the ring buffer channel.
-void AudioDriverTest::HandlePositionNotify(const audio_rb_position_notify_t& notify) {
-  if (!ValidateResponseHeader(notify.hdr, get_position_transaction_id_, AUDIO_RB_POSITION_NOTIFY)) {
-    return;
-  }
-
-  EXPECT_GT(notifications_per_ring_, 0u);
-
-  auto now = zx::clock::get_monotonic().get();
-  EXPECT_LT(start_time_, now);
-  EXPECT_LT(notify.monotonic_time, now);
-
-  if (position_notification_count_) {
-    EXPECT_GT(notify.monotonic_time, start_time_);
-    EXPECT_GT(notify.monotonic_time, last_monotonic_time_);
-  } else {
-    EXPECT_GE(notify.monotonic_time, start_time_);
-  }
-
-  last_monotonic_time_ = notify.monotonic_time;
-  ring_buffer_position_ = notify.ring_buffer_pos;
-  EXPECT_LT(ring_buffer_position_, ring_buffer_frames_ * frame_size_);
-
-  ++position_notification_count_;
-
-  AUD_VLOG(TRACE) << "Position: " << ring_buffer_position_
-                  << ", notification_count: " << position_notification_count_;
+  ring_buffer_intf_->Stop([this]() {
+    position_notification_count_ = 0;
+    received_stop_ = true;
+  });
+  RunLoopUntil([this]() { return received_stop_; });
 }
 
 // Wait for the specified number of position notifications, or timeout at 60 seconds.
 void AudioDriverTest::ExpectPositionNotifyCount(uint32_t count) {
-  if (error_occurred_) {
-    return;
-  }
+  RunLoopUntil([this, count]() {
+    ring_buffer_intf_->WatchClockRecoveryPositionInfo(
+        [this](fuchsia::hardware::audio::RingBufferPositionInfo position_info) {
+          EXPECT_GT(notifications_per_ring_, 0u);
 
-  RunLoopUntil([this, count]() { return position_notification_count_ >= count; });
+          auto now = zx::clock::get_monotonic().get();
+          EXPECT_LT(start_time_, now);
+          EXPECT_LT(position_info.timestamp, now);
 
-  auto timestamp_duration = last_monotonic_time_ - start_time_;
+          if (position_notification_count_) {
+            EXPECT_GT(position_info.timestamp, start_time_);
+            EXPECT_GT(position_info.timestamp, position_info_.timestamp);
+          } else {
+            EXPECT_GE(position_info.timestamp, start_time_);
+          }
+
+          position_info_.timestamp = position_info.timestamp;
+          position_info_.position = position_info.position;
+          EXPECT_LT(position_info_.position, ring_buffer_frames_ * frame_size_);
+
+          ++position_notification_count_;
+
+          AUD_VLOG(TRACE) << "Position: " << position_info_.position
+                          << ", notification_count: " << position_notification_count_;
+        });
+    return position_notification_count_ >= count;
+  });
+
+  auto timestamp_duration = position_info_.timestamp - start_time_;
   auto observed_duration = zx::clock::get_monotonic().get() - start_time_;
   ASSERT_GE(position_notification_count_, count) << "No position notifications received";
 
-  ASSERT_NE(frame_rate_ * notifications_per_ring_, 0u);
+  ASSERT_NE(pcm_format_.frame_rate * notifications_per_ring_, 0u);
   auto ns_per_notification =
-      (zx::sec(1) * ring_buffer_frames_) / (frame_rate_ * notifications_per_ring_);
-  auto expected_min_time = ns_per_notification.get() * (count - 1);
+      (zx::sec(1) * ring_buffer_frames_) / (pcm_format_.frame_rate * notifications_per_ring_);
+  auto min_allowed_time = ns_per_notification.get() * (count - 1);
   auto expected_time = ns_per_notification.get() * count;
-  auto expected_max_time = ns_per_notification.get() * (count + 2);
+  auto max_allowed_time = ns_per_notification.get() * (count + 2) - 1;
 
   AUD_VLOG(TRACE) << "Timestamp delta from min/ideal/max: " << std::setw(10)
-                  << (expected_min_time - timestamp_duration) << " : " << std::setw(10)
+                  << (min_allowed_time - timestamp_duration) << " : " << std::setw(10)
                   << (expected_time - timestamp_duration) << " : " << std::setw(10)
-                  << (expected_max_time - timestamp_duration);
-  EXPECT_GE(timestamp_duration, expected_min_time);
-  EXPECT_LT(timestamp_duration, expected_max_time);
+                  << (max_allowed_time - timestamp_duration);
+  EXPECT_GE(timestamp_duration, min_allowed_time);
+  EXPECT_LE(timestamp_duration, max_allowed_time);
 
   AUD_VLOG(TRACE) << "Observed delta from min/ideal/max : " << std::setw(10)
-                  << (expected_min_time - observed_duration) << " : " << std::setw(10)
+                  << (min_allowed_time - observed_duration) << " : " << std::setw(10)
                   << (expected_time - observed_duration) << " : " << std::setw(10)
-                  << (expected_max_time - observed_duration);
-  EXPECT_GT(observed_duration, expected_min_time);
+                  << (max_allowed_time - observed_duration);
+  EXPECT_GT(observed_duration, min_allowed_time);
 }
 
 // After waiting for one second, we should NOT have received any position notifications.
 void AudioDriverTest::ExpectNoPositionNotifications() {
-  if (error_occurred_) {
-    return;
-  }
-
+  RunLoopUntil([this]() {
+    ring_buffer_intf_->WatchClockRecoveryPositionInfo(
+        [](fuchsia::hardware::audio::RingBufferPositionInfo position_info) { FAIL(); });
+    return true;
+  });
   zx::nanosleep(zx::deadline_after(zx::sec(1)));
   RunLoopUntilIdle();
 
@@ -1146,124 +550,71 @@ void AudioDriverTest::ExpectNoPositionNotifications() {
 
 // Stream channel commands
 //
-// AUDIO_STREAM_CMD_GET_UNIQUE_ID
-// For input stream, verify a valid GET_UNIQUE_ID response is successfully received.
-TEST_F(AudioDriverTest, InputGetUniqueId) {
+// For input stream, verify a valid unique_id, manufacturer, product and gain capabilites.
+TEST_F(AudioDriverTest, InputStreamProperties) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
-  RequestUniqueId();
+  RequestStreamProperties();
 }
 
-// For output stream, verify a valid GET_UNIQUE_ID response is successfully received.
-TEST_F(AudioDriverTest, OutputGetUniqueId) {
+// For output stream, verify a valid unique_id, manufacturer, product and gain capabilites.
+TEST_F(AudioDriverTest, OutputStreamProperties) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
-  RequestUniqueId();
+  RequestStreamProperties();
 }
 
-// AUDIO_STREAM_CMD_GET_STRING - Manufacturer
-// For input stream, verify a valid GET_STRING (MANUFACTURER) response is successfully received.
-TEST_F(AudioDriverTest, InputGetManufacturer) {
-  if (!WaitForDevice(DeviceType::Input)) {
-    return;
-  }
-
-  RequestManufacturerString();
-}
-
-// For output stream, verify a valid GET_STRING (MANUFACTURER) response is successfully received.
-TEST_F(AudioDriverTest, OutputGetManufacturer) {
-  if (!WaitForDevice(DeviceType::Output)) {
-    return;
-  }
-
-  RequestManufacturerString();
-}
-
-// AUDIO_STREAM_CMD_GET_STRING - Product
-// For input stream, verify a valid GET_STRING (PRODUCT) response is successfully received.
-TEST_F(AudioDriverTest, InputGetProduct) {
-  if (!WaitForDevice(DeviceType::Input)) {
-    return;
-  }
-
-  RequestProductString();
-}
-
-// For output stream, verify a valid GET_STRING (PRODUCT) response is successfully received.
-TEST_F(AudioDriverTest, OutputGetProduct) {
-  if (!WaitForDevice(DeviceType::Output)) {
-    return;
-  }
-
-  RequestProductString();
-}
-
-// AUDIO_STREAM_CMD_GET_CLOCK_DOMAIN
-// For input stream, verify a valid GET_CLOCK_DOMAIN response is successfully received.
-TEST_F(AudioDriverTest, InputGetClockDomain) {
-  if (!WaitForDevice(DeviceType::Input)) {
-    return;
-  }
-
-  RequestClockDomain();
-}
-
-// For output stream, verify a valid GET_CLOCK_DOMAIN response is successfully received.
-TEST_F(AudioDriverTest, OutputGetClockDomain) {
-  if (!WaitForDevice(DeviceType::Output)) {
-    return;
-  }
-
-  RequestClockDomain();
-}
-
-// AUDIO_STREAM_CMD_GET_GAIN
-// For input stream, verify a valid GET_GAIN response is successfully received.
+// For input stream, verify a valid get gain response is successfully received.
 TEST_F(AudioDriverTest, InputGetGain) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
+  RequestStreamProperties();
+
   RequestGain();
 }
 
-// For output stream, verify a valid GET_GAIN response is successfully received.
+// For output stream, verify a valid get gain response is successfully received.
 TEST_F(AudioDriverTest, OutputGetGain) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
+  RequestStreamProperties();
+
   RequestGain();
 }
 
-// AUDIO_STREAM_CMD_SET_GAIN
-// For input stream, verify a valid SET_GAIN response is successfully received.
+// For input stream, verify a valid set gain response is successfully received.
 TEST_F(AudioDriverTest, InputSetGain) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
+  RequestStreamProperties();
   RequestGain();
+
   RequestSetGain();
 }
 
-// For output stream, verify a valid SET_GAIN response is successfully received.
+// For output stream, verify a valid set gain response is successfully received.
 TEST_F(AudioDriverTest, OutputSetGain) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
+  RequestStreamProperties();
   RequestGain();
+
   RequestSetGain();
 }
 
-// AUDIO_STREAM_CMD_GET_FORMATS
-// For input stream, verify a valid GET_FORMATS response is successfully received.
+// For input stream, verify a valid get formats response is successfully received.
 TEST_F(AudioDriverTest, InputGetFormats) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
@@ -1272,7 +623,7 @@ TEST_F(AudioDriverTest, InputGetFormats) {
   RequestFormats();
 }
 
-// For output stream, verify a valid GET_FORMATS response is successfully received.
+// For output stream, verify a valid get formats response is successfully received.
 TEST_F(AudioDriverTest, OutputGetFormats) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
@@ -1281,57 +632,7 @@ TEST_F(AudioDriverTest, OutputGetFormats) {
   RequestFormats();
 }
 
-// AUDIO_STREAM_CMD_SET_FORMAT
-// For output stream, verify a valid SET_FORMAT response, for low-bit-rate format -- and that a
-// valid ring buffer channel is received.
-TEST_F(AudioDriverTest, InputSetFormatMin) {
-  if (!WaitForDevice(DeviceType::Input)) {
-    return;
-  }
-
-  RequestFormats();
-
-  RequestSetFormatMin();
-}
-
-// For output stream, verify a valid SET_FORMAT response, for low-bit-rate format -- and that a
-// valid ring buffer channel is received.
-TEST_F(AudioDriverTest, OutputSetFormatMin) {
-  if (!WaitForDevice(DeviceType::Output)) {
-    return;
-  }
-
-  RequestFormats();
-
-  RequestSetFormatMin();
-}
-
-// For input stream, verify a valid SET_FORMAT response, for high-bit-rate format -- and that a
-// valid ring buffer channel is received.
-TEST_F(AudioDriverTest, InputSetFormatMax) {
-  if (!WaitForDevice(DeviceType::Input)) {
-    return;
-  }
-
-  RequestFormats();
-
-  RequestSetFormatMax();
-}
-
-// For output stream, verify a valid SET_FORMAT response, for high-bit-rate format -- and that a
-// valid ring buffer channel is received.
-TEST_F(AudioDriverTest, OutputSetFormatMax) {
-  if (!WaitForDevice(DeviceType::Output)) {
-    return;
-  }
-
-  RequestFormats();
-
-  RequestSetFormatMax();
-}
-
-// AUDIO_STREAM_CMD_PLUG_DETECT
-// For input stream, verify a valid PLUG_DETECT response is successfully received.
+// For input stream, verify a valid plug detect response is successfully received.
 TEST_F(AudioDriverTest, InputPlugDetect) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
@@ -1340,7 +641,7 @@ TEST_F(AudioDriverTest, InputPlugDetect) {
   RequestPlugDetect();
 }
 
-// For output stream, verify a valid PLUG_DETECT response is successfully received.
+// For output stream, verify a valid plug detect response is successfully received.
 TEST_F(AudioDriverTest, OutputPlugDetect) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
@@ -1349,121 +650,117 @@ TEST_F(AudioDriverTest, OutputPlugDetect) {
   RequestPlugDetect();
 }
 
-// AUDIO_STREAM_PLUG_DETECT_NOTIFY is not testable without scriptable PLUG/UNPLUG actions
+// Plug detect notifications are not testable without scriptable PLUG/UNPLUG actions on actual
+// hardware drivers.
 
 // Ring Buffer channel commands
 //
-// AUDIO_RB_CMD_GET_FIFO_DEPTH
-// For input stream, verify a valid GET_FIFO_DEPTH response is successfully received.
-TEST_F(AudioDriverTest, InputGetFifoDepth) {
+// For input stream, verify a valid ring buffer properties response is successfully received.
+TEST_F(AudioDriverTest, InputGetRingBufferProperties) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
 
-  RequestFifoDepth();
+  RequestRingBufferProperties();
 }
 
-// For output stream, verify a valid GET_FIFO_DEPTH response is successfully received.
-TEST_F(AudioDriverTest, OutputGetFifoDepth) {
+// For output stream, verify a valid ring buffer properties response is successfully received.
+TEST_F(AudioDriverTest, OutputGetRingBufferProperties) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
 
-  RequestFifoDepth();
+  RequestRingBufferProperties();
 }
 
-// AUDIO_RB_CMD_GET_BUFFER
-// For input stream, verify a GET_BUFFER response and ring buffer VMO is successfully received.
+// For input stream, verify a get buffer response and ring buffer VMO is successfully received.
 TEST_F(AudioDriverTest, InputGetBuffer) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
 
   uint32_t frames = 48000;
   uint32_t notifs = 8;
   RequestBuffer(frames, notifs);
 }
 
-// For output stream, verify a GET_BUFFER response and ring buffer VMO is successfully received.
+// For output stream, verify a get buffer response and ring buffer VMO is successfully received.
 TEST_F(AudioDriverTest, OutputGetBuffer) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
 
   uint32_t frames = 100;
   uint32_t notifs = 1;
   RequestBuffer(frames, notifs);
 }
 
-// AUDIO_RB_CMD_START
-// For input stream, verify that a valid START response is successfully received.
+// For input stream, verify that a valid start response is successfully received.
 TEST_F(AudioDriverTest, InputStart) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(100, 0);
 
   RequestStart();
 }
 
-// For output stream, verify that a valid START response is successfully received.
+// For output stream, verify that a valid start response is successfully received.
 TEST_F(AudioDriverTest, OutputStart) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
   RequestBuffer(32000, 0);
 
   RequestStart();
 }
 
-// AUDIO_RB_CMD_STOP
-// For input stream, verify that a valid STOP response is successfully received.
+// For input stream, verify that a valid stop response is successfully received.
 TEST_F(AudioDriverTest, InputStop) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(24000, 0);
   RequestStart();
 
   RequestStop();
 }
 
-// For output stream, verify that a valid STOP response is successfully received.
+// For output stream, verify that a valid stop response is successfully received.
 TEST_F(AudioDriverTest, OutputStop) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
   RequestBuffer(100, 0);
   RequestStart();
 
   RequestStop();
 }
 
-// AUDIO_RB_POSITION_NOTIFY
 // For input stream, verify position notifications at fast rate (~180/sec) over approx 100 ms.
 TEST_F(AudioDriverTest, InputPositionNotifyFast) {
   if (!WaitForDevice(DeviceType::Input)) {
@@ -1471,7 +768,7 @@ TEST_F(AudioDriverTest, InputPositionNotifyFast) {
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 32);
   RequestStart();
 
@@ -1485,7 +782,7 @@ TEST_F(AudioDriverTest, OutputPositionNotifyFast) {
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 32);
   RequestStart();
 
@@ -1499,7 +796,7 @@ TEST_F(AudioDriverTest, InputPositionNotifySlow) {
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
   RequestBuffer(48000, 2);
   RequestStart();
 
@@ -1513,7 +810,7 @@ TEST_F(AudioDriverTest, OutputPositionNotifySlow) {
   }
 
   RequestFormats();
-  RequestSetFormatMin();
+  RequestRingBufferMin();
   RequestBuffer(48000, 2);
   RequestStart();
 
@@ -1527,7 +824,7 @@ TEST_F(AudioDriverTest, InputPositionNotifyNone) {
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 0);
   RequestStart();
 
@@ -1541,21 +838,21 @@ TEST_F(AudioDriverTest, OutputPositionNotifyNone) {
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 0);
   RequestStart();
 
   ExpectNoPositionNotifications();
 }
 
-// For input stream, verify that no position notificatons arrive after STOP.
+// For input stream, verify that no position notificatons arrive after stop.
 TEST_F(AudioDriverTest, InputNoPositionNotifyAfterStop) {
   if (!WaitForDevice(DeviceType::Input)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 32);
   RequestStart();
   ExpectPositionNotifyCount(2);
@@ -1564,14 +861,14 @@ TEST_F(AudioDriverTest, InputNoPositionNotifyAfterStop) {
   ExpectNoPositionNotifications();
 }
 
-// For output stream, verify that no position notificatons arrive after STOP.
+// For output stream, verify that no position notificatons arrive after stop.
 TEST_F(AudioDriverTest, OutputNoPositionNotifyAfterStop) {
   if (!WaitForDevice(DeviceType::Output)) {
     return;
   }
 
   RequestFormats();
-  RequestSetFormatMax();
+  RequestRingBufferMax();
   RequestBuffer(8000, 32);
   RequestStart();
   ExpectPositionNotifyCount(2);
