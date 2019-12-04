@@ -13,6 +13,7 @@ use zerocopy::ByteSlice;
 
 use crate::context::{CounterContext, InstantContext, StateContext};
 use crate::data_structures::token_bucket::TokenBucket;
+use crate::device::ip::IpDeviceIdContext;
 use crate::device::ndp::NdpPacketHandler;
 use crate::device::{DeviceId, FrameDestination};
 use crate::error::{ExistsError, NoRouteError, SocketError};
@@ -23,7 +24,7 @@ use crate::ip::{
     socket::{
         BufferIpSocketContext, IpSock, IpSocket, IpSocketContext, SendError, UnroutableBehavior,
     },
-    IpDeviceIdContext, IpExt, IpProto, IpVersionMarker, IPV6_MIN_MTU,
+    IpExt, IpProto, IpVersionMarker, IPV6_MIN_MTU,
 };
 use crate::transport::ConnAddrMap;
 use crate::wire::icmp::{
@@ -1943,11 +1944,12 @@ mod tests {
         testutil::{DummyContext, DummyInstant},
         FrameContext, TimerContext,
     };
+    use crate::device::ip::DummyDeviceId;
     use crate::device::{set_routing_enabled, DeviceId, FrameDestination};
     use crate::ip::mld::{MldContext, MldFrameMetadata, MldInterface, MldReportDelay};
     use crate::ip::path_mtu::testutil::DummyPmtuState;
     use crate::ip::socket::testutil::{DummyIpSocket, DummyIpSocketContext};
-    use crate::ip::{receive_ipv4_packet, DummyDeviceId, IpExt};
+    use crate::ip::{receive_ipv4_packet, IpExt};
     use crate::testutil::{
         DummyEventDispatcher, DummyEventDispatcherBuilder, DUMMY_CONFIG_V4, DUMMY_CONFIG_V6,
     };

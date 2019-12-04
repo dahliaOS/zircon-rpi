@@ -25,8 +25,9 @@ use crate::context::{
     FrameContext, InstantContext, RngContext, RngContextExt, StateContext, TimerContext,
     TimerHandler,
 };
+use crate::device::ip::IpDeviceIdContext;
 use crate::ip::gmp::{Action, Actions, GmpAction, GmpStateMachine, ProtocolSpecific};
-use crate::ip::{IpDeviceIdContext, IpProto, Ipv4Option};
+use crate::ip::{IpProto, Ipv4Option};
 use crate::wire::igmp::{
     messages::{IgmpLeaveGroup, IgmpMembershipReportV1, IgmpMembershipReportV2, IgmpPacket},
     IgmpMessage, IgmpPacketBuilder, MessageType,
@@ -502,8 +503,8 @@ mod tests {
     use packet::serialize::{Buf, InnerPacketBuilder, Serializer};
 
     use crate::context::testutil::{DummyInstant, DummyTimerContextExt};
+    use crate::device::ip::DummyDeviceId;
     use crate::ip::gmp::{Action, GmpAction, MemberState};
-    use crate::ip::DummyDeviceId;
     use crate::testutil::new_rng;
     use crate::wire::igmp::messages::IgmpMembershipQueryV2;
 

@@ -179,6 +179,13 @@ macro_rules! impl_timer_context {
             impl_timer_context!(@inner $inner_timer_id, $pat, $bound_variable);
         }
     };
+    ($extra_type:ident, $extra_type_bound:path, $bound:path, $outer_timer_id:ty, $inner_timer_id:ty, $pat:pat, $bound_variable:ident) => {
+        impl<$extra_type: $extra_type_bound, C: $bound + crate::context::TimerContext<$outer_timer_id>>
+            crate::context::TimerContext<$inner_timer_id> for C
+        {
+            impl_timer_context!(@inner $inner_timer_id, $pat, $bound_variable);
+        }
+    };
     (@inner $inner_timer_id:ty, $pat:pat, $bound_variable:ident) => {
         fn schedule_timer_instant(
             &mut self,

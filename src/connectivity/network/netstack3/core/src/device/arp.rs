@@ -218,7 +218,7 @@ impl<
 // for similar reasons).
 
 /// An execution context which provides a `DeviceId` type for ARP internals to share.
-pub(super) trait ArpDeviceIdContext<D: ArpDevice> {
+pub(crate) trait ArpDeviceIdContext<D: ArpDevice> {
     /// An ID that identifies a particular device.
     type DeviceId: Copy + PartialEq;
 }

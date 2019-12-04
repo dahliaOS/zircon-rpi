@@ -38,9 +38,10 @@ use rand::{thread_rng, Rng};
 use zerocopy::ByteSlice;
 
 use crate::context::{CounterContext, InstantContext, RngContext, StateContext, TimerContext};
-use crate::device::link::{LinkAddress, LinkDevice};
+use crate::device::iplink::IpLinkDevice;
+use crate::device::link::{LinkAddress, LinkDeviceIdContext};
 use crate::device::{
-    AddressConfigurationType, AddressEntry, AddressError, AddressState, DeviceIdContext, Tentative,
+    AddressConfigurationType, AddressEntry, AddressError, AddressState, Tentative,
 };
 use crate::ip::IpProto;
 use crate::wire::icmp::ndp::options::{NdpOption, PrefixInformation};
@@ -248,7 +249,7 @@ const MIN_DELAY_BETWEEN_RAS: Duration = Duration::from_secs(3);
 ///
 /// `NdpHandler<D>` is implemented for any type which implements [`NdpContext<D>`],
 /// and it can also be mocked for use in testing.
-pub(crate) trait NdpHandler<D: LinkDevice>: DeviceIdContext<D> {
+pub(super) trait NdpHandler<D: IpLinkDevice>: LinkDeviceIdContext<D> {
     /// Cleans up state associated with the device.
     ///
     /// The contract is that after `deinitialize` is called, nothing else should be done
@@ -356,7 +357,7 @@ pub(crate) trait NdpHandler<D: LinkDevice>: DeviceIdContext<D> {
     fn insert_static_neighbor(&mut self, device_id: Self::DeviceId, net: Ipv6Addr, hw: D::Address);
 }
 
-impl<D: LinkDevice, C: NdpContext<D>> NdpHandler<D> for C
+impl<D: IpLinkDevice, C: NdpContext<D>> NdpHandler<D> for C
 where
     D::Address: for<'a> From<&'a MulticastAddr<Ipv6Addr>>,
 {
@@ -417,15 +418,15 @@ where
 }
 
 /// The execution context for an NDP device.
-pub(crate) trait NdpContext<D: LinkDevice>:
+pub(super) trait NdpContext<D: IpLinkDevice>:
     Sized
-    + DeviceIdContext<D>
+    + LinkDeviceIdContext<D>
     + RngContext
     + CounterContext
     + StateContext<
         NdpState<D, <Self as InstantContext>::Instant>,
-        <Self as DeviceIdContext<D>>::DeviceId,
-    > + TimerContext<NdpTimerId<D, <Self as DeviceIdContext<D>>::DeviceId>>
+        <Self as LinkDeviceIdContext<D>>::DeviceId,
+    > + TimerContext<NdpTimerId<D, <Self as LinkDeviceIdContext<D>>::DeviceId>>
 {
     /// Get the link layer address for a device.
     fn get_link_layer_addr(&self, device_id: Self::DeviceId) -> D::Address;
@@ -484,6 +485,7 @@ pub(crate) trait NdpContext<D: LinkDevice>:
         &mut self,
         device_id: Self::DeviceId,
         next_hop: Ipv6Addr,
+        dst_hw_addr: Option<D::Address>,
         body: S,
     ) -> Result<(), S>;
 
@@ -643,7 +645,7 @@ pub(crate) trait NdpContext<D: LinkDevice>:
     }
 }
 
-fn deinitialize<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
+fn deinitialize<D: IpLinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
     // Remove all timers associated with the device
     ctx.cancel_timers_with(|timer_id| timer_id.get_device_id() == device_id);
     // TODO(rheacock): Send any immediate packets, and potentially flag the state as uninitialized?
@@ -1128,7 +1130,7 @@ impl NdpRouterConfigurations {
 ///
 /// Each device will contain an `NdpState` object to keep track of discovery
 /// operations.
-pub(crate) struct NdpState<D: LinkDevice, Instant> {
+pub(crate) struct NdpState<D: IpLinkDevice, Instant> {
     //
     // NDP operation data structures.
     //
@@ -1209,7 +1211,7 @@ pub(crate) struct NdpState<D: LinkDevice, Instant> {
     configs: NdpConfigurations,
 }
 
-impl<D: LinkDevice, Instant> NdpState<D, Instant> {
+impl<D: IpLinkDevice, Instant> NdpState<D, Instant> {
     pub(crate) fn new(configs: NdpConfigurations) -> Self {
         let mut ret = Self {
             neighbors: NeighborTable::default(),
@@ -1380,7 +1382,7 @@ impl<D: LinkDevice, Instant> NdpState<D, Instant> {
 
 /// The identifier for timer events in NDP operations.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub(crate) struct NdpTimerId<D: LinkDevice, DeviceId> {
+pub(crate) struct NdpTimerId<D: IpLinkDevice, DeviceId> {
     device_id: DeviceId,
     inner: InnerNdpTimerId,
     _marker: PhantomData<D>,
@@ -1412,7 +1414,7 @@ pub(crate) enum InnerNdpTimerId {
     // want one for that.
 }
 
-impl<D: LinkDevice, DeviceId: Copy> NdpTimerId<D, DeviceId> {
+impl<D: IpLinkDevice, DeviceId: Copy> NdpTimerId<D, DeviceId> {
     fn new(device_id: DeviceId, inner: InnerNdpTimerId) -> NdpTimerId<D, DeviceId> {
         NdpTimerId { device_id, inner, _marker: PhantomData }
     }
@@ -1476,7 +1478,7 @@ impl<D: LinkDevice, DeviceId: Copy> NdpTimerId<D, DeviceId> {
     }
 }
 
-fn handle_timer<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, id: NdpTimerId<D, C::DeviceId>) {
+fn handle_timer<D: IpLinkDevice, C: NdpContext<D>>(ctx: &mut C, id: NdpTimerId<D, C::DeviceId>) {
     match id.inner {
         InnerNdpTimerId::LinkAddressResolution { neighbor_addr } => {
             let ndp_state = ctx.get_state_mut_with(id.device_id);
@@ -1575,7 +1577,7 @@ fn handle_timer<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, id: NdpTimerId<D, 
     }
 }
 
-fn set_ndp_configurations<D: LinkDevice, C: NdpContext<D>>(
+fn set_ndp_configurations<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     configs: NdpConfigurations,
@@ -1651,27 +1653,37 @@ fn set_ndp_configurations<D: LinkDevice, C: NdpContext<D>>(
     }
 }
 
-fn get_ndp_configurations<D: LinkDevice, C: NdpContext<D>>(
+fn get_ndp_configurations<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &C,
     device_id: C::DeviceId,
 ) -> &NdpConfigurations {
     &ctx.get_state_with(device_id).configs
 }
 
-fn lookup<D: LinkDevice, C: NdpContext<D>>(
+fn lookup<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     lookup_addr: Ipv6Addr,
-) -> Option<D::Address>
-where
-    D::Address: for<'a> From<&'a MulticastAddr<Ipv6Addr>>,
-{
+) -> Option<D::Address> {
+    lookup_inner(ctx, device_id, lookup_addr, true)
+}
+
+/// Look up the link layer address.
+///
+/// Begins the address resolution process if the link layer address for
+/// `lookup_addr` is not already known and `resolve_if_not_found` is `true`.
+fn lookup_inner<D: IpLinkDevice, C: NdpContext<D>>(
+    ctx: &mut C,
+    device_id: C::DeviceId,
+    lookup_addr: Ipv6Addr,
+    resolve_if_not_found: bool,
+) -> Option<D::Address> {
     trace!("ndp::lookup: {:?}", lookup_addr);
 
     // If `lookup_addr` is a multicast address, get the corresponding
     // destination multicast mac address.
-    if let Some(multicast_addr) = MulticastAddr::new(lookup_addr) {
-        return Some(D::Address::from(&multicast_addr));
+    if let Some(hwaddr) = D::ip_to_link(lookup_addr) {
+        return Some(hwaddr);
     }
 
     // TODO(brunodalbo): Figure out what to do if a frame can't be sent
@@ -1689,9 +1701,15 @@ where
         //               See RFC 4861 section 7.3.2 for more information.
         Some(NeighborState { link_address: Some(address), .. }) => Some(*address),
 
-        // We do not know about the neighbor and need to start address resolution.
+        // We do not know about the neighbor.
         None => {
-            trace!("ndp::lookup: starting address resolution process for {:?}", lookup_addr);
+            if resolve_if_not_found {
+                trace!("ndp::lookup: starting address resolution process for {:?}", lookup_addr);
+            } else {
+                return None;
+            }
+
+            // Start address resolution.
 
             let retrans_timer = ndpstate.retrans_timer;
 
@@ -1730,7 +1748,7 @@ where
 }
 
 #[cfg(test)]
-fn insert_neighbor<D: LinkDevice, C: NdpContext<D>>(
+fn insert_neighbor<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     net: Ipv6Addr,
@@ -1902,7 +1920,7 @@ impl<H> Default for NeighborTable<H> {
     }
 }
 
-fn start_advertising_interface<D: LinkDevice, C: NdpContext<D>>(
+fn start_advertising_interface<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
 ) {
@@ -1920,7 +1938,7 @@ fn start_advertising_interface<D: LinkDevice, C: NdpContext<D>>(
     start_periodic_router_advertisements(ctx, device_id);
 }
 
-fn stop_advertising_interface<D: LinkDevice, C: NdpContext<D>>(
+fn stop_advertising_interface<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
 ) {
@@ -1972,7 +1990,7 @@ fn stop_advertising_interface<D: LinkDevice, C: NdpContext<D>>(
 ///
 /// Panics if `device_id` does not have an assigned (non-tentative) link-local address or if it is
 /// not configured to be an advertising interface.
-fn start_periodic_router_advertisements<D: LinkDevice, C: NdpContext<D>>(
+fn start_periodic_router_advertisements<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
 ) {
@@ -1992,7 +2010,7 @@ fn start_periodic_router_advertisements<D: LinkDevice, C: NdpContext<D>>(
 /// # Panics
 ///
 /// Panics if `device_id` is not currently sending periodic Router Advertisements.
-fn stop_periodic_router_advertisements<D: LinkDevice, C: NdpContext<D>>(
+fn stop_periodic_router_advertisements<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
 ) {
@@ -2011,7 +2029,7 @@ fn stop_periodic_router_advertisements<D: LinkDevice, C: NdpContext<D>>(
 ///
 /// Panics if `device_id` is not operating as a router, if it is not configured to send Router
 /// Advertisements, or if it does not have an assigned (non-tentative) link-local address.
-fn schedule_next_router_advertisement<D: LinkDevice, C: NdpContext<D>>(
+fn schedule_next_router_advertisement<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
 ) {
@@ -2066,7 +2084,7 @@ fn schedule_next_router_advertisement<D: LinkDevice, C: NdpContext<D>>(
 /// Panics if `device_id` does not have an assigned (non-tentative) link-local address or if it is
 /// not either an advertising interface or sending the final Router Advertisements after ceasing to
 /// be an advertising interface.
-fn schedule_next_router_advertisement_instant<D: LinkDevice, C: NdpContext<D>>(
+fn schedule_next_router_advertisement_instant<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     instant: C::Instant,
@@ -2108,7 +2126,10 @@ fn schedule_next_router_advertisement_instant<D: LinkDevice, C: NdpContext<D>>(
     }
 }
 
-fn start_soliciting_routers<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
+fn start_soliciting_routers<D: IpLinkDevice, C: NdpContext<D>>(
+    ctx: &mut C,
+    device_id: C::DeviceId,
+) {
     // MUST NOT be a router.
     assert!(!ctx.is_router(device_id));
 
@@ -2139,7 +2160,7 @@ fn start_soliciting_routers<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device
     }
 }
 
-fn stop_soliciting_routers<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
+fn stop_soliciting_routers<D: IpLinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
     trace!("ndp::stop_soliciting_routers: stop soliciting routers for device: {:?}", device_id);
 
     assert!(!ctx.is_router(device_id));
@@ -2156,7 +2177,7 @@ fn stop_soliciting_routers<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_
 ///
 /// Panics if we attempt to do router solicitation as a router or if
 /// we are already done soliciting routers.
-fn do_router_solicitation<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
+fn do_router_solicitation<D: IpLinkDevice, C: NdpContext<D>>(ctx: &mut C, device_id: C::DeviceId) {
     assert!(!ctx.is_router(device_id));
 
     let ndp_state = ctx.get_state_mut_with(device_id);
@@ -2196,7 +2217,7 @@ fn do_router_solicitation<D: LinkDevice, C: NdpContext<D>>(ctx: &mut C, device_i
 /// # Panics
 ///
 /// Panics if we attempt to send a router solicitation as a router.
-fn send_router_solicitation<D: LinkDevice, C: NdpContext<D>>(
+fn send_router_solicitation<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     src_ip: Option<Ipv6Addr>,
@@ -2233,7 +2254,7 @@ fn send_router_solicitation<D: LinkDevice, C: NdpContext<D>>(
     }
 }
 
-fn start_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
+fn start_duplicate_address_detection<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     tentative_addr: Ipv6Addr,
@@ -2264,7 +2285,7 @@ fn start_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
     }
 }
 
-fn cancel_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
+fn cancel_duplicate_address_detection<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     tentative_addr: Ipv6Addr,
@@ -2284,7 +2305,7 @@ fn cancel_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
 /// # Panics
 ///
 /// Panics if the DAD process has not been started for `tentative_addr` on `device_id`.
-fn do_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
+fn do_duplicate_address_detection<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     tentative_addr: Ipv6Addr,
@@ -2318,7 +2339,7 @@ fn do_duplicate_address_detection<D: LinkDevice, C: NdpContext<D>>(
     );
 }
 
-fn send_neighbor_solicitation<D: LinkDevice, C: NdpContext<D>>(
+fn send_neighbor_solicitation<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     lookup_addr: Ipv6Addr,
@@ -2349,7 +2370,7 @@ fn send_neighbor_solicitation<D: LinkDevice, C: NdpContext<D>>(
     }
 }
 
-fn send_neighbor_advertisement<D: LinkDevice, C: NdpContext<D>>(
+fn send_neighbor_advertisement<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     solicited: bool,
@@ -2397,7 +2418,7 @@ fn send_neighbor_advertisement<D: LinkDevice, C: NdpContext<D>>(
 /// Panics if `device_id` does not have an assigned (non-tentative) link-local address or if it is
 /// not either an advertising interface or sending the final Router Advertisements after ceasing to
 /// be an advertising interface.
-fn send_router_advertisement<D: LinkDevice, C: NdpContext<D>>(
+fn send_router_advertisement<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     dst_ip: Ipv6Addr,
@@ -2482,7 +2503,7 @@ fn send_router_advertisement<D: LinkDevice, C: NdpContext<D>>(
 }
 
 /// Helper function to send ndp packet over an NdpDevice to `dst_ip`.
-fn send_ndp_packet<D: LinkDevice, C: NdpContext<D>, B: ByteSlice, M>(
+fn send_ndp_packet<D: IpLinkDevice, C: NdpContext<D>, B: ByteSlice, M>(
     ctx: &mut C,
     device_id: C::DeviceId,
     src_ip: Ipv6Addr,
@@ -2494,10 +2515,12 @@ where
     M: IcmpMessage<Ipv6, B, Code = IcmpUnusedCode>,
 {
     trace!("send_ndp_packet: src_ip={:?} dst_ip={:?}", src_ip, dst_ip);
+    let dst_hw_addr = lookup_inner(ctx, device_id, dst_ip, true);
 
     ctx.send_ipv6_frame(
         device_id,
         dst_ip,
+        dst_hw_addr,
         ndp::OptionsSerializer::<_>::new(options.iter())
             .into_serializer()
             .encapsulate(IcmpPacketBuilder::<Ipv6, B, M>::new(
@@ -2532,7 +2555,7 @@ pub(crate) trait NdpPacketHandler<DeviceId> {
     );
 }
 
-fn duplicate_address_detected<D: LinkDevice, C: NdpContext<D>>(
+fn duplicate_address_detected<D: IpLinkDevice, C: NdpContext<D>>(
     ctx: &mut C,
     device_id: C::DeviceId,
     addr: Ipv6Addr,
@@ -2543,7 +2566,7 @@ fn duplicate_address_detected<D: LinkDevice, C: NdpContext<D>>(
     ctx.duplicate_address_detected(device_id, addr);
 }
 
-pub(crate) fn receive_ndp_packet<D: LinkDevice, C: NdpContext<D>, B>(
+pub(super) fn receive_ndp_packet<D: IpLinkDevice, C: NdpContext<D>, B>(
     ctx: &mut C,
     device_id: C::DeviceId,
     src_ip: Ipv6Addr,
@@ -3488,12 +3511,12 @@ mod tests {
     use net_types::ip::AddrSubnet;
     use packet::{Buf, GrowBuffer, ParseBuffer};
 
+    use crate::device::iplink::IpLinkDeviceTimerId;
     use crate::device::{
-        add_ip_addr_subnet, del_ip_addr,
-        ethernet::{EthernetLinkDevice, EthernetTimerId},
-        get_ip_addr_state, get_ip_addr_subnets, get_ipv6_hop_limit, get_mtu, is_in_ip_multicast,
-        is_routing_enabled, set_routing_enabled, DeviceId, DeviceLayerTimerId,
-        DeviceLayerTimerIdInner, EthernetDeviceId,
+        add_ip_addr_subnet, del_ip_addr, ethernet::EthernetLinkDevice, get_ip_addr_state,
+        get_ip_addr_subnets, get_ipv6_hop_limit, get_mtu, is_in_ip_multicast, is_routing_enabled,
+        set_routing_enabled, DeviceId, DeviceLayerTimerId, DeviceLayerTimerIdInner,
+        EthernetDeviceId,
     };
     use crate::ip::IPV6_MIN_MTU;
     use crate::testutil::{
@@ -3512,7 +3535,7 @@ mod tests {
     impl From<NdpTimerId<EthernetLinkDevice, EthernetDeviceId>> for TimerId {
         fn from(id: NdpTimerId<EthernetLinkDevice, EthernetDeviceId>) -> Self {
             TimerId(TimerIdInner::DeviceLayer(DeviceLayerTimerId(
-                DeviceLayerTimerIdInner::Ethernet(EthernetTimerId::Ndp(id)),
+                DeviceLayerTimerIdInner::Ethernet(IpLinkDeviceTimerId::V6(id.into())),
             )))
         }
     }

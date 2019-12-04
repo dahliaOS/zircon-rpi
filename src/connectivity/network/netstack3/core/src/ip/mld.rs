@@ -27,8 +27,9 @@ use crate::context::{
     FrameContext, InstantContext, RngContext, RngContextExt, StateContext, TimerContext,
     TimerHandler,
 };
+use crate::device::ip::IpDeviceIdContext;
 use crate::ip::gmp::{Action, Actions, GmpAction, GmpStateMachine, ProtocolSpecific};
-use crate::ip::{IpDeviceIdContext, IpProto};
+use crate::ip::IpProto;
 use crate::wire::icmp::mld::{
     IcmpMldv1MessageType, Mldv1Body, Mldv1MessageBuilder, MulticastListenerDone,
     MulticastListenerReport,
@@ -458,8 +459,9 @@ mod tests {
 
     use super::*;
     use crate::context::testutil::{DummyInstant, DummyTimerContextExt};
+    use crate::device::ip::DummyDeviceId;
     use crate::ip::gmp::{Action, GmpAction, MemberState};
-    use crate::ip::{DummyDeviceId, IPV6_ALL_ROUTERS};
+    use crate::ip::IPV6_ALL_ROUTERS;
     use crate::testutil;
     use crate::testutil::new_rng;
     use crate::wire::icmp::mld::MulticastListenerQuery;

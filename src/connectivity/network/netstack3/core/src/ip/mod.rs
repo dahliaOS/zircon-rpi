@@ -22,7 +22,7 @@ mod types;
 // re-exported from the root.
 pub use self::types::*;
 
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::ops::Deref;
 
 use log::{debug, trace};
@@ -55,7 +55,7 @@ use crate::wire::ipv6::{Ipv6Packet, Ipv6PacketRaw};
 use crate::{BufferDispatcher, Context, EventDispatcher, StackState, TimerId, TimerIdInner};
 
 /// Default IPv4 TTL.
-const DEFAULT_TTL: u8 = 64;
+pub(crate) const DEFAULT_TTL: u8 = 64;
 
 /// Minimum MTU required by all IPv6 devices.
 pub(crate) const IPV6_MIN_MTU: u32 = 1280;
@@ -87,6 +87,16 @@ impl<A: IpAddress> IpPacketFromArgs<A> {
         proto: IpProto,
     ) -> IpPacketFromArgs<A> {
         IpPacketFromArgs { src_ip, dst_ip, proto }
+    }
+}
+
+pub(crate) trait IpHandler {
+    fn is_routing_enabled<I: Ip>(&self) -> bool;
+}
+
+impl<D: EventDispatcher> IpHandler for Context<D> {
+    fn is_routing_enabled<I: Ip>(&self) -> bool {
+        is_routing_enabled::<_, I>(self)
     }
 }
 
@@ -173,40 +183,6 @@ impl<I: Ip, D: EventDispatcher> TransportIpContext<I> for Context<D> {
     ) -> Option<SpecifiedAddr<I::Addr>> {
         local_address_for_remote(self, remote)
     }
-}
-
-/// An execution context which provides a `DeviceId` type for various IP
-/// internals to share.
-///
-/// This trait provides the associated `DeviceId` type, and is used by
-/// [`IgmpContext`], [`MldContext`], and [`IcmpContext`]. It allows them to use
-/// the same `DeviceId` type rather than each providing their own, which would
-/// require lots of verbose type bounds when they need to be interoperable (such
-/// as when ICMP delivers an MLD packet to the `mld` module for processing).
-pub(crate) trait IpDeviceIdContext {
-    type DeviceId: Copy + Display + Debug + Send + Sync + 'static;
-}
-
-/// A dummy device ID for use in testing.
-///
-/// `DummyDeviceId` is provided for use in implementing
-/// `IpDeviceIdContext::DeviceId` in tests. Unlike `()`, it implements the
-/// `Display` trait, which is a requirement of `IpDeviceIdContext::DeviceId`.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[cfg(test)]
-pub(crate) struct DummyDeviceId;
-
-#[cfg(test)]
-impl Display for DummyDeviceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DummyDeviceId")
-    }
-}
-
-// Temporary blanket impl until we switch over entirely to the traits defined in
-// the `context` module.
-impl<D: EventDispatcher> IpDeviceIdContext for Context<D> {
-    type DeviceId = DeviceId;
 }
 
 /// A builder for IPv4 state.

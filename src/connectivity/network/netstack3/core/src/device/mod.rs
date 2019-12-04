@@ -6,6 +6,8 @@
 
 pub(crate) mod arp;
 pub(crate) mod ethernet;
+pub(crate) mod ip;
+pub(crate) mod iplink;
 mod link;
 pub(crate) mod ndp;
 
@@ -18,19 +20,21 @@ use log::{debug, trace};
 use net_types::ethernet::Mac;
 use net_types::ip::{AddrSubnet, Ip, IpAddress, Ipv4, Ipv4Addr, Ipv6, Ipv6Addr};
 use net_types::{LinkLocalAddr, MulticastAddr, SpecifiedAddr, Witness};
-use packet::{Buf, BufferMut, EmptyBuf, Serializer};
+use packet::{BufferMut, Serializer};
 use specialize_ip_macro::{specialize_ip, specialize_ip_address};
 use zerocopy::ByteSlice;
 
-use crate::context::{
-    CounterContext, FrameContext, InstantContext, RecvFrameContext, RngContext, StateContext,
-    TimerContext,
-};
+use crate::context::{FrameContext, RecvFrameContext, StateContext};
 use crate::data_structures::{IdMap, IdMapCollectionKey};
 use crate::device::ethernet::{
-    EthernetDeviceState, EthernetDeviceStateBuilder, EthernetLinkDevice, EthernetTimerId,
+    EthernetDeviceId, EthernetDeviceState, EthernetDeviceStateBuilder, EthernetLinkDevice,
+    EthernetTimerId,
 };
-use crate::device::link::LinkDevice;
+use crate::device::ip::{IpDeviceHandler, IpDeviceIdContext};
+use crate::device::iplink::{
+    IpLinkDeviceState, IpLinkDeviceStuff, IpLinkDeviceTimerId, IpLinkFrameMeta,
+};
+use crate::device::link::{LinkDeviceContext, LinkDeviceHandler, LinkDeviceIdContext};
 use crate::device::ndp::{NdpHandler, NdpPacketHandler};
 use crate::ip::igmp::IgmpInterface;
 use crate::ip::mld::MldInterface;
@@ -38,10 +42,20 @@ use crate::ip::socket::IpSockUpdate;
 use crate::wire::icmp::ndp::NdpPacket;
 use crate::{BufferDispatcher, Context, EventDispatcher, Instant, StackState};
 
-/// An execution context which provides a `DeviceId` type for various device
-/// layer internals to share.
-pub(crate) trait DeviceIdContext<D: LinkDevice> {
-    type DeviceId: Copy + Debug + Eq;
+pub(crate) fn receive_ndp_packet<D: EventDispatcher, B: ByteSlice>(
+    ctx: &mut Context<D>,
+    device_id: DeviceId,
+    src_ip: Ipv6Addr,
+    dst_ip: SpecifiedAddr<Ipv6Addr>,
+    packet: NdpPacket<B>,
+) {
+    crate::device::ndp::receive_ndp_packet::<EthernetLinkDevice, _, _>(
+        ctx,
+        device_id.id.into(),
+        src_ip,
+        dst_ip,
+        packet,
+    )
 }
 
 struct RecvIpFrameMeta<D, I: Ip> {
@@ -56,71 +70,63 @@ impl<D, I: Ip> RecvIpFrameMeta<D, I> {
     }
 }
 
-/// The context provided by the device layer to a particular IP device
-/// implementation.
-trait IpDeviceContext<D: LinkDevice, TimerId, State>:
-    DeviceIdContext<D>
-    + NdpHandler<D>
-    + CounterContext
-    + RngContext
-    + StateContext<
-        IpLinkDeviceState<<Self as InstantContext>::Instant, State>,
-        <Self as DeviceIdContext<D>>::DeviceId,
-    > + TimerContext<TimerId>
-    + FrameContext<EmptyBuf, <Self as DeviceIdContext<D>>::DeviceId>
-    + FrameContext<Buf<Vec<u8>>, <Self as DeviceIdContext<D>>::DeviceId>
-{
-    /// Is `device` currently operating as a router?
-    ///
-    /// Returns `true` if both the `device` has routing enabled AND the netstack
-    /// is configured to route packets not destined for it; returns `false`
-    /// otherwise.
-    fn is_router_device<I: Ip>(&self, device: <Self as DeviceIdContext<D>>::DeviceId) -> bool;
+impl<D: EventDispatcher> LinkDeviceContext<EthernetLinkDevice> for Context<D> {}
 
-    /// Is `device` usable?
-    ///
-    /// That is, is it either initializing or initialized?
-    fn is_device_usable(&self, device: <Self as DeviceIdContext<D>>::DeviceId) -> bool;
-}
-
-impl<D: EventDispatcher>
-    IpDeviceContext<
-        EthernetLinkDevice,
-        EthernetTimerId<EthernetDeviceId>,
-        EthernetDeviceState<D::Instant>,
-    > for Context<D>
-{
-    fn is_router_device<I: Ip>(&self, device: EthernetDeviceId) -> bool {
-        is_router_device::<_, I>(self, device.into())
-    }
-
+impl<D: EventDispatcher> LinkDeviceHandler<EthernetLinkDevice> for Context<D> {
     fn is_device_usable(&self, device: EthernetDeviceId) -> bool {
         is_device_usable(self.state(), device.into())
     }
-}
 
-/// `IpDeviceContext` with an extra `B: BufferMut` parameter.
-///
-/// `BufferIpDeviceContext` is used when sending a frame is required.
-trait BufferIpDeviceContext<D: LinkDevice, TimerId, State, B: BufferMut>:
-    IpDeviceContext<D, TimerId, State>
-    + FrameContext<B, <Self as DeviceIdContext<D>>::DeviceId>
-    + RecvFrameContext<B, RecvIpFrameMeta<<Self as DeviceIdContext<D>>::DeviceId, Ipv4>>
-    + RecvFrameContext<B, RecvIpFrameMeta<<Self as DeviceIdContext<D>>::DeviceId, Ipv6>>
-{
-}
+    fn get_link_layer_addr(&self, device_id: EthernetDeviceId) -> Mac {
+        <Context<_> as StateContext<IpLinkDeviceState<_, EthernetDeviceState<_>>, _>>
+            ::get_state_with(self, device_id).link().mac
+    }
 
-impl<
-        D: LinkDevice,
-        TimerId,
-        State,
-        B: BufferMut,
-        C: IpDeviceContext<D, TimerId, State>
-            + FrameContext<B, <Self as DeviceIdContext<D>>::DeviceId>
-            + RecvFrameContext<B, RecvIpFrameMeta<<Self as DeviceIdContext<D>>::DeviceId, Ipv4>>
-            + RecvFrameContext<B, RecvIpFrameMeta<<Self as DeviceIdContext<D>>::DeviceId, Ipv6>>,
-    > BufferIpDeviceContext<D, TimerId, State, B> for C
-{
+    fn get_interface_identifier(&self, device_id: EthernetDeviceId) -> [u8; 8] {
+        self.get_link_layer_addr(device_id).to_eui64()
+    }
+
+    fn set_mtu(&mut self, device_id: EthernetDeviceId, mut mtu: u32) {
+        let dev_state = <Context<_> as StateContext<
+            IpLinkDeviceState<_, EthernetDeviceState<_>>,
+            _,
+        >>::get_state_mut_with(self, device_id)
+        .link_mut();
+
+        // If `mtu` is greater than what the device supports, set `mtu` to the maximum MTU the
+        // device supports.
+        if mtu > dev_state.hw_mtu {
+            trace!("set_mtu: MTU of {:?} is greater than the device {:?}'s max MTU of {:?}, using device's max MTU instead", mtu, device_id, dev_state.hw_mtu);
+            mtu = dev_state.hw_mtu;
+        }
+
+        trace!("set_mtu: setting link MTU to {:?}", mtu);
+        dev_state.mtu = mtu;
+    }
+
+    fn get_mtu(&self, device_id: EthernetDeviceId) -> u32 {
+        <Context<_> as StateContext<
+            IpLinkDeviceState<_, EthernetDeviceState<_>>,
+            _,
+        >>::get_state_with(self, device_id)
+        .link().mtu
+    }
+
+    fn join_link_multicast(
+        &mut self,
+        device_id: EthernetDeviceId,
+        multicast_addr: MulticastAddr<Mac>,
+    ) {
+        ethernet::join_link_multicast(self, device_id, multicast_addr)
+    }
+
+    fn leave_link_multicast(
+        &mut self,
+        device_id: EthernetDeviceId,
+        multicast_addr: MulticastAddr<Mac>,
+    ) {
+        ethernet::leave_link_multicast(self, device_id, multicast_addr)
+    }
 }
 
 impl<B: BufferMut, D: BufferDispatcher<B>>
@@ -136,6 +142,39 @@ impl<B: BufferMut, D: BufferDispatcher<B>>
 {
     fn receive_frame(&mut self, metadata: RecvIpFrameMeta<EthernetDeviceId, Ipv6>, frame: B) {
         crate::ip::receive_ipv6_packet(self, metadata.device.into(), metadata.frame_dst, frame);
+    }
+}
+
+impl<D: EventDispatcher> StateContext<IpDeviceState<D::Instant>, DeviceId> for Context<D> {
+    fn get_state_with(&self, device: DeviceId) -> &IpDeviceState<D::Instant> {
+        match device.protocol {
+            DeviceProtocol::Ethernet => {
+                self.state().device.ethernet.get(device.id.into()).unwrap().device().ip()
+            }
+        }
+    }
+
+    fn get_state_mut_with(&mut self, device: DeviceId) -> &mut IpDeviceState<D::Instant> {
+        match device.protocol {
+            DeviceProtocol::Ethernet => self
+                .state_mut()
+                .device
+                .ethernet
+                .get_mut(device.id.into())
+                .unwrap()
+                .device_mut()
+                .ip_mut(),
+        }
+    }
+}
+
+impl<D: EventDispatcher> StateContext<IpLinkDeviceStuff, EthernetDeviceId> for Context<D> {
+    fn get_state_with(&self, device: EthernetDeviceId) -> &IpLinkDeviceStuff {
+        self.state().device.ethernet.get(device.0).unwrap().device().ip_link()
+    }
+
+    fn get_state_mut_with(&mut self, device: EthernetDeviceId) -> &mut IpLinkDeviceStuff {
+        self.state_mut().device.ethernet.get_mut(device.0).unwrap().device_mut().ip_link_mut()
     }
 }
 
@@ -155,6 +194,28 @@ impl<D: EventDispatcher>
         id: EthernetDeviceId,
     ) -> &mut IpLinkDeviceState<D::Instant, EthernetDeviceState<D::Instant>> {
         self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut()
+    }
+}
+
+impl<D: EventDispatcher> StateContext<EthernetDeviceState<D::Instant>, EthernetDeviceId>
+    for Context<D>
+{
+    fn get_state_with(&self, id: EthernetDeviceId) -> &EthernetDeviceState<D::Instant> {
+        self.state().device.ethernet.get(id.0).unwrap().device().link()
+    }
+
+    fn get_state_mut_with(&mut self, id: EthernetDeviceId) -> &mut EthernetDeviceState<D::Instant> {
+        self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().link_mut()
+    }
+}
+
+impl<D: EventDispatcher> StateContext<IpDeviceState<D::Instant>, EthernetDeviceId> for Context<D> {
+    fn get_state_with(&self, id: EthernetDeviceId) -> &IpDeviceState<D::Instant> {
+        self.state().device.ethernet.get(id.0).unwrap().device().ip()
+    }
+
+    fn get_state_mut_with(&mut self, id: EthernetDeviceId) -> &mut IpDeviceState<D::Instant> {
+        self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().ip_mut()
     }
 }
 
@@ -224,20 +285,10 @@ impl<B: BufferMut, D: BufferDispatcher<B>> FrameContext<B, EthernetDeviceId> for
     }
 }
 
-/// Device IDs identifying Ethernet devices.
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct EthernetDeviceId(usize);
-
 impl Debug for EthernetDeviceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let device: DeviceId = self.clone().into();
         write!(f, "{:?}", device)
-    }
-}
-
-impl From<usize> for EthernetDeviceId {
-    fn from(id: usize) -> EthernetDeviceId {
-        EthernetDeviceId(id)
     }
 }
 
@@ -263,7 +314,7 @@ impl From<EthernetDeviceId> for DeviceId {
     }
 }
 
-impl<D: EventDispatcher> DeviceIdContext<EthernetLinkDevice> for Context<D> {
+impl<D: EventDispatcher> LinkDeviceIdContext<EthernetLinkDevice> for Context<D> {
     type DeviceId = EthernetDeviceId;
 }
 
@@ -277,7 +328,12 @@ impl_timer_context!(
 /// Handle a timer event firing in the device layer.
 pub(crate) fn handle_timeout<D: EventDispatcher>(ctx: &mut Context<D>, id: DeviceLayerTimerId) {
     match id.0 {
-        DeviceLayerTimerIdInner::Ethernet(id) => ethernet::handle_timer(ctx, id),
+        DeviceLayerTimerIdInner::Ethernet(IpLinkDeviceTimerId::V4(id)) => {
+            iplink::handle_timer::<Ipv4, EthernetLinkDevice, _>(ctx, id)
+        }
+        DeviceLayerTimerIdInner::Ethernet(IpLinkDeviceTimerId::V6(id)) => {
+            iplink::handle_timer::<Ipv6, EthernetLinkDevice, _>(ctx, id)
+        }
     }
 }
 
@@ -286,6 +342,12 @@ pub(crate) fn handle_timeout<D: EventDispatcher>(ctx: &mut Context<D>, id: Devic
 pub struct DeviceId {
     id: usize,
     protocol: DeviceProtocol,
+}
+
+// Temporary blanket impl until we switch over entirely to the traits defined in
+// the `context` module.
+impl<D: EventDispatcher> IpDeviceIdContext for Context<D> {
+    type DeviceId = DeviceId;
 }
 
 impl From<usize> for DeviceId {
@@ -498,27 +560,27 @@ struct DeviceState<D> {
 
 impl<D> DeviceState<D> {
     /// Create a new `DeviceState` with a device-specific state `device`.
-    pub(crate) fn new(device: D) -> Self {
+    fn new(device: D) -> Self {
         Self { common: CommonDeviceState::default(), device }
     }
 
     /// Get a reference to the common (device-independant) state.
-    pub(crate) fn common(&self) -> &CommonDeviceState {
+    fn common(&self) -> &CommonDeviceState {
         &self.common
     }
 
     /// Get a mutable reference to the common (device-independant) state.
-    pub(crate) fn common_mut(&mut self) -> &mut CommonDeviceState {
+    fn common_mut(&mut self) -> &mut CommonDeviceState {
         &mut self.common
     }
 
     /// Get a reference to the inner (device-specific) state.
-    pub(crate) fn device(&self) -> &D {
+    fn device(&self) -> &D {
         &self.device
     }
 
     /// Get a mutable reference to the inner (device-specific) state.
-    pub(crate) fn device_mut(&mut self) -> &mut D {
+    fn device_mut(&mut self) -> &mut D {
         &mut self.device
     }
 }
@@ -598,41 +660,6 @@ impl<I: Instant> Default for IpDeviceState<I> {
     }
 }
 
-/// State for a link-device that is also an IP device.
-///
-/// D is the link-specific state.
-struct IpLinkDeviceState<I: Instant, D> {
-    ip: IpDeviceState<I>,
-    link: D,
-}
-
-impl<I: Instant, D> IpLinkDeviceState<I, D> {
-    /// Create a new `IpLinkDeviceState` with a link-specific state `link`.
-    pub(crate) fn new(link: D) -> Self {
-        Self { ip: IpDeviceState::default(), link }
-    }
-
-    /// Get a reference to the ip (link-independant) state.
-    pub(crate) fn ip(&self) -> &IpDeviceState<I> {
-        &self.ip
-    }
-
-    /// Get a mutable reference to the ip (link-independant) state.
-    pub(crate) fn ip_mut(&mut self) -> &mut IpDeviceState<I> {
-        &mut self.ip
-    }
-
-    /// Get a reference to the inner (link-specific) state.
-    pub(crate) fn link(&self) -> &D {
-        &self.link
-    }
-
-    /// Get a mutable reference to the inner (link-specific) state.
-    pub(crate) fn link_mut(&mut self) -> &mut D {
-        &mut self.link
-    }
-}
-
 /// The various states an IP address can be on an interface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AddressState {
@@ -654,12 +681,12 @@ pub enum AddressState {
 
 impl AddressState {
     /// Is this address assigned?
-    pub(crate) fn is_assigned(self) -> bool {
+    fn is_assigned(self) -> bool {
         self == AddressState::Assigned
     }
 
     /// Is this address tentative?
-    pub(crate) fn is_tentative(self) -> bool {
+    fn is_tentative(self) -> bool {
         self == AddressState::Tentative
     }
 }
@@ -683,7 +710,7 @@ pub struct AddressEntry<S: IpAddress, T: Instant, A: Witness<S> = SpecifiedAddr<
 }
 
 impl<S: IpAddress, T: Instant, A: Witness<S>> AddressEntry<S, T, A> {
-    pub(crate) fn new(
+    fn new(
         addr_sub: AddrSubnet<S, A>,
         state: AddressState,
         configuration_type: AddressConfigurationType,
@@ -692,23 +719,23 @@ impl<S: IpAddress, T: Instant, A: Witness<S>> AddressEntry<S, T, A> {
         Self { addr_sub, state, configuration_type, valid_until }
     }
 
-    pub(crate) fn addr_sub(&self) -> &AddrSubnet<S, A> {
+    fn addr_sub(&self) -> &AddrSubnet<S, A> {
         &self.addr_sub
     }
 
-    pub(crate) fn state(&self) -> AddressState {
+    fn state(&self) -> AddressState {
         self.state
     }
 
-    pub(crate) fn configuration_type(&self) -> AddressConfigurationType {
+    fn configuration_type(&self) -> AddressConfigurationType {
         self.configuration_type
     }
 
-    pub(crate) fn valid_until(&self) -> Option<T> {
+    fn valid_until(&self) -> Option<T> {
         self.valid_until
     }
 
-    pub(crate) fn mark_permanent(&mut self) {
+    fn mark_permanent(&mut self) {
         self.state = AddressState::Assigned;
     }
 }
@@ -786,40 +813,8 @@ pub fn initialize_device<D: EventDispatcher>(ctx: &mut Context<D>, device: Devic
 
     state.initialization_status = InitializationStatus::Initializing;
 
-    match device.protocol {
-        DeviceProtocol::Ethernet => ethernet::initialize_device(ctx, device.id.into()),
-    }
-
-    // All nodes should join the all-nodes multicast group.
-    join_ip_multicast(ctx, device, MulticastAddr::new(Ipv6::ALL_NODES_LINK_LOCAL_ADDRESS).unwrap());
-
-    if self::is_router_device::<_, Ipv6>(ctx, device) {
-        // If the device is operating as a router, and it is configured to be an advertising
-        // interface, start sending periodic router advertisements.
-        if get_ndp_configurations(ctx, device)
-            .get_router_configurations()
-            .get_should_send_advertisements()
-        {
-            match device.protocol {
-                DeviceProtocol::Ethernet => {
-                    <Context<_> as NdpHandler<EthernetLinkDevice>>::start_advertising_interface(
-                        ctx,
-                        device.id.into(),
-                    )
-                }
-            }
-        }
-    } else {
-        // RFC 4861 section 6.3.7, it implies only a host sends router solicitation messages.
-        match device.protocol {
-            DeviceProtocol::Ethernet => {
-                <Context<_> as NdpHandler<EthernetLinkDevice>>::start_soliciting_routers(
-                    ctx,
-                    device.id.into(),
-                )
-            }
-        }
-    }
+    <Context<D> as IpDeviceHandler<Ipv4>>::initialize_device(ctx, device);
+    <Context<D> as IpDeviceHandler<Ipv6>>::initialize_device(ctx, device);
 
     get_common_device_state_mut(ctx.state_mut(), device).initialization_status =
         InitializationStatus::Initialized;
@@ -840,7 +835,8 @@ pub fn remove_device<D: EventDispatcher>(
     match device.protocol {
         DeviceProtocol::Ethernet => {
             // TODO(rheacock): Generate any final frames to send here.
-            crate::device::ethernet::deinitialize(ctx, device.id.into());
+            <Context<D> as IpDeviceHandler<Ipv4>>::deinitialize_device(ctx, device);
+            <Context<D> as IpDeviceHandler<Ipv6>>::deinitialize_device(ctx, device);
             ctx.state_mut()
                 .device
                 .ethernet
@@ -861,22 +857,24 @@ pub fn remove_device<D: EventDispatcher>(
 /// # Panics
 ///
 /// Panics if `device` is not initialized.
-pub(crate) fn send_ip_frame<B: BufferMut, D: BufferDispatcher<B>, A, S>(
+#[specialize_ip_address]
+pub(crate) fn send_ip_frame<
+    B: BufferMut,
+    D: BufferDispatcher<B>,
+    A: IpAddress,
+    S: Serializer<Buffer = B>,
+>(
     ctx: &mut Context<D>,
     device: DeviceId,
     local_addr: SpecifiedAddr<A>,
     body: S,
-) -> Result<(), S>
-where
-    A: IpAddress,
-    S: Serializer<Buffer = B>,
-{
+) -> Result<(), S> {
     // `device` must not be uninitialized.
     assert!(is_device_usable(ctx.state(), device));
 
     match device.protocol {
         DeviceProtocol::Ethernet => {
-            self::ethernet::send_ip_frame(ctx, device.id.into(), local_addr, body)
+            return ctx.send_frame(IpLinkFrameMeta::new(device.id.into(), local_addr), body)
         }
     }
 }
@@ -922,9 +920,7 @@ pub(crate) fn get_ip_addr_subnet<D: EventDispatcher, A: IpAddress>(
     ctx: &Context<D>,
     device: DeviceId,
 ) -> Option<AddrSubnet<A>> {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_ip_addr_subnet(ctx, device.id.into()),
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::get_ip_addr_subnet(ctx, device)
 }
 
 /// Get the IP addresses and associated subnets for a device.
@@ -939,9 +935,7 @@ pub fn get_ip_addr_subnets<'a, D: EventDispatcher, A: IpAddress>(
     ctx: &'a Context<D>,
     device: DeviceId,
 ) -> impl 'a + Iterator<Item = AddrSubnet<A>> {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_ip_addr_subnets(ctx, device.id.into()),
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::get_ip_addr_subnets(ctx, device)
 }
 
 /// Get the state of an address on device.
@@ -952,9 +946,7 @@ pub(crate) fn get_ip_addr_state<D: EventDispatcher, A: IpAddress>(
     device: DeviceId,
     addr: &SpecifiedAddr<A>,
 ) -> Option<AddressState> {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_ip_addr_state(ctx, device.id.into(), addr),
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::get_ip_addr_state(ctx, device, addr)
 }
 
 /// Checks if `addr` is a local address
@@ -966,7 +958,7 @@ pub(crate) fn is_local_addr<D: EventDispatcher, A: IpAddress>(
     // bindings.
     let device_ids: Vec<_> = ctx.state.device.ethernet.iter().map(|(k, _)| k).collect();
     device_ids.into_iter().any(|id| {
-        self::ethernet::get_ip_addr_state(ctx, id.into(), addr)
+        <Context<D> as IpDeviceHandler<A::Version>>::get_ip_addr_state(ctx, id.into(), addr)
             .map(|s| s.is_assigned())
             .unwrap_or(false)
     })
@@ -988,11 +980,8 @@ pub fn add_ip_addr_subnet<D: EventDispatcher, A: IpAddress>(
 
     trace!("add_ip_addr_subnet: adding addr {:?} to device {:?}", addr_sub, device);
 
-    let res = match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::add_ip_addr_subnet(ctx, device.id.into(), addr_sub)
-        }
-    };
+    let res =
+        <Context<D> as IpDeviceHandler<A::Version>>::add_ip_addr_subnet(ctx, device, addr_sub);
 
     if res.is_ok() {
         #[ipv4addr]
@@ -1020,9 +1009,7 @@ pub fn del_ip_addr<D: EventDispatcher, A: IpAddress>(
 
     trace!("del_ip_addr: removing addr {:?} from device {:?}", addr, device);
 
-    let res = match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::del_ip_addr(ctx, device.id.into(), addr),
-    };
+    let res = <Context<D> as IpDeviceHandler<A::Version>>::del_ip_addr(ctx, device, addr);
 
     if res.is_ok() {
         #[ipv4addr]
@@ -1047,6 +1034,7 @@ pub fn del_ip_addr<D: EventDispatcher, A: IpAddress>(
 /// # Panics
 ///
 /// Panics if `device` is not initialized.
+#[cfg(test)]
 pub(crate) fn join_ip_multicast<D: EventDispatcher, A: IpAddress>(
     ctx: &mut Context<D>,
     device: DeviceId,
@@ -1057,11 +1045,7 @@ pub(crate) fn join_ip_multicast<D: EventDispatcher, A: IpAddress>(
 
     trace!("join_ip_multicast: device {:?} joining multicast {:?}", device, multicast_addr);
 
-    match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::join_ip_multicast(ctx, device.id.into(), multicast_addr)
-        }
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::join_ip_multicast(ctx, device, multicast_addr)
 }
 
 /// Attempt to remove `device` from a multicast group `multicast_addr`.
@@ -1076,6 +1060,8 @@ pub(crate) fn join_ip_multicast<D: EventDispatcher, A: IpAddress>(
 /// # Panics
 ///
 /// Panics if `device` is not initialized or `device` is not currently in the multicast group.
+// TODO(ghanan): remove when this is called from non-test code
+#[cfg(test)]
 pub(crate) fn leave_ip_multicast<D: EventDispatcher, A: IpAddress>(
     ctx: &mut Context<D>,
     device: DeviceId,
@@ -1086,11 +1072,7 @@ pub(crate) fn leave_ip_multicast<D: EventDispatcher, A: IpAddress>(
 
     trace!("join_ip_multicast: device {:?} leaving multicast {:?}", device, multicast_addr);
 
-    match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::leave_ip_multicast(ctx, device.id.into(), multicast_addr)
-        }
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::leave_ip_multicast(ctx, device, multicast_addr)
 }
 
 /// Is `device` part of the IP multicast group `multicast_addr`.
@@ -1099,18 +1081,12 @@ pub(crate) fn is_in_ip_multicast<D: EventDispatcher, A: IpAddress>(
     device: DeviceId,
     multicast_addr: MulticastAddr<A>,
 ) -> bool {
-    match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::is_in_ip_multicast(ctx, device.id.into(), multicast_addr)
-        }
-    }
+    <Context<D> as IpDeviceHandler<A::Version>>::is_in_ip_multicast(ctx, device, multicast_addr)
 }
 
 /// Get the MTU associated with this device.
 pub(crate) fn get_mtu<D: EventDispatcher>(ctx: &Context<D>, device: DeviceId) -> u32 {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_mtu(ctx, device.id.into()),
-    }
+    <Context<D> as IpDeviceHandler<Ipv6>>::get_mtu(ctx, device)
 }
 
 /// Get the hop limit for new IPv6 packets that will be sent out from `device`.
@@ -1118,9 +1094,7 @@ pub(crate) fn get_ipv6_hop_limit<D: EventDispatcher>(
     ctx: &Context<D>,
     device: DeviceId,
 ) -> NonZeroU8 {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_ipv6_hop_limit(ctx, device.id.into()),
-    }
+    <Context<D> as IpDeviceHandler<Ipv6>>::get_hop_limit(ctx, device)
 }
 
 /// Gets the IPv6 link-local address associated with this device.
@@ -1131,9 +1105,7 @@ pub fn get_ipv6_link_local_addr<D: EventDispatcher>(
     ctx: &Context<D>,
     device: DeviceId,
 ) -> Option<LinkLocalAddr<Ipv6Addr>> {
-    match device.protocol {
-        DeviceProtocol::Ethernet => self::ethernet::get_ipv6_link_local_addr(ctx, device.id.into()),
-    }
+    <Context<D> as IpDeviceHandler<Ipv6>>::get_link_local_addr(ctx, device.id.into())
 }
 
 /// Determine if an IP Address is considered tentative on a device.
@@ -1188,11 +1160,7 @@ pub(crate) fn is_routing_enabled<D: EventDispatcher, I: Ip>(
     ctx: &Context<D>,
     device: DeviceId,
 ) -> bool {
-    match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::is_routing_enabled::<_, I>(ctx, device.id.into())
-        }
-    }
+    <Context<D> as IpDeviceHandler<I>>::is_routing_enabled(ctx, device.id.into())
 }
 
 /// Enables or disables IP packet routing on `device`.
@@ -1210,183 +1178,7 @@ pub(crate) fn set_routing_enabled<D: EventDispatcher, I: Ip>(
     device: DeviceId,
     enabled: bool,
 ) {
-    // TODO(ghanan): We cannot directly do `I::VERSION` in the `trace!` calls because of a bug in
-    //               specialize_ip_macro where it does not properly replace `I` with `Self`. Once
-    //               this is fixed, change this.
-    let version = I::VERSION;
-
-    if crate::device::is_routing_enabled::<_, I>(ctx, device) == enabled {
-        trace!(
-            "set_routing_enabled: {:?} routing status unchanged for device {:?}",
-            version,
-            device
-        );
-        return;
-    }
-
-    #[ipv4]
-    set_ipv4_routing_enabled(ctx, device, enabled);
-
-    #[ipv6]
-    set_ipv6_routing_enabled(ctx, device, enabled);
-}
-
-/// Sets IPv4 routing on `device`.
-fn set_ipv4_routing_enabled<D: EventDispatcher>(
-    ctx: &mut Context<D>,
-    device: DeviceId,
-    enabled: bool,
-) {
-    if enabled {
-        trace!("set_ipv4_routing_enabled: enabling IPv4 routing for device {:?}", device);
-    } else {
-        trace!("set_ipv4_routing_enabled: disabling IPv4 routing for device {:?}", device);
-    }
-
-    set_routing_enabled_inner::<_, Ipv4>(ctx, device, enabled);
-}
-
-/// Sets IPv6 routing on `device`.
-///
-/// If the `device` transitions from a router -> host or host -> router, periodic router
-/// advertisements will be stopped or started, and router solicitations will be started or stopped,
-/// depending on `device`'s current and new router state.
-fn set_ipv6_routing_enabled<D: EventDispatcher>(
-    ctx: &mut Context<D>,
-    device: DeviceId,
-    enabled: bool,
-) {
-    let ip_routing = crate::ip::is_routing_enabled::<_, Ipv6>(ctx);
-
-    if enabled {
-        trace!("set_ipv6_routing_enabled: enabling IPv6 routing for device {:?}", device);
-
-        // Make sure that the netstack is configured to route packets before considering this
-        // device a router and stopping router solicitations. If the netstack was not configured
-        // to route packets before, then we would still be considered a host, so we shouldn't
-        // stop soliciting routers.
-        if ip_routing {
-            // TODO(ghanan): Handle transition from disabled to enabled:
-            //               - start periodic router advertisements (if configured to do so)
-
-            match device.protocol {
-                DeviceProtocol::Ethernet => {
-                    <Context<_> as NdpHandler<EthernetLinkDevice>>::stop_soliciting_routers(
-                        ctx,
-                        device.id.into(),
-                    )
-                }
-            }
-        }
-
-        // Actually update the routing flag.
-        set_routing_enabled_inner::<_, Ipv6>(ctx, device, true);
-
-        // Make sure that the netstack is configured to route packets before considering this
-        // device a router and starting periodic router advertisements.
-        if ip_routing {
-            // Now that `device` is a router, join the all-routers multicast group.
-            join_ip_multicast(
-                ctx,
-                device,
-                MulticastAddr::new(Ipv6::ALL_ROUTERS_LINK_LOCAL_ADDRESS).unwrap(),
-            );
-
-            // If `device` has a link-local address, and is configured to be an advertising
-            // interface, start advertising.
-            if get_ipv6_link_local_addr(ctx, device).is_some()
-                && get_ndp_configurations(ctx, device)
-                    .get_router_configurations()
-                    .get_should_send_advertisements()
-            {
-                match device.protocol {
-                    DeviceProtocol::Ethernet => {
-                        <Context<_> as NdpHandler<EthernetLinkDevice>>::start_advertising_interface(
-                            ctx,
-                            device.id.into(),
-                        )
-                    }
-                }
-            }
-        }
-    } else {
-        trace!("set_ipv6_routing_enabled: disabling IPv6 routing for device {:?}", device);
-
-        // Make sure that the netstack is configured to route packets before considering this
-        // device a router and stopping periodic router advertisements. If the netstack was not
-        // configured to route packets before, then we would still be considered a host, so we
-        // wouldn't have any periodic router advertisements to stop.
-        if ip_routing {
-            // Make sure that the device was configured to send advertisements before stopping it.
-            // If it was never configured to stop advertisements, there should be nothing to stop.
-            if get_ipv6_link_local_addr(ctx, device).is_some()
-                && get_ndp_configurations(ctx, device)
-                    .get_router_configurations()
-                    .get_should_send_advertisements()
-            {
-                match device.protocol {
-                    DeviceProtocol::Ethernet => {
-                        <Context<_> as NdpHandler<EthernetLinkDevice>>::stop_advertising_interface(
-                            ctx,
-                            device.id.into(),
-                        )
-                    }
-                }
-            }
-
-            // Now that `device` is a host, leave the all-routers multicast group.
-            leave_ip_multicast(
-                ctx,
-                device,
-                MulticastAddr::new(Ipv6::ALL_ROUTERS_LINK_LOCAL_ADDRESS).unwrap(),
-            );
-        }
-
-        // Actually update the routing flag.
-        set_routing_enabled_inner::<_, Ipv6>(ctx, device, false);
-
-        // We only need to start soliciting routers if we were not soliciting them before. We
-        // would only reach this point if there was a change in routing status for `device`.
-        // However, if the nestatck does not currently have routing enabled, the device would
-        // not have been considered a router before this routing change on the device, so it
-        // would have already solicited routers.
-        if ip_routing {
-            // On transition from router -> host, start soliciting router information.
-            match device.protocol {
-                DeviceProtocol::Ethernet => {
-                    <Context<_> as NdpHandler<EthernetLinkDevice>>::start_soliciting_routers(
-                        ctx,
-                        device.id.into(),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/// Sets the IP packet routing flag on `device`.
-fn set_routing_enabled_inner<D: EventDispatcher, I: Ip>(
-    ctx: &mut Context<D>,
-    device: DeviceId,
-    enabled: bool,
-) {
-    match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::set_routing_enabled_inner::<_, I>(ctx, device.id.into(), enabled)
-        }
-    }
-}
-
-/// Is `device` currently operating as a router?
-///
-/// Returns `true` if both the `device` has routing enabled AND the netstack is configured to
-/// route packets not destined for it; returns `false` otherwise.
-pub(crate) fn is_router_device<D: EventDispatcher, I: Ip>(
-    ctx: &Context<D>,
-    device: DeviceId,
-) -> bool {
-    (crate::ip::is_routing_enabled::<_, I>(ctx)
-        && crate::device::is_routing_enabled::<_, I>(ctx, device))
+    <Context<D> as IpDeviceHandler<I>>::set_routing_enabled(ctx, device, enabled)
 }
 
 /// Insert a static entry into this device's ARP table.
@@ -1403,9 +1195,12 @@ pub(super) fn insert_static_arp_table_entry<D: EventDispatcher>(
     mac: Mac,
 ) {
     match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::insert_static_arp_table_entry(ctx, device.id.into(), addr, mac)
-        }
+        DeviceProtocol::Ethernet => iplink::insert_static_neighbor::<Ipv4, EthernetLinkDevice, _>(
+            ctx,
+            device.id.into(),
+            addr,
+            mac,
+        ),
     }
 }
 
@@ -1423,9 +1218,12 @@ pub(crate) fn insert_ndp_table_entry<D: EventDispatcher>(
     mac: Mac,
 ) {
     match device.protocol {
-        DeviceProtocol::Ethernet => {
-            self::ethernet::insert_ndp_table_entry(ctx, device.id.into(), addr, mac)
-        }
+        DeviceProtocol::Ethernet => iplink::insert_static_neighbor::<Ipv6, EthernetLinkDevice, _>(
+            ctx,
+            device.id.into(),
+            addr,
+            mac,
+        ),
     }
 }
 
@@ -1460,6 +1258,8 @@ pub fn set_ndp_configurations<D: EventDispatcher>(
 }
 
 /// Gets the NDP Configurations for a `device`.
+// TODO(rheacock): remove `allow(dead_code)` when this is used.
+#[allow(dead_code)]
 pub fn get_ndp_configurations<D: EventDispatcher>(
     ctx: &Context<D>,
     device: DeviceId,
@@ -1529,13 +1329,7 @@ impl<D: EventDispatcher> NdpPacketHandler<DeviceId> for Context<D> {
 
         match device.protocol {
             DeviceProtocol::Ethernet => {
-                crate::device::ndp::receive_ndp_packet(
-                    self,
-                    device.id.into(),
-                    src_ip,
-                    dst_ip,
-                    packet,
-                );
+                receive_ndp_packet(self, device.id.into(), src_ip, dst_ip, packet);
             }
         }
     }
