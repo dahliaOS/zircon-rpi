@@ -14,6 +14,7 @@
 #include <kernel/lockdep.h>
 #include <lk/init.h>
 #include <lockdep/lockdep.h>
+#include <vm/vmalloc.h>
 
 decltype(percpu::boot_processor_) percpu::boot_processor_{};
 percpu* percpu::secondary_processors_{nullptr};
@@ -52,17 +53,11 @@ void percpu::InitializeSecondary(uint32_t /*init_level*/) {
   DEBUG_ASSERT(processor_count_ != 0);
 
   const size_t index_size = sizeof(percpu*) * processor_count_;
-  processor_index_ = static_cast<percpu**>(memalign(MAX_CACHE_LINE, index_size));
+  processor_index_ = static_cast<percpu**>(vmalloc(index_size, "percpu index"));
   processor_index_[0] = &boot_processor_;
 
-  static_assert((MAX_CACHE_LINE % alignof(struct percpu)) == 0);
-
   const size_t bytes = sizeof(percpu) * (processor_count_ - 1);
-  secondary_processors_ = static_cast<percpu*>(memalign(MAX_CACHE_LINE, bytes));
-
-  // TODO: Remove the need to zero memory by fully initializing all of percpu
-  // members in the constructor / default initializers.
-  memset(secondary_processors_, 0, bytes);
+  secondary_processors_ = static_cast<percpu*>(vmalloc(bytes, "percpu"));
 
   // Construct the secondary percpu instances and add them to the index.
   for (cpu_num_t i = 1; i < processor_count_; i++) {
