@@ -47,6 +47,8 @@ executable("activity_bin") {
   deps = [
     ":lib",
     "//sdk/lib/sys/cpp",
+    "//src/lib/scudo-trace",
+    "//zircon/public/lib/trace-provider",
   ]
 }
 

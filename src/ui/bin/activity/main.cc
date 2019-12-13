@@ -8,16 +8,27 @@
 #include <lib/async-loop/default.h>
 #include <lib/async/default.h>
 #include <lib/sys/cpp/component_context.h>
+#include <trace-provider/provider.h>
 
 #include <memory>
 
+#include "lib/async/dispatcher.h"
+#include "lib/trace-provider/provider.h"
 #include "src/lib/fxl/logging.h"
+#include "src/lib/scudo-trace/hooks.h"
 #include "src/ui/bin/activity/activity_app.h"
 #include "src/ui/bin/activity/state_machine_driver.h"
 
 int main(void) {
   async::Loop loop(&kAsyncLoopConfigAttachToCurrentThread);
   async_set_default_dispatcher(loop.dispatcher());
+
+  trace::TraceProviderWithFdio trace_provider{loop.dispatcher(), "my_trace_provider"};
+  async::Task dump_task{[](async_dispatcher_t *dispatcher, async::Task *t, zx_status_t status){
+    scudo_trace::ExportScudoStats(false);
+    t->PostDelayed(dispatcher, zx::sec(1));
+  }};
+  dump_task.Post(loop.dispatcher());
 
   std::unique_ptr<sys::ComponentContext> startup_context = sys::ComponentContext::Create();
 
