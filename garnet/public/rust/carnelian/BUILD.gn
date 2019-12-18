@@ -42,6 +42,7 @@ rustc_library("carnelian") {
     "//third_party/rust_crates:euclid",
     "//third_party/rust_crates:failure",
     "//third_party/rust_crates:futures",
+    "//third_party/rust_crates:id_tree",
     "//third_party/rust_crates:itertools",
     "//third_party/rust_crates:lazy_static",
     "//third_party/rust_crates:rand",
@@ -67,6 +68,22 @@ rustc_binary("spinning_square_example") {
     "//sdk/fidl/fuchsia.ui.input:fuchsia.ui.input-rustc",
     "//third_party/rust_crates:failure",
     "//third_party/rust_crates:futures",
+  ]
+}
+
+rustc_binary("layout_example") {
+  version = "0.1.0"
+  edition = "2018"
+  source_root = "examples/layout.rs"
+  deps = [
+    "//garnet/public/rust/carnelian",
+    "//garnet/public/rust/fuchsia-async",
+    "//garnet/public/rust/fuchsia-scenic",
+    "//garnet/public/rust/fuchsia-zircon",
+    "//third_party/rust_crates:failure",
+    "//third_party/rust_crates:futures",
+    "//third_party/rust_crates:id_tree",
+    "//third_party/rust_crates:lazy_static",
   ]
 }
 
@@ -304,6 +321,26 @@ package("spinning_square_rs") {
     {
       path = rebase_path("meta/example.cmx")
       dest = "spinning_square_rs.cmx"
+    },
+  ]
+}
+
+package("layout_rs") {
+  deps = [
+    ":layout_example",
+  ]
+
+  binaries = [
+    {
+      name = "app"
+      source = "layout_example"
+    },
+  ]
+
+  meta = [
+    {
+      path = rebase_path("meta/example.cmx")
+      dest = "layout_rs.cmx"
     },
   ]
 }

@@ -11,10 +11,11 @@ use fidl_fuchsia_images::{
     ImageInfo, ImagePipe2Marker, MemoryType, PixelFormat, PresentationInfo, Tiling,
 };
 use fidl_fuchsia_ui_gfx::{
-    AmbientLightArgs, CameraArgs, ImagePipe2Args, CircleArgs, ColorRgb, ColorRgba, DirectionalLightArgs,
-    DisplayCompositorArgs, EntityNodeArgs, ImageArgs, LayerArgs, LayerStackArgs, MaterialArgs,
-    MemoryArgs, PointLightArgs, RectangleArgs, RendererArgs, ResourceArgs, RoundedRectangleArgs,
-    SceneArgs, ShapeNodeArgs, Value, ViewArgs, ViewHolderArgs, ViewProperties,
+    AmbientLightArgs, CameraArgs, CircleArgs, ColorRgb, ColorRgba, DirectionalLightArgs,
+    DisplayCompositorArgs, EntityNodeArgs, ImageArgs, ImagePipe2Args, LayerArgs, LayerStackArgs,
+    MaterialArgs, MemoryArgs, PointLightArgs, RectangleArgs, RendererArgs, ResourceArgs,
+    RoundedRectangleArgs, SceneArgs, ShapeNodeArgs, Value, ViewArgs, ViewHolderArgs,
+    ViewProperties,
 };
 use fidl_fuchsia_ui_scenic::{Command, SessionProxy};
 use fidl_fuchsia_ui_views::{ViewHolderToken, ViewToken};

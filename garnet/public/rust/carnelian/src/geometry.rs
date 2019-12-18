@@ -4,6 +4,8 @@
 
 /// Coordinate type
 pub type Coord = f32;
+/// Coordinate type
+pub const COORD_INFINITY: Coord = std::f32::INFINITY;
 /// A two-dimensional point
 pub type Point = euclid::Point2D<Coord>;
 /// A two-dimensional rectangle
