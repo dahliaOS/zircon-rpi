@@ -12,7 +12,12 @@
 #include <lockdep/lockdep.h>
 
 using lockdep::Guard;
-// using lockdep::ThreadLock;
+
+struct Semaphore::Test {
+  static uint64_t GetCount(const Semaphore& semaphore) {
+    return semaphore.count_;
+  }
+};
 
 static bool smoke_test() {
   BEGIN_TEST;
@@ -21,15 +26,16 @@ static bool smoke_test() {
 
   { Semaphore sema(5); }
 
-  { Semaphore sema(-5); }
-
   {
     Semaphore sema(0);
-    ASSERT_EQ(1, sema.Post());
-    ASSERT_EQ(2, sema.Post());
+    sema.Post();
+    ASSERT_EQ(1u, Semaphore::Test::GetCount(sema));
+    sema.Post();
+    ASSERT_EQ(2u, Semaphore::Test::GetCount(sema));
     ASSERT_EQ(ZX_OK, sema.Wait(Deadline::infinite()));
     ASSERT_EQ(ZX_OK, sema.Wait(Deadline::infinite()));
-    ASSERT_EQ(1, sema.Post());
+    sema.Post();
+    ASSERT_EQ(1u, Semaphore::Test::GetCount(sema));
   }
 
   END_TEST;
@@ -42,7 +48,8 @@ static bool timeout_test() {
 
   Semaphore sema;
   ASSERT_EQ(ZX_ERR_TIMED_OUT, sema.Wait(dealine));
-  ASSERT_EQ(1, sema.Post());
+  sema.Post();
+  ASSERT_EQ(1u, Semaphore::Test::GetCount(sema));
 
   END_TEST;
 }
@@ -86,7 +93,8 @@ static bool signal_test() {
   int retcode = ZX_OK;
   thread_join(thread, &retcode, ZX_TIME_INFINITE);
   ASSERT_EQ(expected_error, retcode);
-  ASSERT_EQ(1, sema.Post());
+  sema.Post();
+  ASSERT_EQ(1u, Semaphore::Test::GetCount(sema));
 
   END_TEST;
 }

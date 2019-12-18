@@ -15,16 +15,18 @@
 // A basic counting semaphore. It directly uses the low-level wait queue API.
 class Semaphore {
  public:
-  explicit Semaphore(int64_t initial_count = 0);
+  explicit Semaphore(uint64_t initial_count = 0) : count_{initial_count} {}
 
-  Semaphore(const Semaphore&) = delete;
-  Semaphore(Semaphore&&) = delete;
-  Semaphore& operator=(const Semaphore&) = delete;
   ~Semaphore() = default;
 
-  // Increment the counter, possibly releasing one thread. The returned
-  // value is the new counter value which is only useful for testing.
-  int64_t Post();
+  Semaphore(const Semaphore&) = delete;
+  Semaphore& operator=(const Semaphore&) = delete;
+
+  Semaphore(Semaphore&&) = delete;
+  Semaphore& operator=(Semaphore&&) = delete;
+
+  // Increment the counter, possibly releasing one thread.
+  void Post();
 
   // Interruptable wait for the counter to be > 0 or for |deadline| to pass.
   // If the wait was satisfied by Post() the return is ZX_OK and the count is
@@ -34,8 +36,11 @@ class Semaphore {
   // errors if the thread had a signal delivered.
   zx_status_t Wait(const Deadline& deadline);
 
+  // Nested type that implements test access.
+  struct Test;
+
  private:
-  int64_t count_;
+  uint64_t count_;
   WaitQueue waitq_;
 };
 
