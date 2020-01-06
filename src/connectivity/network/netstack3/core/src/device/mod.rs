@@ -31,9 +31,7 @@ use crate::device::ethernet::{
     EthernetTimerId,
 };
 use crate::device::ip::{IpDeviceHandler, IpDeviceIdContext};
-use crate::device::iplink::{
-    IpLinkDeviceState, IpLinkDeviceStuff, IpLinkDeviceTimerId, IpLinkFrameMeta,
-};
+use crate::device::iplink::{IpLinkDeviceTimerId, IpLinkFrameMeta, IpLinkState};
 use crate::device::link::{LinkDeviceContext, LinkDeviceHandler, LinkDeviceIdContext};
 use crate::device::ndp::{NdpHandler, NdpPacketHandler};
 use crate::ip::igmp::IgmpInterface;
@@ -145,36 +143,80 @@ impl<B: BufferMut, D: BufferDispatcher<B>>
     }
 }
 
+/// State for a link-device that is also an IPv4 and IPv6 device.
+///
+/// D is the link-specific state.
+struct IpLinkDeviceState<I: Instant, D> {
+    ip: IpDeviceState<I>,
+    link: D,
+    iplink_v4: IpLinkState<Ipv4>,
+    iplink_v6: IpLinkState<Ipv6>,
+}
+
+impl<I: Instant, D> IpLinkDeviceState<I, D> {
+    /// Create a new `IpLinkDeviceState` with a link-specific state `link`.
+    fn new(link: D) -> Self {
+        Self {
+            ip: IpDeviceState::default(),
+            link,
+            iplink_v4: IpLinkState::default(),
+            iplink_v6: IpLinkState::default(),
+        }
+    }
+
+    /// Get a reference to the inner (link-specific) state.
+    fn link(&self) -> &D {
+        &self.link
+    }
+
+    /// Get a mutable reference to the inner (link-specific) state.
+    fn link_mut(&mut self) -> &mut D {
+        &mut self.link
+    }
+}
+
 impl<D: EventDispatcher> StateContext<IpDeviceState<D::Instant>, DeviceId> for Context<D> {
     fn get_state_with(&self, device: DeviceId) -> &IpDeviceState<D::Instant> {
         match device.protocol {
             DeviceProtocol::Ethernet => {
-                self.state().device.ethernet.get(device.id.into()).unwrap().device().ip()
+                &self.state().device.ethernet.get(device.id.into()).unwrap().device().ip
             }
         }
     }
 
     fn get_state_mut_with(&mut self, device: DeviceId) -> &mut IpDeviceState<D::Instant> {
         match device.protocol {
-            DeviceProtocol::Ethernet => self
-                .state_mut()
-                .device
-                .ethernet
-                .get_mut(device.id.into())
-                .unwrap()
-                .device_mut()
-                .ip_mut(),
+            DeviceProtocol::Ethernet => {
+                &mut self
+                    .state_mut()
+                    .device
+                    .ethernet
+                    .get_mut(device.id.into())
+                    .unwrap()
+                    .device_mut()
+                    .ip
+            }
         }
     }
 }
 
-impl<D: EventDispatcher> StateContext<IpLinkDeviceStuff, EthernetDeviceId> for Context<D> {
-    fn get_state_with(&self, device: EthernetDeviceId) -> &IpLinkDeviceStuff {
-        self.state().device.ethernet.get(device.0).unwrap().device().ip_link()
+impl<D: EventDispatcher> StateContext<IpLinkState<Ipv4>, EthernetDeviceId> for Context<D> {
+    fn get_state_with(&self, device: EthernetDeviceId) -> &IpLinkState<Ipv4> {
+        &self.state().device.ethernet.get(device.0).unwrap().device().iplink_v4
     }
 
-    fn get_state_mut_with(&mut self, device: EthernetDeviceId) -> &mut IpLinkDeviceStuff {
-        self.state_mut().device.ethernet.get_mut(device.0).unwrap().device_mut().ip_link_mut()
+    fn get_state_mut_with(&mut self, device: EthernetDeviceId) -> &mut IpLinkState<Ipv4> {
+        &mut self.state_mut().device.ethernet.get_mut(device.0).unwrap().device_mut().iplink_v4
+    }
+}
+
+impl<D: EventDispatcher> StateContext<IpLinkState<Ipv6>, EthernetDeviceId> for Context<D> {
+    fn get_state_with(&self, device: EthernetDeviceId) -> &IpLinkState<Ipv6> {
+        &self.state().device.ethernet.get(device.0).unwrap().device().iplink_v6
+    }
+
+    fn get_state_mut_with(&mut self, device: EthernetDeviceId) -> &mut IpLinkState<Ipv6> {
+        &mut self.state_mut().device.ethernet.get_mut(device.0).unwrap().device_mut().iplink_v6
     }
 }
 
@@ -201,21 +243,21 @@ impl<D: EventDispatcher> StateContext<EthernetDeviceState<D::Instant>, EthernetD
     for Context<D>
 {
     fn get_state_with(&self, id: EthernetDeviceId) -> &EthernetDeviceState<D::Instant> {
-        self.state().device.ethernet.get(id.0).unwrap().device().link()
+        &self.state().device.ethernet.get(id.0).unwrap().device().link
     }
 
     fn get_state_mut_with(&mut self, id: EthernetDeviceId) -> &mut EthernetDeviceState<D::Instant> {
-        self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().link_mut()
+        &mut self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().link
     }
 }
 
 impl<D: EventDispatcher> StateContext<IpDeviceState<D::Instant>, EthernetDeviceId> for Context<D> {
     fn get_state_with(&self, id: EthernetDeviceId) -> &IpDeviceState<D::Instant> {
-        self.state().device.ethernet.get(id.0).unwrap().device().ip()
+        &self.state().device.ethernet.get(id.0).unwrap().device().ip
     }
 
     fn get_state_mut_with(&mut self, id: EthernetDeviceId) -> &mut IpDeviceState<D::Instant> {
-        self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().ip_mut()
+        &mut self.state_mut().device.ethernet.get_mut(id.0).unwrap().device_mut().ip
     }
 }
 
@@ -227,7 +269,7 @@ impl<D: EventDispatcher> StateContext<IgmpInterface<D::Instant>, DeviceId> for C
                     IpLinkDeviceState<D::Instant, EthernetDeviceState<D::Instant>>,
                     EthernetDeviceId,
                 >>::get_state_with(self, device.id().into())
-                .ip()
+                .ip
                 .igmp
             }
         }
@@ -240,7 +282,7 @@ impl<D: EventDispatcher> StateContext<IgmpInterface<D::Instant>, DeviceId> for C
                     IpLinkDeviceState<D::Instant, EthernetDeviceState<D::Instant>>,
                     EthernetDeviceId,
                 >>::get_state_mut_with(self, device.id().into())
-                .ip_mut()
+                .ip
                 .igmp
             }
         }
@@ -255,7 +297,7 @@ impl<D: EventDispatcher> StateContext<MldInterface<D::Instant>, DeviceId> for Co
                     IpLinkDeviceState<D::Instant, EthernetDeviceState<D::Instant>>,
                     EthernetDeviceId,
                 >>::get_state_with(self, device.id().into())
-                .ip()
+                .ip
                 .mld
             }
         }
@@ -268,7 +310,7 @@ impl<D: EventDispatcher> StateContext<MldInterface<D::Instant>, DeviceId> for Co
                     IpLinkDeviceState<D::Instant, EthernetDeviceState<D::Instant>>,
                     EthernetDeviceId,
                 >>::get_state_mut_with(self, device.id().into())
-                .ip_mut()
+                .ip
                 .mld
             }
         }

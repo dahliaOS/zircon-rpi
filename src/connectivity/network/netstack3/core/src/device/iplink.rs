@@ -32,61 +32,14 @@ use crate::device::{
     RecvIpFrameMeta, Tentative,
 };
 use crate::ip::IpHandler;
-use crate::{Context, EventDispatcher, Instant};
+use crate::{Context, EventDispatcher};
 
 #[derive(Default)]
-pub(super) struct IpLinkDeviceStuff {
+pub(super) struct IpLinkState<I: Ip> {
     // pending_frames stores a list of serialized frames indexed by their
     // desintation IP addresses. The frames contain an entire EthernetFrame
     // body and the MTU check is performed before queueing them here.
-    pending_frames: HashMap<IpAddr, VecDeque<Buf<Vec<u8>>>>,
-}
-
-/// State for a link-device that is also an IP device.
-///
-/// D is the link-specific state.
-pub(super) struct IpLinkDeviceState<I: Instant, D> {
-    ip: IpDeviceState<I>,
-    link: D,
-    // TODO(ghanan): rename
-    stuff: IpLinkDeviceStuff,
-}
-
-impl<I: Instant, D> IpLinkDeviceState<I, D> {
-    /// Create a new `IpLinkDeviceState` with a link-specific state `link`.
-    pub(super) fn new(link: D) -> Self {
-        Self { ip: IpDeviceState::default(), link, stuff: IpLinkDeviceStuff::default() }
-    }
-
-    /// Get a reference to the ip (link-independant) state.
-    pub(super) fn ip(&self) -> &IpDeviceState<I> {
-        &self.ip
-    }
-
-    /// Get a mutable reference to the ip (link-independant) state.
-    pub(super) fn ip_mut(&mut self) -> &mut IpDeviceState<I> {
-        &mut self.ip
-    }
-
-    /// Get a reference to the inner (link-specific) state.
-    pub(super) fn link(&self) -> &D {
-        &self.link
-    }
-
-    /// Get a mutable reference to the inner (link-specific) state.
-    pub(super) fn link_mut(&mut self) -> &mut D {
-        &mut self.link
-    }
-
-    /// Get a reference to the ip-link state.
-    pub(super) fn ip_link(&self) -> &IpLinkDeviceStuff {
-        &self.stuff
-    }
-
-    /// Get a mutable reference to the ip-link state.
-    pub(super) fn ip_link_mut(&mut self) -> &mut IpLinkDeviceStuff {
-        &mut self.stuff
-    }
+    pending_frames: HashMap<I::Addr, VecDeque<Buf<Vec<u8>>>>,
 }
 
 /// A timer ID for IPv4 link devices.
@@ -241,7 +194,7 @@ pub(super) trait IpLinkDeviceContext<I: Ip, D: IpLinkDevice>:
     + LinkDeviceHandler<D>
     + IpDeviceHandler<I>
     + IpDeviceHandlerPrivate<I>
-    + StateContext<super::IpLinkDeviceStuff, <Self as LinkDeviceIdContext<D>>::DeviceId>
+    + StateContext<IpLinkState<I>, <Self as LinkDeviceIdContext<D>>::DeviceId>
     + FrameContext<EmptyBuf, <Self as LinkDeviceIdContext<D>>::DeviceId>
     + FrameContext<Buf<Vec<u8>>, <Self as LinkDeviceIdContext<D>>::DeviceId>
     + TimerContext<<Self as IpLinkDeviceContextImpl<I, D>>::TimerId>
@@ -257,7 +210,7 @@ impl<
             + IpLinkDeviceContextImpl<I, D>
             + FrameContext<EmptyBuf, <C as LinkDeviceIdContext<D>>::DeviceId>
             + FrameContext<Buf<Vec<u8>>, <C as LinkDeviceIdContext<D>>::DeviceId>
-            + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>
+            + StateContext<IpLinkState<I>, <C as LinkDeviceIdContext<D>>::DeviceId>
             + TimerContext<<C as IpLinkDeviceContextImpl<I, D>>::TimerId>
             + IpHandler,
     > IpLinkDeviceContext<I, D> for C
@@ -435,7 +388,7 @@ where
         local_addr: Ipv4Addr,
         frame: Buf<Vec<u8>>,
     ) -> Option<Buf<Vec<u8>>> {
-        add_pending_frame(self, device, local_addr.into(), frame)
+        add_pending_frame(self, device, local_addr, frame)
     }
 
     fn take_pending_frames(
@@ -443,7 +396,7 @@ where
         device: <Self as LinkDeviceIdContext<D>>::DeviceId,
         local_addr: Ipv4Addr,
     ) -> Option<Self::PendingFramesIter> {
-        take_pending_frame(self, device, local_addr.into())
+        take_pending_frame(self, device, local_addr)
     }
 
     fn added_ip_addr(
@@ -546,7 +499,7 @@ impl<
         local_addr: Ipv6Addr,
         frame: Buf<Vec<u8>>,
     ) -> Option<Buf<Vec<u8>>> {
-        add_pending_frame(self, device, local_addr.into(), frame)
+        add_pending_frame(self, device, local_addr, frame)
     }
 
     fn take_pending_frames(
@@ -554,7 +507,7 @@ impl<
         device: <Self as LinkDeviceIdContext<D>>::DeviceId,
         local_addr: Ipv6Addr,
     ) -> Option<Self::PendingFramesIter> {
-        take_pending_frame(self, device, local_addr.into())
+        take_pending_frame(self, device, local_addr)
     }
 
     fn added_ip_addr(
@@ -844,7 +797,7 @@ where
         + IpLinkDeviceIdContext<D>
         + LinkDeviceHandler<D>
         + BufferLinkDeviceHandler<D, Buf<Vec<u8>>>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>
+        + StateContext<IpLinkState<Ipv4>, <C as LinkDeviceIdContext<D>>::DeviceId>
         + ArpDeviceIdContext<D>
         + StateContext<ArpState<D, Ipv4Addr>, <Self as ArpDeviceIdContext<D>>::DeviceId>
         + TimerContext<ArpTimerId<D, Ipv4Addr, <Self as ArpDeviceIdContext<D>>::DeviceId>>
@@ -871,14 +824,14 @@ where
         proto_addr: Ipv4Addr,
         hw_addr: D::HType,
     ) {
-        mac_resolved(self, device_id.into(), IpAddr::V4(proto_addr), hw_addr);
+        mac_resolved(self, device_id.into(), proto_addr, hw_addr);
     }
     fn address_resolution_failed(
         &mut self,
         device_id: <C as ArpDeviceIdContext<D>>::DeviceId,
         proto_addr: Ipv4Addr,
     ) {
-        mac_resolution_failed(self, device_id.into(), IpAddr::V4(proto_addr));
+        mac_resolution_failed(self, device_id.into(), proto_addr);
     }
     fn address_resolution_expired(
         &mut self,
@@ -901,7 +854,7 @@ where
         > + FrameContext<
             EmptyBuf,
             LinkFrameMeta<<C as LinkDeviceIdContext<D>>::DeviceId, D::Address, D::FrameType>,
-        > + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>
+        > + StateContext<IpLinkState<Ipv6>, <C as LinkDeviceIdContext<D>>::DeviceId>
         + StateContext<
             super::IpDeviceState<<C as InstantContext>::Instant>,
             <C as IpDeviceIdContext>::DeviceId,
@@ -994,7 +947,7 @@ where
         address: &Ipv6Addr,
         link_address: D::Address,
     ) {
-        mac_resolved(self, device_id, IpAddr::V6(*address), link_address);
+        mac_resolved(self, device_id, *address, link_address);
     }
 
     fn address_resolution_failed(
@@ -1002,7 +955,7 @@ where
         device_id: <C as LinkDeviceIdContext<D>>::DeviceId,
         address: &Ipv6Addr,
     ) {
-        mac_resolution_failed(self, device_id, IpAddr::V6(*address));
+        mac_resolution_failed(self, device_id, *address);
     }
 
     fn duplicate_address_detected(
@@ -1246,7 +1199,7 @@ fn send_ip_frame_inner<
     B: BufferMut,
     C: BufferLinkDeviceHandler<D, B>
         + LinkDeviceIdContext<D>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>,
+        + StateContext<IpLinkState<A::Version>, <C as LinkDeviceIdContext<D>>::DeviceId>,
     A: IpAddress,
     S: Serializer<Buffer = B>,
 >(
@@ -1282,7 +1235,7 @@ fn send_ip_frame_inner<
                 .map_err(|ser| ser.1.into_inner())?
                 .map_a(|buffer| Buf::new(buffer.as_ref().to_vec(), ..))
                 .into_inner();
-            let dropped = add_pending_frame(ctx, device_id, local_addr.into(), frame);
+            let dropped = add_pending_frame(ctx, device_id, local_addr, frame);
             if let Some(_) = dropped {
                 // TODO(brunodalbo): Is it ok to silently just let this drop? Or
                 //  should the IP layer be notified in any way?
@@ -1299,21 +1252,19 @@ fn send_ip_frame_inner<
 /// `mac_resolved` is the common logic used when a link layer address is
 /// resolved either by ARP or NDP.
 fn mac_resolved<
+    A: IpAddress,
     D: IpLinkDevice,
     C: LinkDeviceHandler<D>
         + LinkDeviceIdContext<D>
         + BufferLinkDeviceHandler<D, Buf<Vec<u8>>>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>,
+        + StateContext<IpLinkState<A::Version>, <C as LinkDeviceIdContext<D>>::DeviceId>,
 >(
     ctx: &mut C,
     device_id: <C as LinkDeviceIdContext<D>>::DeviceId,
-    address: IpAddr,
+    address: A,
     dst_mac: D::Address,
 ) {
-    let frame_type = match &address {
-        IpAddr::V4(_) => D::FrameType::from(IpVersion::V4),
-        IpAddr::V6(_) => D::FrameType::from(IpVersion::V6),
-    };
+    let frame_type = D::FrameType::from(A::Version::VERSION);
     if let Some(pending) = take_pending_frame(ctx, device_id, address) {
         for frame in pending {
             // NOTE(brunodalbo): We already performed MTU checking when we
@@ -1341,14 +1292,15 @@ fn mac_resolved<
 /// `mac_resolution_failed` is the common logic used when a link layer address
 /// fails to resolve either by ARP or NDP.
 fn mac_resolution_failed<
+    A: IpAddress,
     D: IpLinkDevice,
     C: LinkDeviceHandler<D>
         + LinkDeviceIdContext<D>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>,
+        + StateContext<IpLinkState<A::Version>, <C as LinkDeviceIdContext<D>>::DeviceId>,
 >(
     ctx: &mut C,
     device_id: <C as LinkDeviceIdContext<D>>::DeviceId,
-    address: IpAddr,
+    address: A,
 ) {
     // TODO(brunodalbo) what do we do here in regards to the pending frames?
     //  NDP's RFC explicitly states unreachable ICMP messages must be generated:
@@ -1365,16 +1317,17 @@ fn mac_resolution_failed<
 }
 
 fn add_pending_frame<
+    A: IpAddress,
     D: IpLinkDevice,
     C: LinkDeviceIdContext<D>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>,
+        + StateContext<IpLinkState<A::Version>, <C as LinkDeviceIdContext<D>>::DeviceId>,
 >(
     ctx: &mut C,
     device: <C as LinkDeviceIdContext<D>>::DeviceId,
-    local_addr: IpAddr,
+    local_addr: A,
     frame: Buf<Vec<u8>>,
 ) -> Option<Buf<Vec<u8>>> {
-    let state: &mut IpLinkDeviceStuff = ctx.get_state_mut_with(device);
+    let state: &mut IpLinkState<A::Version> = ctx.get_state_mut_with(device);
     let buff = state.pending_frames.entry(local_addr).or_insert_with(Default::default);
     buff.push_back(frame);
     if buff.len() > 10 {
@@ -1385,15 +1338,16 @@ fn add_pending_frame<
 }
 
 fn take_pending_frame<
+    A: IpAddress,
     D: IpLinkDevice,
     C: LinkDeviceIdContext<D>
-        + StateContext<super::IpLinkDeviceStuff, <C as LinkDeviceIdContext<D>>::DeviceId>,
+        + StateContext<IpLinkState<A::Version>, <C as LinkDeviceIdContext<D>>::DeviceId>,
 >(
     ctx: &mut C,
     device: <C as LinkDeviceIdContext<D>>::DeviceId,
-    local_addr: IpAddr,
+    local_addr: A,
 ) -> Option<std::collections::vec_deque::IntoIter<Buf<Vec<u8>>>> {
-    let state: &mut IpLinkDeviceStuff = ctx.get_state_mut_with(device);
+    let state: &mut IpLinkState<A::Version> = ctx.get_state_mut_with(device);
     match state.pending_frames.remove(&local_addr) {
         Some(buff) => Some(buff.into_iter()),
         None => None,
