@@ -18,7 +18,7 @@
 //! dispatcher, which is done by simply dropping the Handle.
 
 use {
-    failure::Error,
+    anyhow::Error,
     fidl_fuchsia_bluetooth_control::{
         PairingDelegateProxy,
         PairingDelegateRequest,
@@ -267,20 +267,36 @@ impl Drop for PairingDispatcherHandle {
     }
 }
 
+
 // TODO(nickpollard) - test
-//
-// fn test() {
-//   let (delegate, delegate_server) = delegate::new()
-//   let (dispatcher, handle) = dispatcher::new(delegate);
-//   let (server, client) = hoststream::new();
-//
-//   // We can add new hosts and process their events
-//   handle.add_host(server).await;
-//   let (result, ) = futures::join(client.send(pairing_request).await, dispatcher::run(), delegate_process(delegate_server));
-//   assert!(result == success)
-//
-//   // check that dropping the handle closes the delegate
-//   mem::drop(handle);
-//   dispatcher.run().await;
-//   assert!(true);
-// }
+#[cfg(test)]
+mod test {
+
+    async fn mock_delegate(PairingDelegateRequestStream) {
+    }
+
+    fn test() {
+        let (upstream_delegate, delegate_server) = fidl::endpoints::create_proxy_and_stream();
+        let (dispatcher, handle) = PairingDispatcher::new(upstream_delegate, InputCapabilityType::None, OutputCapabilityType::None);
+        let (host_server, host_client) = fidl::endpoints::create_proxy_and_stream();
+
+        // Task that implements the upstream delegate
+        let run_upstream = mock_delegate(delegate_server);
+
+        // Task that implements the Host
+        let run_host = mock_host(host_server);
+
+        // We can add new hosts and process their events
+        handle.add_host(host_client);
+
+        // These won't all complete here as dispatcher.run() will not complete until the handle is
+        // dropped
+        let (result, ) = futures::join(host_server.send(pairing_request), dispatcher.run(), run_upstream);
+        assert!(result == success)
+
+            //   // check that dropping the handle closes the delegate
+            //   mem::drop(handle);
+            //   dispatcher.run().await;
+            //   assert!(true);
+    }
+}
