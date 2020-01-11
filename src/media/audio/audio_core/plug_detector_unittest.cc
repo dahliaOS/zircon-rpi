@@ -56,9 +56,9 @@ class DeviceTracker {
     bool is_input;
   };
 
-  fit::function<void(zx::channel, std::string, bool)> GetHandler() {
-    return [this](auto channel, auto name, auto is_input) {
-      devices_.emplace_back(DeviceConnection{std::move(channel), std::move(name), is_input});
+  fit::function<void(zx::channel, std::string, bool, bool)> GetHandler() {
+    return [this](auto channel, auto name, auto is_input, auto is_legacy) {
+             devices_.emplace_back(DeviceConnection{std::move(channel), std::move(name), is_input});
     };
   }
 

@@ -23,8 +23,7 @@ static constexpr zx::duration kMaxTrimPeriod = zx::msec(10);
 AudioOutput::AudioOutput(ThreadingModel* threading_model, DeviceRegistry* registry,
                          LinkMatrix* link_matrix)
     : AudioDevice(Type::Output, threading_model, registry, link_matrix) {
-  // TODO(andresoportus): We should not need driver_ to be set in an AudioOutput, but route graph
-  // depends on it.
+  // TODO(49345): We should not need driver_ to be set in an AudioOutput
   driver_.reset(new AudioDriverFidl(this));
   next_sched_time_ = async::Now(mix_domain().dispatcher());
   next_sched_time_known_ = true;
