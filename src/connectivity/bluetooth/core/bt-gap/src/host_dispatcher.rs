@@ -16,6 +16,7 @@ use {
     fidl_fuchsia_bluetooth_gatt::{LocalServiceDelegateRequest, Server_Marker, Server_Proxy},
     fidl_fuchsia_bluetooth_host::HostProxy,
     fidl_fuchsia_bluetooth_le::{CentralMarker, PeripheralMarker},
+    fidl_fuchsia_bluetooth_sys as sys,
     fuchsia_async::{self as fasync, DurationExt, TimeoutExt},
     fuchsia_bluetooth::{
         self as bt,
@@ -593,6 +594,14 @@ impl HostDispatcher {
         self.notify_event_listeners(|listener| {
             let _res = listener
                 .send_on_device_updated(&mut d)
+                .map_err(|e| fx_log_err!("Failed to send device updated event: {:?}", e));
+        });
+
+        //TODO(nickpollard) - send the extended event
+        self.notify_event_listeners(|listener| {
+            let sys_peer = sys::Peer::from(&peer);
+            let _res = listener
+                .send_on_device_updated_ext(sys_peer)
                 .map_err(|e| fx_log_err!("Failed to send device updated event: {:?}", e));
         });
 

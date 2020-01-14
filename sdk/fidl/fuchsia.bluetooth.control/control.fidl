@@ -5,6 +5,10 @@
 library fuchsia.bluetooth.control;
 
 using fuchsia.bluetooth;
+// The control library will eventually be superseded by the sys library. This dependency supports
+// performing some temporary incremental migrations to support our clients, ahead of a full 
+// migration
+using fuchsia.bluetooth.sys;
 
 /// Bluetooth controller and its associated host-subsystem state that is present
 /// on the current platform.
@@ -136,6 +140,11 @@ protocol Control {
 
     /// Sent when a peer is updated.
     -> OnDeviceUpdated(RemoteDevice device);
+
+    /// Sent when a peer is updated.
+    /// This Method returns a sys.Peer type instead of control.RemoteDevice. This includes the
+    /// Bluetooth Device Class which may be desired by clients in order to filter peers.
+    -> OnDeviceUpdatedExt(fuchsia.bluetooth.sys.Peer peer);
 
     /// Sent when a peer is removed.
     -> OnDeviceRemoved(string identifier);

@@ -70,6 +70,9 @@ pub async fn handle_control_events(harness: ControlHarness) -> Result<(), Error>
             ControlEvent::OnDeviceUpdated { device } => {
                 harness.write_state().peers.insert(device.identifier.clone(), device);
             }
+            ControlEvent::OnDeviceUpdatedExt { .. } => {
+                // Ignore - use OnDeviceUpdated for now
+            }
             ControlEvent::OnDeviceRemoved { identifier } => {
                 harness.write_state().peers.remove(&identifier);
             }

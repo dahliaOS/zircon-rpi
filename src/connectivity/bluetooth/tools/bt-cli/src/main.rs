@@ -362,6 +362,9 @@ async fn run_listeners(mut stream: ControlEventStream, state: &Mutex<State>) -> 
                 print_peer_state_updates(&state.lock(), &peer);
                 state.lock().peers.insert(peer.id.to_string(), peer);
             }
+            ControlEvent::OnDeviceUpdatedExt { .. } => {
+                // Currently ignored; using OnDeviceUpdated instead
+            }
             ControlEvent::OnDeviceRemoved { identifier } => {
                 state.lock().peers.remove(&identifier);
             }
