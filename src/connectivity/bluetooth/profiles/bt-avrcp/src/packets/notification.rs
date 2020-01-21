@@ -8,7 +8,7 @@ use super::*;
 
 pub_decodable_enum! {
     /// AVRCP 1.6.1 section 28 "Appendix H: list of defined notification events"
-    NotificationEventId<u8, Error> {
+    NotificationEventId<u8, Error, InvalidParameter> {
         /// Change in playback status of the current track.
         EventPlaybackStatusChanged => 0x01,
         /// Change of current track
@@ -64,6 +64,7 @@ impl RegisterNotificationCommand {
         Self { event_id: NotificationEventId::EventPlaybackPosChanged, playback_interval }
     }
 
+    #[allow(dead_code)] // TODO(BT-2218): WIP. Remove once used.
     pub fn event_id(&self) -> &NotificationEventId {
         &self.event_id
     }
@@ -74,7 +75,7 @@ impl RegisterNotificationCommand {
     }
 }
 
-impl VendorDependent for RegisterNotificationCommand {
+impl VendorDependentPdu for RegisterNotificationCommand {
     fn pdu_id(&self) -> PduId {
         PduId::RegisterNotification
     }
@@ -110,7 +111,7 @@ impl Encodable for RegisterNotificationCommand {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < Self::EVENT_ID_LEN + Self::PLAYBACK_INTERVAL_LEN {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         buf[0] = u8::from(&self.event_id);
@@ -138,7 +139,7 @@ impl VolumeChangedNotificationResponse {
     }
 }
 
-impl VendorDependent for VolumeChangedNotificationResponse {
+impl VendorDependentPdu for VolumeChangedNotificationResponse {
     fn pdu_id(&self) -> PduId {
         PduId::RegisterNotification
     }
@@ -165,7 +166,7 @@ impl Encodable for VolumeChangedNotificationResponse {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < self.encoded_len() {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         buf[0] = u8::from(&NotificationEventId::EventVolumeChanged);
@@ -191,7 +192,7 @@ impl PlaybackStatusChangedNotificationResponse {
     }
 }
 
-impl VendorDependent for PlaybackStatusChangedNotificationResponse {
+impl VendorDependentPdu for PlaybackStatusChangedNotificationResponse {
     fn pdu_id(&self) -> PduId {
         PduId::RegisterNotification
     }
@@ -200,7 +201,7 @@ impl VendorDependent for PlaybackStatusChangedNotificationResponse {
 impl Decodable for PlaybackStatusChangedNotificationResponse {
     fn decode(buf: &[u8]) -> PacketResult<Self> {
         if buf.len() < 2 {
-            return Err(Error::InvalidMessage);
+            return Err(Error::InvalidMessageLength);
         }
 
         if buf[0] != u8::from(&NotificationEventId::EventPlaybackStatusChanged) {
@@ -218,7 +219,7 @@ impl Encodable for PlaybackStatusChangedNotificationResponse {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < self.encoded_len() {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         buf[0] = u8::from(&NotificationEventId::EventPlaybackStatusChanged);
@@ -254,7 +255,7 @@ impl TrackChangedNotificationResponse {
     }
 }
 
-impl VendorDependent for TrackChangedNotificationResponse {
+impl VendorDependentPdu for TrackChangedNotificationResponse {
     fn pdu_id(&self) -> PduId {
         PduId::RegisterNotification
     }
@@ -285,7 +286,7 @@ impl Encodable for TrackChangedNotificationResponse {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < self.encoded_len() {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         buf[0] = u8::from(&NotificationEventId::EventTrackChanged);
@@ -316,7 +317,7 @@ impl PlaybackPosChangedNotificationResponse {
     }
 }
 
-impl VendorDependent for PlaybackPosChangedNotificationResponse {
+impl VendorDependentPdu for PlaybackPosChangedNotificationResponse {
     fn pdu_id(&self) -> PduId {
         PduId::RegisterNotification
     }
@@ -347,7 +348,7 @@ impl Encodable for PlaybackPosChangedNotificationResponse {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < self.encoded_len() {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         buf[0] = u8::from(&NotificationEventId::EventPlaybackPosChanged);
