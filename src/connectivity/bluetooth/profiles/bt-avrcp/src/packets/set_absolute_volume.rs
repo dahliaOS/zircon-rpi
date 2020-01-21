@@ -14,7 +14,7 @@ pub struct SetAbsoluteVolumeCommand {
 impl SetAbsoluteVolumeCommand {
     pub fn new(requested_volume: u8) -> Result<SetAbsoluteVolumeCommand, Error> {
         if requested_volume >= 0x80 {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessage);
         }
 
         Ok(Self { requested_volume })
@@ -26,7 +26,7 @@ impl SetAbsoluteVolumeCommand {
     }
 }
 
-impl VendorDependent for SetAbsoluteVolumeCommand {
+impl VendorDependentPdu for SetAbsoluteVolumeCommand {
     fn pdu_id(&self) -> PduId {
         PduId::SetAbsoluteVolume
     }
@@ -55,12 +55,12 @@ impl Encodable for SetAbsoluteVolumeCommand {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < 1 {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessageLength);
         }
 
         // volume can only be set to between and 0-127.
         if self.requested_volume >= 0x80 {
-            return Err(Error::Encoding);
+            return Err(Error::InvalidMessage);
         }
 
         buf[0] = self.requested_volume;
@@ -79,7 +79,7 @@ impl SetAbsoluteVolumeResponse {
     #[allow(dead_code)] // TODO(BT-2218): WIP. Remove once used.
     pub fn new(volume: u8) -> Result<SetAbsoluteVolumeResponse, Error> {
         if volume >= 0x80 {
-            return Err(Error::OutOfRange);
+            return Err(Error::InvalidMessage);
         }
 
         Ok(Self { set_volume: volume })
@@ -90,7 +90,7 @@ impl SetAbsoluteVolumeResponse {
     }
 }
 
-impl VendorDependent for SetAbsoluteVolumeResponse {
+impl VendorDependentPdu for SetAbsoluteVolumeResponse {
     fn pdu_id(&self) -> PduId {
         PduId::SetAbsoluteVolume
     }
@@ -99,7 +99,7 @@ impl VendorDependent for SetAbsoluteVolumeResponse {
 impl Decodable for SetAbsoluteVolumeResponse {
     fn decode(buf: &[u8]) -> PacketResult<Self> {
         if buf.len() < 1 {
-            return Err(Error::InvalidMessage);
+            return Err(Error::InvalidMessageLength);
         }
 
         Ok(Self { set_volume: buf[0] & 0x7f }) // Ignore the reserved bit
@@ -113,12 +113,12 @@ impl Encodable for SetAbsoluteVolumeResponse {
 
     fn encode(&self, buf: &mut [u8]) -> PacketResult<()> {
         if buf.len() < 1 {
-            return Err(Error::OutOfRange);
+            return Err(Error::BufferLengthOutOfRange);
         }
 
         // volume can only be set to between and 0-127.
         if self.set_volume >= 0x80 {
-            return Err(Error::Encoding);
+            return Err(Error::InvalidMessage);
         }
 
         buf[0] = self.set_volume;
@@ -152,13 +152,13 @@ mod tests {
     #[test]
     fn set_absolute_volume_command_error_invalid_volume() {
         let b = SetAbsoluteVolumeResponse::new(0x81);
-        assert_eq!(b.expect_err("expected error"), Error::OutOfRange);
+        assert_eq!(b.expect_err("expected error"), Error::InvalidMessage);
     }
 
     #[test]
     fn set_absolute_volume_response_error_invalid_volume() {
         let b = SetAbsoluteVolumeCommand::new(0x81);
-        assert_eq!(b.expect_err("expected error"), Error::OutOfRange);
+        assert_eq!(b.expect_err("expected error"), Error::InvalidMessage);
     }
 
     #[test]
