@@ -314,7 +314,6 @@ impl Encodable for VendorDependentPreamble {
     }
 }
 
-#[allow(dead_code)] // TODO(BT-2218): WIP. Remove once used in the handler.
 const AVC_PAYLOAD_SIZE: usize = 508; // 512 - 4 byte preamble
 
 /// Provides methods to encode one or more vendor dependent packets with their preambles. Uses to
