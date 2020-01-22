@@ -24,7 +24,7 @@ class AudioDriverTest : public testing::ThreadingModelFixture {
  protected:
   std::shared_ptr<testing::FakeAudioOutput> device_{testing::FakeAudioOutput::Create(
       &threading_model(), &context().device_manager(), &context().link_matrix())};
-  AudioDriver driver_{device_.get(), [this](auto delay) { last_late_command_ = delay; }};
+  AudioDriverFidl driver_{device_.get(), [this](auto delay) { last_late_command_ = delay; }};
   // While |driver_| is the object under test, this object simulates the channel messages that
   // normally come from the actual driver instance.
   std::unique_ptr<testing::FakeAudioDriver> remote_driver_;

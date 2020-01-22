@@ -69,9 +69,11 @@ class FakeAudioOutput : public AudioOutput {
     return std::make_shared<FakeAudioOutput>(threading_model, device_registry, link_matrix);
   }
 
+  // FakeAudioOutput uses a driver, so we provide one.
   FakeAudioOutput(ThreadingModel* threading_model, DeviceRegistry* device_registry,
                   LinkMatrix* link_matrix)
-      : AudioOutput(threading_model, device_registry, link_matrix) {}
+      : AudioOutput(threading_model, device_registry, link_matrix,
+                    std::make_unique<AudioDriverFidl>(this)) {}
 
   void ApplyGainLimits(fuchsia::media::AudioGainInfo* in_out_info, uint32_t set_flags) override {}
   void OnWakeup() override {}
@@ -275,12 +277,16 @@ TEST_F(RouteGraphTest, CapturersRouteToLastPluggedInput) {
       *capturer_raw,
       {.routable = true, .usage = StreamUsage::WithCaptureUsage(CaptureUsage::SYSTEM_AGENT)});
 
-  auto first_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> first_intf = {};
+  first_intf.set_channel(zx::channel());
+  auto first_input = AudioInput::Create(std::move(first_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
   under_test_.AddDevice(first_input.get());
   EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({first_input.get()}));
 
-  auto later_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> later_intf = {};
+  later_intf.set_channel(zx::channel());
+  auto later_input = AudioInput::Create(std::move(later_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
   under_test_.AddDevice(later_input.get());
   EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({later_input.get()}));
@@ -295,9 +301,13 @@ TEST_F(RouteGraphTest, CapturersFallbackWhenInputRemoved) {
       *capturer_raw,
       {.routable = true, .usage = StreamUsage::WithCaptureUsage(CaptureUsage::SYSTEM_AGENT)});
 
-  auto first_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> first_intf = {};
+  first_intf.set_channel(zx::channel());
+  auto first_input = AudioInput::Create(std::move(first_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
-  auto later_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> later_intf = {};
+  later_intf.set_channel(zx::channel());
+  auto later_input = AudioInput::Create(std::move(later_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
 
   under_test_.AddDevice(first_input.get());
@@ -319,11 +329,17 @@ TEST_F(RouteGraphTest, RemovingNonLastInputDoesNotRerouteCapturers) {
       *capturer_raw,
       {.routable = true, .usage = StreamUsage::WithCaptureUsage(CaptureUsage::SYSTEM_AGENT)});
 
-  auto first_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> first_intf = {};
+  first_intf.set_channel(zx::channel());
+  auto first_input = AudioInput::Create(std::move(first_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
-  auto second_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> second_intf = {};
+  second_intf.set_channel(zx::channel());
+  auto second_input = AudioInput::Create(std::move(second_intf), &threading_model(),
                                          &context().device_manager(), &context().link_matrix());
-  auto last_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> last_intf = {};
+  last_intf.set_channel(zx::channel());
+  auto last_input = AudioInput::Create(std::move(last_intf), &threading_model(),
                                        &context().device_manager(), &context().link_matrix());
 
   under_test_.AddDevice(first_input.get());
@@ -338,11 +354,15 @@ TEST_F(RouteGraphTest, RemovingNonLastInputDoesNotRerouteCapturers) {
 }
 
 TEST_F(RouteGraphTest, CapturersPickUpLastPluggedInputWhenRoutable) {
-  auto first_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> first_intf = {};
+  first_intf.set_channel(zx::channel());
+  auto first_input = AudioInput::Create(std::move(first_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
   under_test_.AddDevice(first_input.get());
 
-  auto later_input = AudioInput::Create(zx::channel(), &threading_model(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> later_intf = {};
+  later_intf.set_channel(zx::channel());
+  auto later_input = AudioInput::Create(std::move(later_intf), &threading_model(),
                                         &context().device_manager(), &context().link_matrix());
   under_test_.AddDevice(later_input.get());
 
@@ -367,7 +387,9 @@ TEST_F(RouteGraphTest, CapturersAreRemoved) {
       *capturer_raw,
       {.routable = true, .usage = StreamUsage::WithCaptureUsage(CaptureUsage::SYSTEM_AGENT)});
 
-  auto input = AudioInput::Create(zx::channel(), &threading_model(), &context().device_manager(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(zx::channel());
+  auto input = AudioInput::Create(std::move(intf), &threading_model(), &context().device_manager(),
                                   &context().link_matrix());
   under_test_.AddDevice(input.get());
   EXPECT_THAT(DestLinks(*input), UnorderedElementsAreArray({capturer_raw}));
@@ -519,9 +541,11 @@ TEST_F(RouteGraphTest, InputRouteCategoriesDoNotAffectOutputs) {
                                         &context().link_matrix());
   under_test_.AddDevice(output.get());
 
-  auto first_input = AudioInput::Create(zx::channel(), &threading_model(),
-                                        &context().device_manager(), &context().link_matrix());
-  under_test_.AddDevice(first_input.get());
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(zx::channel());
+  auto input = AudioInput::Create(std::move(intf), &threading_model(), &context().device_manager(),
+                                  &context().link_matrix());
+  under_test_.AddDevice(input.get());
 
   auto capturer = FakeAudioObject::FakeCapturer();
   auto* capturer_raw = capturer.get();
@@ -530,7 +554,7 @@ TEST_F(RouteGraphTest, InputRouteCategoriesDoNotAffectOutputs) {
   under_test_.SetCapturerRoutingProfile(
       *capturer_raw,
       {.routable = true, .usage = StreamUsage::WithCaptureUsage(CaptureUsage::SYSTEM_AGENT)});
-  EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({first_input.get()}));
+  EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({input.get()}));
 
   auto renderer = FakeAudioObject::FakeRenderer();
   auto* renderer_raw = renderer.get();
@@ -540,7 +564,7 @@ TEST_F(RouteGraphTest, InputRouteCategoriesDoNotAffectOutputs) {
       *renderer_raw, {.routable = true, .usage = StreamUsage::WithRenderUsage(RenderUsage::MEDIA)});
   EXPECT_THAT(DestLinks(*renderer_raw),
               UnorderedElementsAreArray(std::vector<AudioObject*>{output.get()}));
-  EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({first_input.get()}));
+  EXPECT_THAT(SourceLinks(*capturer_raw), UnorderedElementsAreArray({input.get()}));
 }
 
 TEST_F(RouteGraphTest, DoesNotRouteUnroutableRenderer) {
@@ -565,7 +589,9 @@ TEST_F(RouteGraphTest, DoesNotRouteUnroutableRenderer) {
 }
 
 TEST_F(RouteGraphTest, DoesNotRouteUnroutableCapturer) {
-  auto input = AudioInput::Create(zx::channel(), &threading_model(), &context().device_manager(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(zx::channel());
+  auto input = AudioInput::Create(std::move(intf), &threading_model(), &context().device_manager(),
                                   &context().link_matrix());
   under_test_.AddDevice(input.get());
 
@@ -638,7 +664,9 @@ TEST_F(RouteGraphTest, UnroutesNewlyUnRoutableRenderer) {
 }
 
 TEST_F(RouteGraphTest, UnroutesNewlyUnRoutableCapturer) {
-  auto input = AudioInput::Create(zx::channel(), &threading_model(), &context().device_manager(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(zx::channel());
+  auto input = AudioInput::Create(std::move(intf), &threading_model(), &context().device_manager(),
                                   &context().link_matrix());
   under_test_.AddDevice(input.get());
 
@@ -816,7 +844,9 @@ TEST_F(RouteGraphTest, DoesNotUnlinkRendererNotInGraph) {
 
 TEST_F(RouteGraphTest, DoesNotUnlinkCapturerNotInGraph) {
   auto capturer = std::shared_ptr<FakeAudioObject>(FakeAudioObject::FakeCapturer().release());
-  auto input = AudioInput::Create(zx::channel(), &threading_model(), &context().device_manager(),
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(zx::channel());
+  auto input = AudioInput::Create(std::move(intf), &threading_model(), &context().device_manager(),
                                   &context().link_matrix());
 
   context().link_matrix().LinkObjects(input, capturer, std::make_shared<NoOpLoudnessTransform>());

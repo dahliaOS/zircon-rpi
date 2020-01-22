@@ -56,8 +56,8 @@ class DeviceTracker {
     bool is_input;
   };
 
-  fit::function<void(zx::channel, std::string, bool)> GetHandler() {
-    return [this](auto channel, auto name, auto is_input) {
+  fit::function<void(zx::channel, std::string, bool, bool)> GetHandler() {
+    return [this](auto channel, auto name, auto is_input, auto is_legacy) {
       devices_.emplace_back(DeviceConnection{std::move(channel), std::move(name), is_input});
     };
   }
@@ -77,16 +77,16 @@ class PlugDetectorTest : public gtest::RealLoopFixture {
     ASSERT_EQ(fdio_ns_get_installed(&ns_), ZX_OK);
     zx::channel c1, c2;
 
-    // Serve up the emulated audio-input directory
+    // Serve up the emulated audio-input-2 directory
     ASSERT_EQ(zx::channel::create(0, &c1, &c2), ZX_OK);
     ASSERT_EQ(vfs_.Serve(input_dir_, std::move(c1), fs::VnodeConnectionOptions::ReadOnly()), ZX_OK);
-    ASSERT_EQ(fdio_ns_bind(ns_, "/dev/class/audio-input", c2.release()), ZX_OK);
+    ASSERT_EQ(fdio_ns_bind(ns_, "/dev/class/audio-input-2", c2.release()), ZX_OK);
 
-    // Serve up the emulated audio-output directory
+    // Serve up the emulated audio-output-2 directory
     ASSERT_EQ(zx::channel::create(0, &c1, &c2), ZX_OK);
     ASSERT_EQ(vfs_.Serve(output_dir_, std::move(c1), fs::VnodeConnectionOptions::ReadOnly()),
               ZX_OK);
-    ASSERT_EQ(fdio_ns_bind(ns_, "/dev/class/audio-output", c2.release()), ZX_OK);
+    ASSERT_EQ(fdio_ns_bind(ns_, "/dev/class/audio-output-2", c2.release()), ZX_OK);
   }
   void TearDown() override {
     ASSERT_TRUE(input_dir_->IsEmpty());
@@ -94,8 +94,8 @@ class PlugDetectorTest : public gtest::RealLoopFixture {
     vfs_loop_.Shutdown();
     vfs_loop_.JoinThreads();
     ASSERT_NE(ns_, nullptr);
-    ASSERT_EQ(fdio_ns_unbind(ns_, "/dev/class/audio-input"), ZX_OK);
-    ASSERT_EQ(fdio_ns_unbind(ns_, "/dev/class/audio-output"), ZX_OK);
+    ASSERT_EQ(fdio_ns_unbind(ns_, "/dev/class/audio-input-2"), ZX_OK);
+    ASSERT_EQ(fdio_ns_unbind(ns_, "/dev/class/audio-output-2"), ZX_OK);
   }
 
   // Holds a reference to a pseudo dir entry that removes the entry when this object goes out of
@@ -110,16 +110,16 @@ class PlugDetectorTest : public gtest::RealLoopFixture {
     }
   };
 
-  // Adds a |FakeAudioDevice| to the emulated 'audio-input' directory that has been installed in
-  // the local namespace at /dev/class/audio-input.
+  // Adds a |FakeAudioDevice| to the emulated 'audio-input-2' directory that has been installed in
+  // the local namespace at /dev/class/audio-input-2.
   ScopedDirent AddInputDevice(FakeAudioDevice* device) {
     auto name = std::to_string(next_input_device_number_++);
     FX_CHECK(ZX_OK == input_dir_->AddEntry(name, device->AsService()));
     return {name, input_dir_};
   }
 
-  // Adds a |FakeAudioDevice| to the emulated 'audio-output' directory that has been installed in
-  // the local namespace at /dev/class/audio-output.
+  // Adds a |FakeAudioDevice| to the emulated 'audio-output-2' directory that has been installed in
+  // the local namespace at /dev/class/audio-output-2.
   ScopedDirent AddOutputDevice(FakeAudioDevice* device) {
     auto name = std::to_string(next_output_device_number_++);
     FX_CHECK(ZX_OK == output_dir_->AddEntry(name, device->AsService()));

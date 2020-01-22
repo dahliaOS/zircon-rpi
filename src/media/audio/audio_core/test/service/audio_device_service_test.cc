@@ -35,7 +35,9 @@ void AudioDeviceServiceTest::SetUp() {
     devices_.push_back(std::move(info));
   };
 
-  audio_device_enumerator_->AddDeviceByChannel(std::move(remote_channel), "test device", false);
+  fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf = {};
+  intf.set_channel(std::move(remote_channel));
+  audio_device_enumerator_->AddDeviceByChannel2("test device", false, std::move(intf));
 }
 
 void AudioDeviceServiceTest::TearDown() {

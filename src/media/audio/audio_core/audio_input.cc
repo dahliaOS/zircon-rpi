@@ -32,15 +32,14 @@ std::shared_ptr<AudioInput> AudioInput::Create(
 AudioInput::AudioInput(zx::channel channel, ThreadingModel* threading_model,
                        DeviceRegistry* registry, LinkMatrix* link_matrix)
     : AudioDevice(Type::Input, threading_model, registry, link_matrix,
-                  std::make_unique<AudioDriver>(this)),
+                  std::make_unique<AudioDriverLegacy>(this)),
       initial_stream_channel_(std::move(channel)) {}
 
-// TODO(andresoportus) Add suport for non-legacy here.
 AudioInput::AudioInput(fidl::InterfaceRequest<fuchsia::hardware::audio::StreamConfig> intf,
                        ThreadingModel* threading_model, DeviceRegistry* registry,
                        LinkMatrix* link_matrix)
     : AudioDevice(Type::Input, threading_model, registry, link_matrix,
-                  std::make_unique<AudioDriver>(this)),
+                  std::make_unique<AudioDriverFidl>(this)),
       initial_stream_channel_(intf.TakeChannel()) {}
 
 zx_status_t AudioInput::Init() {

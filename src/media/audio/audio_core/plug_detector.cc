@@ -59,12 +59,12 @@ class PlugDetectorImpl : public PlugDetector {
             AddAudioDevice(dir_fd, filename, is_input, is_legacy);
           });
 
-      if (watcher == nullptr) {
+      if (watcher != nullptr) {
+        watchers_.emplace_back(std::move(watcher));
+      } else {
         AUD_VLOG(TRACE) << "PlugDetectorImpl failed to create DeviceWatcher for \"" << devnode.path
                         << "\".";
       }
-
-      watchers_.emplace_back(std::move(watcher));
     }
 
     error_cleanup.cancel();
@@ -116,9 +116,9 @@ class PlugDetectorImpl : public PlugDetector {
       REPORT(FailedToObtainStreamChannel(name, is_input, res));
       FX_PLOGS(ERROR, res) << "Failed to open channel to audio " << (is_input ? "input" : "output");
     });
-    device->GetChannel([d = std::move(device), this, is_input, name](
+    device->GetChannel([d = std::move(device), this, is_input, is_legacy, name](
                            ::fidl::InterfaceHandle<fuchsia::hardware::audio::StreamConfig> intf) {
-      observer_(intf.TakeChannel(), name, is_input);
+      observer_(intf.TakeChannel(), name, is_input, is_legacy);
     });
   }
   Observer observer_;

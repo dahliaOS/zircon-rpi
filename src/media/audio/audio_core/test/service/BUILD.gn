@@ -27,6 +27,7 @@ executable("audio_device_service_tests_bin") {
   deps = [
     "//garnet/public/lib/fostr",
     "//garnet/public/lib/fostr/fidl/fuchsia.media",
+    "//sdk/fidl/fuchsia.hardware.audio",
     "//sdk/fidl/fuchsia.media",
     "//sdk/fidl/fuchsia.virtualaudio",
     "//src/lib/fxl/test:gtest_main",
