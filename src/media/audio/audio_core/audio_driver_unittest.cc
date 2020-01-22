@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/media/audio/audio_core/audio_driver.h"
+#include "src/media/audio/audio_core/audio_driver_fidl.h"
 
 #include "src/media/audio/audio_core/audio_device_manager.h"
 #include "src/media/audio/audio_core/testing/fake_audio_device.h"
@@ -24,7 +24,7 @@ class AudioDriverTest : public testing::ThreadingModelFixture {
  protected:
   std::shared_ptr<testing::FakeAudioOutput> device_{testing::FakeAudioOutput::Create(
       &threading_model(), &context().device_manager(), &context().link_matrix())};
-  AudioDriver driver_{device_.get(), [this](auto delay) { last_late_command_ = delay; }};
+  AudioDriverFidl driver_{device_.get(), [this](auto delay) { last_late_command_ = delay; }};
   // While |driver_| is the object under test, this object simulates the channel messages that
   // normally come from the actual driver instance.
   std::unique_ptr<testing::FakeAudioDriver> remote_driver_;

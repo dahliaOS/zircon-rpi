@@ -8,7 +8,7 @@
 
 #include <trace/event.h>
 
-#include "src/media/audio/audio_core/audio_driver.h"
+#include "src/media/audio/audio_core/audio_driver_fidl.h"
 #include "src/media/audio/audio_core/process_config.h"
 
 namespace media::audio {
@@ -41,7 +41,7 @@ AudioInput::AudioInput(fidl::InterfaceRequest<driver_fidl::StreamConfig> intf,
                        LinkMatrix* link_matrix)
   : AudioDevice(Type::Input, threading_model, registry, link_matrix),
     initial_stream_channel_(intf.TakeChannel()) {
-  driver_.reset(new AudioDriver(this));  // TODO(andresoportus) Add suport for non-legacy here.
+  driver_.reset(new AudioDriverFidl(this));
 }
 
 zx_status_t AudioInput::Init() {

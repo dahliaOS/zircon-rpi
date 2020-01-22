@@ -60,12 +60,12 @@ class PlugDetectorImpl : public PlugDetector {
             AddAudioDevice(dir_fd, filename, is_input, is_legacy);
           });
 
-      if (watcher == nullptr) {
+      if (watcher != nullptr) {
+        watchers_.emplace_back(std::move(watcher));
+      } else {
         AUD_VLOG(TRACE) << "PlugDetectorImpl failed to create DeviceWatcher for \"" << devnode.path
                         << "\".";
       }
-
-      watchers_.emplace_back(std::move(watcher));
     }
 
     error_cleanup.cancel();

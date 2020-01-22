@@ -67,7 +67,7 @@ class AudioDriver {
 
   virtual ~AudioDriver() = default;
 
-  zx_status_t Init(zx::channel stream_channel);
+  virtual zx_status_t Init(zx::channel stream_channel);
   void Cleanup();
   std::optional<Format> GetFormat() const;
 
@@ -99,17 +99,17 @@ class AudioDriver {
   const std::string& manufacturer_name() const { return manufacturer_name_; }
   const std::string& product_name() const { return product_name_; }
 
-  zx_status_t GetDriverInfo();
-  zx_status_t Configure(const Format& format, zx::duration min_ring_buffer_duration);
-  zx_status_t Start();
-  zx_status_t Stop();
-  zx_status_t SetPlugDetectEnabled(bool enabled);
-  zx_status_t SendSetGain(const AudioDeviceSettings::GainState& gain_state,
-                          audio_set_gain_flags_t set_flags);
-  zx_status_t SelectBestFormat(uint32_t* frames_per_second_inout, uint32_t* channels_inout,
-                               fuchsia::media::AudioSampleFormat* sample_format_inout);
+  virtual zx_status_t GetDriverInfo();
+  virtual zx_status_t Configure(const Format& format, zx::duration min_ring_buffer_duration);
+  virtual zx_status_t Start();
+  virtual zx_status_t Stop();
+  virtual zx_status_t SetPlugDetectEnabled(bool enabled);
+  virtual zx_status_t SendSetGain(const AudioDeviceSettings::GainState& gain_state,
+                                  audio_set_gain_flags_t set_flags);
+  virtual zx_status_t SelectBestFormat(uint32_t* frames_per_second_inout, uint32_t* channels_inout,
+                                       fuchsia::media::AudioSampleFormat* sample_format_inout);
 
- private:
+ protected:
   friend class AudioDevice;
   friend class AudioInput;
 
@@ -126,6 +126,81 @@ class AudioDriver {
   // Counter of received position notifications since START.
   uint32_t position_notification_count_ = 0;
 
+  // Evaluate each currently pending timeout. Program the command timeout timer appropriately.
+  virtual void SetupCommandTimeout() FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
+
+  // Handle a new piece of driver info being fetched.
+  virtual zx_status_t OnDriverInfoFetched(uint32_t info)
+      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
+
+  // Simple accessors
+  bool operational() const FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token()) {
+    return (state_ != State::Uninitialized) && (state_ != State::Shutdown);
+  }
+
+  bool fetching_driver_info() const FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token()) {
+    return fetch_driver_info_deadline_ != zx::time::infinite();
+  }
+
+  // Update internal plug state bookkeeping and report up to our owner (if enabled).
+  void ReportPlugStateChange(bool plugged, zx::time plug_time)
+      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
+
+  // Transition to the Shutdown state and begin the process of shutting down.
+  void ShutdownSelf(const char* debug_reason = nullptr, zx_status_t debug_status = ZX_OK)
+      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
+
+  void DriverCommandTimedOut() FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
+
+  AudioDevice* const owner_;
+  DriverTimeoutHandler timeout_handler_;
+
+  State state_ = State::Uninitialized;
+  zx::channel stream_channel_;
+  zx::channel ring_buffer_channel_;
+
+  async::TaskClosure cmd_timeout_ FXL_GUARDED_BY(owner_->mix_domain().token());
+
+  zx_koid_t stream_channel_koid_ = ZX_KOID_INVALID;
+  zx::time fetch_driver_info_deadline_ = zx::time::infinite();
+  uint32_t fetched_driver_info_ FXL_GUARDED_BY(owner_->mix_domain().token()) = 0;
+
+  // State fetched at driver startup time.
+  audio_stream_unique_id_t persistent_unique_id_ = {0};
+  std::string manufacturer_name_;
+  std::string product_name_;
+  HwGainState hw_gain_state_;
+
+  int32_t clock_domain_;
+
+  // Configuration state.
+  zx::duration external_delay_;
+  zx::duration min_ring_buffer_duration_;
+  uint32_t fifo_depth_frames_;
+  zx::duration fifo_depth_duration_;
+  zx::time configuration_deadline_ = zx::time::infinite();
+
+  // A stashed copy of current format, queryable by destinations (outputs or AudioCapturers) when
+  // determining which mixer to use.
+  mutable std::mutex configured_format_lock_;
+  std::optional<Format> configured_format_ FXL_GUARDED_BY(configured_format_lock_);
+
+  // Ring buffer state. Details are lock-protected and changes tracked with generation counter,
+  // allowing AudioCapturer clients to snapshot ring-buffer state during mix/resample operations.
+  mutable std::mutex ring_buffer_state_lock_;
+  std::shared_ptr<RingBuffer> ring_buffer_ FXL_GUARDED_BY(ring_buffer_state_lock_);
+  fbl::RefPtr<VersionedTimelineFunction> clock_mono_to_fractional_frame_;
+
+  // Plug detection state.
+  bool pd_enabled_ = false;
+
+  mutable std::mutex plugged_lock_;
+  bool plugged_ FXL_GUARDED_BY(plugged_lock_) = false;
+  zx::time plug_time_ FXL_GUARDED_BY(plugged_lock_);
+
+  zx::time driver_last_timeout_ = zx::time::infinite();
+
+private:
   // Dispatchers for messages received over stream and ring buffer channels.
   zx_status_t ReadMessage(const zx::channel& channel, void* buf, uint32_t buf_size,
                           uint32_t* bytes_read_out, zx::handle* handle_out)
@@ -160,30 +235,6 @@ class AudioDriver {
   zx_status_t ProcessPositionNotify(const audio_rb_position_notify_t& notify)
       FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
 
-  // Transition to the Shutdown state and begin the process of shutting down.
-  void ShutdownSelf(const char* debug_reason = nullptr, zx_status_t debug_status = ZX_OK)
-      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
-
-  // Evaluate each currently pending timeout. Program the command timeout timer appropriately.
-  void SetupCommandTimeout() FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
-
-  // Update internal plug state bookkeeping and report up to our owner (if enabled).
-  void ReportPlugStateChange(bool plugged, zx::time plug_time)
-      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
-
-  // Handle a new piece of driver info being fetched.
-  zx_status_t OnDriverInfoFetched(uint32_t info)
-      FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
-
-  // Simple accessors
-  bool operational() const FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token()) {
-    return (state_ != State::Uninitialized) && (state_ != State::Shutdown);
-  }
-
-  bool fetching_driver_info() const FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token()) {
-    return fetch_driver_info_deadline_ != zx::time::infinite();
-  }
-
   // Accessors for the ring buffer pointer and the current output clock transformation.
   //
   // Note: Only the AudioDriver writes to these, and only when in our owner's mixing execution
@@ -208,59 +259,11 @@ class AudioDriver {
                                   zx_status_t status, const zx_packet_signal_t* signal)
       FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
 
-  void DriverCommandTimedOut() FXL_EXCLUSIVE_LOCKS_REQUIRED(owner_->mix_domain().token());
-
-  AudioDevice* const owner_;
-  DriverTimeoutHandler timeout_handler_;
-
-  State state_ = State::Uninitialized;
-  zx::channel stream_channel_;
-  zx::channel ring_buffer_channel_;
-
   async::Wait stream_channel_wait_ FXL_GUARDED_BY(owner_->mix_domain().token());
   async::Wait ring_buffer_channel_wait_ FXL_GUARDED_BY(owner_->mix_domain().token());
-  async::TaskClosure cmd_timeout_ FXL_GUARDED_BY(owner_->mix_domain().token());
-
-  zx_koid_t stream_channel_koid_ = ZX_KOID_INVALID;
-  zx::time fetch_driver_info_deadline_ = zx::time::infinite();
-  uint32_t fetched_driver_info_ FXL_GUARDED_BY(owner_->mix_domain().token()) = 0;
-
-  // State fetched at driver startup time.
-  audio_stream_unique_id_t persistent_unique_id_ = {0};
-  std::string manufacturer_name_;
-  std::string product_name_;
-  HwGainState hw_gain_state_;
   std::vector<audio_stream_format_range_t> format_ranges_;
-
-  int32_t clock_domain_;
-
-  // Configuration state.
-  zx::duration external_delay_;
-  zx::duration min_ring_buffer_duration_;
-  uint32_t fifo_depth_frames_;
-  zx::duration fifo_depth_duration_;
-  zx::time configuration_deadline_ = zx::time::infinite();
-
-  // A stashed copy of current format, queryable by destinations (outputs or AudioCapturers) when
-  // determining which mixer to use.
-  mutable std::mutex configured_format_lock_;
-  std::optional<Format> configured_format_ FXL_GUARDED_BY(configured_format_lock_);
-
-  // Ring buffer state. Details are lock-protected and changes tracked with generation counter,
-  // allowing AudioCapturer clients to snapshot ring-buffer state during mix/resample operations.
-  mutable std::mutex ring_buffer_state_lock_;
-  std::shared_ptr<RingBuffer> ring_buffer_ FXL_GUARDED_BY(ring_buffer_state_lock_);
-  fbl::RefPtr<VersionedTimelineFunction> clock_mono_to_fractional_frame_;
-
   // Plug detection state.
-  bool pd_enabled_ = false;
   zx::time pd_enable_deadline_ = zx::time::infinite();
-
-  mutable std::mutex plugged_lock_;
-  bool plugged_ FXL_GUARDED_BY(plugged_lock_) = false;
-  zx::time plug_time_ FXL_GUARDED_BY(plugged_lock_);
-
-  zx::time driver_last_timeout_ = zx::time::infinite();
 };
 
 }  // namespace media::audio

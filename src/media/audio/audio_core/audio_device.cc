@@ -10,6 +10,7 @@
 
 #include "src/media/audio/audio_core/audio_device_manager.h"
 #include "src/media/audio/audio_core/audio_driver.h"
+#include "src/media/audio/audio_core/audio_driver_fidl.h"
 #include "src/media/audio/audio_core/audio_output.h"
 #include "src/media/audio/audio_core/utils.h"
 

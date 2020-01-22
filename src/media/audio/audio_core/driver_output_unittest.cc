@@ -40,7 +40,9 @@ class DriverOutputTest : public testing::ThreadingModelFixture {
     ASSERT_NE(driver_, nullptr);
     driver_->Start();
 
-    output_ = DriverOutput::Create(std::move(c2), &threading_model(), &context().device_manager(),
+    fidl::InterfaceRequest<driver_fidl::StreamConfig> intf = {};
+    intf.set_channel(std::move(c2));
+    output_ = DriverOutput::Create(std::move(intf), &threading_model(), &context().device_manager(),
                                    &context().link_matrix());
     ASSERT_NE(output_, nullptr);
 
@@ -67,16 +69,14 @@ class DriverOutputTest : public testing::ThreadingModelFixture {
 
   // Updates the driver to advertise the given format. This will be the only audio format that the
   // driver exposes.
-  void ConfigureDriverForSampleFormat(uint8_t chans, uint32_t sample_rate,
-                                      audio_sample_format_t sample_format, uint16_t flags) {
-    driver_->set_formats({{
-        .sample_formats = sample_format,
-        .min_frames_per_second = sample_rate,
-        .max_frames_per_second = sample_rate,
-        .min_channels = chans,
-        .max_channels = chans,
-        .flags = flags,
-    }});
+  void ConfigureDriverForSampleFormat(driver_fidl::PcmFormat sample_format) {
+    driver_fidl::PcmSupportedFormats formats = {};
+    formats.number_of_channels.push_back(sample_format.number_of_channels);
+    formats.sample_formats.push_back(sample_format.sample_format);
+    formats.bytes_per_sample.push_back(sample_format.bytes_per_sample);
+    formats.valid_bits_per_sample.push_back(sample_format.valid_bits_per_sample);
+    formats.frame_rates.push_back(sample_format.frame_rate);
+    driver_->set_formats(std::move(formats));
   }
 
   VolumeCurve volume_curve_ = VolumeCurve::DefaultForMinGain(Gain::kMinGainDb);
@@ -92,12 +92,14 @@ TEST_F(DriverOutputTest, DriverOutputStartsDriver) {
   auto rb_bytes = RingBuffer<uint8_t>();
   memset(rb_bytes.data(), 0xff, rb_bytes.size());
 
-  // Setup our driver to advertise support for only 16-bit/2-channel/48khz audio.
-  constexpr uint8_t kSupportedChannels = 2;
-  constexpr uint32_t kSupportedSampleRate = 48000;
-  constexpr audio_sample_format_t kSupportedSampleFormat = AUDIO_SAMPLE_FORMAT_16BIT;
-  ConfigureDriverForSampleFormat(kSupportedChannels, kSupportedSampleRate, kSupportedSampleFormat,
-                                 ASF_RANGE_FLAG_FPS_48000_FAMILY);
+  // Setup our driver to advertise support for only 24-bit/2-channel/48khz audio.
+  fuchsia::hardware::audio::PcmFormat supportedSampleFormat = {};
+  supportedSampleFormat.sample_format = driver_fidl::SampleFormat::PCM_SIGNED;
+  supportedSampleFormat.bytes_per_sample = 4;
+  supportedSampleFormat.valid_bits_per_sample = 24;
+  supportedSampleFormat.number_of_channels = 2;
+  supportedSampleFormat.frame_rate = 48000;
+  ConfigureDriverForSampleFormat(supportedSampleFormat);
 
   // Startup the DriverOutput. We expect it's completed some basic initialization of the driver.
   threading_model().FidlDomain().ScheduleTask(output_->Startup());
@@ -108,9 +110,14 @@ TEST_F(DriverOutputTest, DriverOutputStartsDriver) {
   // published support for a single format above, there's only one possible solution here.
   auto selected_format = driver_->selected_format();
   EXPECT_TRUE(selected_format);
-  EXPECT_EQ(kSupportedSampleRate, selected_format->frames_per_second);
-  EXPECT_EQ(kSupportedSampleFormat, selected_format->sample_format);
-  EXPECT_EQ(kSupportedChannels, selected_format->channels);
+  auto& selected = selected_format.value();
+  // clang-format off.
+  EXPECT_EQ(selected.sample_format         ,supportedSampleFormat.sample_format);
+  EXPECT_EQ(selected.bytes_per_sample      ,supportedSampleFormat.bytes_per_sample);
+  EXPECT_EQ(selected.valid_bits_per_sample ,supportedSampleFormat.valid_bits_per_sample);
+  EXPECT_EQ(selected.number_of_channels    ,supportedSampleFormat.number_of_channels);
+  EXPECT_EQ(selected.frame_rate            ,supportedSampleFormat.frame_rate);
+  // clang-format on.
 
   // We expect the driver has filled the buffer with silence. For 16-bit/2-channel audio, we can
   // represent each frame as a single uint32_t.
@@ -123,11 +130,13 @@ TEST_F(DriverOutputTest, DriverOutputStartsDriver) {
 
 TEST_F(DriverOutputTest, RendererOutput) {
   // Setup our driver to advertise support for a single format.
-  constexpr uint8_t kSupportedChannels = 2;
-  constexpr uint32_t kSupportedSampleRate = 48000;
-  constexpr audio_sample_format_t kSupportedSampleFormat = AUDIO_SAMPLE_FORMAT_16BIT;
-  ConfigureDriverForSampleFormat(kSupportedChannels, kSupportedSampleRate, kSupportedSampleFormat,
-                                 ASF_RANGE_FLAG_FPS_48000_FAMILY);
+  driver_fidl::PcmFormat supportedSampleFormat = {};
+  supportedSampleFormat.sample_format = driver_fidl::SampleFormat::PCM_SIGNED;
+  supportedSampleFormat.bytes_per_sample = 2;
+  supportedSampleFormat.valid_bits_per_sample = 16;
+  supportedSampleFormat.number_of_channels = 2;
+  supportedSampleFormat.frame_rate = 48000;
+  ConfigureDriverForSampleFormat(supportedSampleFormat);
 
   threading_model().FidlDomain().ScheduleTask(output_->Startup());
   RunLoopUntilIdle();
@@ -157,7 +166,7 @@ TEST_F(DriverOutputTest, RendererOutput) {
   const uint32_t kNonSilentFrame = 0x7fff7fff;
   const uint32_t kMixWindowFrames = 480;
   size_t first_non_silent_frame =
-      (kSupportedSampleRate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
+      (supportedSampleFormat.frame_rate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
   size_t first_silent_frame = first_non_silent_frame + kMixWindowFrames;
 
   EXPECT_THAT(RingBufferSlice<uint32_t>(0, first_non_silent_frame), Each(Eq(kSilentFrame)));
@@ -171,14 +180,17 @@ TEST_F(DriverOutputTest, RendererOutput) {
 
 TEST_F(DriverOutputTest, MixAtExpectedInterval) {
   // Setup our driver to advertise support for a single format.
-  constexpr uint8_t kSupportedChannels = 2;
-  constexpr uint32_t kSupportedSampleRate = 48000;
-  constexpr audio_sample_format_t kSupportedSampleFormat = AUDIO_SAMPLE_FORMAT_16BIT;
+  driver_fidl::PcmFormat supportedSampleFormat = {};
+  supportedSampleFormat.sample_format = driver_fidl::SampleFormat::PCM_SIGNED;
+  supportedSampleFormat.bytes_per_sample = 2;
+  supportedSampleFormat.valid_bits_per_sample = 16;
+  supportedSampleFormat.number_of_channels = 2;
+  supportedSampleFormat.frame_rate = 48000;
+
   // 5ms at our chosen sample rate.
   constexpr uint32_t kFifoDepth = 240;
   driver_->set_fifo_depth(kFifoDepth);
-  ConfigureDriverForSampleFormat(kSupportedChannels, kSupportedSampleRate, kSupportedSampleFormat,
-                                 ASF_RANGE_FLAG_FPS_48000_FAMILY);
+  ConfigureDriverForSampleFormat(supportedSampleFormat);
 
   threading_model().FidlDomain().ScheduleTask(output_->Startup());
   RunLoopUntilIdle();
@@ -201,7 +213,7 @@ TEST_F(DriverOutputTest, MixAtExpectedInterval) {
   const uint32_t kNegativeOneSamples = 0x80008000;
   const uint32_t kMixWindowFrames = 480;
   size_t first_positive_one_frame =
-      (kSupportedSampleRate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
+      (supportedSampleFormat.frame_rate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
   size_t first_negative_one_frame = first_positive_one_frame + kMixWindowFrames;
   size_t first_silent_frame = first_negative_one_frame + kMixWindowFrames;
 
@@ -242,14 +254,17 @@ TEST_F(DriverOutputTest, MixAtExpectedInterval) {
 
 TEST_F(DriverOutputTest, WriteSilenceToRingWhenMuted) {
   // Setup our driver to advertise support for a single format.
-  constexpr uint8_t kSupportedChannels = 2;
-  constexpr uint32_t kSupportedSampleRate = 48000;
-  constexpr audio_sample_format_t kSupportedSampleFormat = AUDIO_SAMPLE_FORMAT_16BIT;
+  driver_fidl::PcmFormat supportedSampleFormat = {};
+  supportedSampleFormat.sample_format = driver_fidl::SampleFormat::PCM_SIGNED;
+  supportedSampleFormat.bytes_per_sample = 2;
+  supportedSampleFormat.valid_bits_per_sample = 16;
+  supportedSampleFormat.number_of_channels = 2;
+  supportedSampleFormat.frame_rate = 48000;
+  ConfigureDriverForSampleFormat(supportedSampleFormat);
+
   // 5ms at our chosen sample rate.
   constexpr uint32_t kFifoDepth = 240;
   driver_->set_fifo_depth(kFifoDepth);
-  ConfigureDriverForSampleFormat(kSupportedChannels, kSupportedSampleRate, kSupportedSampleFormat,
-                                 ASF_RANGE_FLAG_FPS_48000_FAMILY);
 
   threading_model().FidlDomain().ScheduleTask(output_->Startup());
   RunLoopUntilIdle();
@@ -281,7 +296,7 @@ TEST_F(DriverOutputTest, WriteSilenceToRingWhenMuted) {
   const uint32_t kSilentFrame = 0;
   const uint32_t kInitialFrame = UINT32_MAX;
   size_t first_silent_frame =
-      (kSupportedSampleRate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
+      (supportedSampleFormat.frame_rate * output_->min_lead_time().to_nsecs()) / 1'000'000'000;
   size_t num_silent_frames = kMixWindowFrames * 2;
 
   // Run loop to consume all the frames from the renderer.

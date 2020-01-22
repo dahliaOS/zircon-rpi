@@ -6,6 +6,8 @@
 
 namespace media::audio::test {
 
+namespace driver_fidl = ::fuchsia::hardware::audio;
+
 const std::string kManufacturer = "Test Manufacturer";
 const std::string kProduct = "Test Product";
 const audio_stream_unique_id_t kUniqueId = {
@@ -35,7 +37,9 @@ void AudioDeviceServiceTest::SetUp() {
     devices_.push_back(std::move(info));
   };
 
-  audio_device_enumerator_->AddDeviceByChannel(std::move(remote_channel), "test device", false);
+  fidl::InterfaceRequest<driver_fidl::StreamConfig> intf = {};
+  intf.set_channel(std::move(remote_channel));
+  audio_device_enumerator_->AddDeviceByChannel2(std::move(intf), "test device", false);
 }
 
 void AudioDeviceServiceTest::TearDown() {

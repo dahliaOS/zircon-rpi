@@ -227,6 +227,7 @@ class AudioDevice : public AudioObject, public std::enable_shared_from_this<Audi
   // (including derived classes) should be able to.
   friend class AudioDeviceManager;
   friend class AudioDriver;
+  friend class AudioDriverFidl;
   friend struct PendingInitListTraits;
 
   // Called from the AudioDeviceManager when it moves an audio device from its

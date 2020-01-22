@@ -14,6 +14,17 @@
 namespace media::driver_utils {
 
 namespace {
+
+static const std::map<fuchsia::media::AudioSampleFormat, DriverSampleFormat>
+kSampleFormatToDriver2SampleFormatMap = {
+  // clang-format off
+  {fuchsia::media::AudioSampleFormat::UNSIGNED_8,      {driver_fidl::SampleFormat::PCM_UNSIGNED, 1, 8 }},
+  {fuchsia::media::AudioSampleFormat::SIGNED_16,       {driver_fidl::SampleFormat::PCM_SIGNED,   2, 16}},
+  {fuchsia::media::AudioSampleFormat::SIGNED_24_IN_32, {driver_fidl::SampleFormat::PCM_SIGNED,   4, 24}},
+  {fuchsia::media::AudioSampleFormat::FLOAT,           {driver_fidl::SampleFormat::PCM_FLOAT,    4, 32}},
+  // clang-format on
+};
+
 static constexpr audio_sample_format_t AUDIO_SAMPLE_FORMAT_UNSIGNED_8BIT =
     static_cast<audio_sample_format_t>(AUDIO_SAMPLE_FORMAT_8BIT |
                                        AUDIO_SAMPLE_FORMAT_FLAG_UNSIGNED);
@@ -60,6 +71,33 @@ bool DriverSampleFormatToAudioSampleFormat(audio_sample_format_t driver_sample_f
 
   *sample_format_out = iter->second;
   return true;
+}
+
+bool AudioSampleFormatToDriverSampleFormat(fuchsia::media::AudioSampleFormat sample_format,
+                                           DriverSampleFormat* driver_sample_format_out) {
+  TRACE_DURATION("audio", "AudioSampleFormatToDriverSampleFormat");
+  FX_DCHECK(driver_sample_format_out != nullptr);
+
+  auto iter = kSampleFormatToDriver2SampleFormatMap.find(sample_format);
+  if (iter == kSampleFormatToDriver2SampleFormatMap.end()) {
+    return false;
+  }
+  *driver_sample_format_out = iter->second;
+  return true;
+}
+
+bool DriverSampleFormatToAudioSampleFormat(DriverSampleFormat driver_sample_format,
+                                           fuchsia::media::AudioSampleFormat* sample_format_out) {
+  TRACE_DURATION("audio", "DriverSampleFormatToAudioSampleFormat");
+  for (auto& i : kSampleFormatToDriver2SampleFormatMap) {
+    if (i.second.sample_format == driver_sample_format.sample_format &&
+        i.second.bytes_per_sample == driver_sample_format.bytes_per_sample &&
+        i.second.valid_bits_per_sample == driver_sample_format.valid_bits_per_sample) {
+      *sample_format_out = i.first;
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace media::driver_utils

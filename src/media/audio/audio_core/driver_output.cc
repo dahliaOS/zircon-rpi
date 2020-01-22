@@ -13,6 +13,7 @@
 
 #include <trace/event.h>
 
+#include "src/media/audio/audio_core/audio_driver_fidl.h"
 #include "src/media/audio/audio_core/reporter.h"
 
 constexpr bool VERBOSE_TIMING_DEBUG = false;
@@ -21,7 +22,7 @@ namespace media::audio {
 
 static constexpr uint32_t kDefaultChannelCount = 2;
 static constexpr fuchsia::media::AudioSampleFormat kDefaultAudioFmt =
-    fuchsia::media::AudioSampleFormat::SIGNED_24_IN_32;
+  fuchsia::media::AudioSampleFormat::SIGNED_24_IN_32;
 static constexpr zx::duration kDefaultMaxRetentionNsec = zx::msec(60);
 static constexpr zx::duration kDefaultRetentionGapNsec = zx::msec(10);
 static constexpr zx::duration kUnderflowCooldown = zx::msec(1000);
@@ -66,7 +67,7 @@ DriverOutput::DriverOutput(ThreadingModel* threading_model, DeviceRegistry* regi
                            LinkMatrix* link_matrix)
     : AudioOutput(threading_model, registry, link_matrix),
       initial_stream_channel_(channel.TakeChannel()) {
-  driver_.reset(new AudioDriver(this));  // TODO(andresoportus) Add suport for non-legacy here.
+  driver_.reset(new AudioDriverFidl(this));
 }
 
 DriverOutput::~DriverOutput() { wav_writer_.Close(); }
