@@ -4,11 +4,14 @@
 
 use {
     anyhow::{format_err, Context as _, Error},
+    async_helpers::hanging_get::server as hanging_get,
     fidl::endpoints::{self, ServerEnd},
-    fidl_fuchsia_bluetooth::{Appearance, DeviceClass, Error as FidlError, ErrorCode},
+    fidl_fuchsia_bluetooth::{Appearance, DeviceClass, Error as FidlError, ErrorCode, self as btfidl},
     fidl_fuchsia_bluetooth_bredr::ProfileMarker,
+    fidl_fuchsia_bluetooth_sys::{self as sys, PairingDelegateProxy},
     fidl_fuchsia_bluetooth_control::{
-        self as control, ControlControlHandle, HostData, LocalKey, PairingOptions,
+        self as control, ControlControlHandle, HostData, InputCapabilityType, LocalKey,
+        OutputCapabilityType, PairingOptions,
     },
     fidl_fuchsia_bluetooth_gatt::{LocalServiceDelegateRequest, Server_Marker, Server_Proxy},
     fidl_fuchsia_bluetooth_host::HostProxy,
@@ -23,11 +26,11 @@ use {
     fuchsia_inspect::{self as inspect, Property},
     fuchsia_syslog::{fx_log_err, fx_log_info, fx_log_warn, fx_vlog},
     fuchsia_zircon::{self as zx, Duration},
-    futures::{channel::mpsc, FutureExt, TryFutureExt},
+    futures::{channel::mpsc, future::BoxFuture, FutureExt, TryFutureExt},
     parking_lot::RwLock,
     slab::Slab,
     std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         convert::TryFrom,
         fs::File,
         future::Future,
@@ -44,6 +47,7 @@ use crate::{
     services,
     store::stash::Stash,
     types,
+    watch_peers::PeerWatcher,
 };
 
 pub static HOST_INIT_TIMEOUT: i64 = 5; // Seconds
@@ -133,6 +137,25 @@ impl HostDispatcherInspect {
     }
 }
 
+// Abstraction over the fuchsia.bluetooth.control and fuchsia.bluetooth.system interfaces, which
+// each have their own pairing delegate definition. Once control is fully deprecated and removed,
+// we can remove this.
+#[derive(Clone)]
+pub enum PairingDelegate {
+    Control(control::PairingDelegateProxy),
+    Sys(PairingDelegateProxy),
+}
+
+impl PairingDelegate {
+    fn is_closed(&self) -> bool {
+        match self {
+            PairingDelegate::Control(delegate) => delegate.is_closed(),
+            PairingDelegate::Sys(delegate) => delegate.is_closed(),
+        }
+    }
+}
+
+
 /// The HostDispatcher acts as a proxy aggregating multiple HostAdapters
 /// It appears as a Host to higher level systems, and is responsible for
 /// routing commands to the appropriate HostAdapter
@@ -158,8 +181,11 @@ struct HostDispatcherState {
     // them along a clone of this channel to GAS
     gas_channel_sender: mpsc::Sender<LocalServiceDelegateRequest>,
 
-    pub pairing_delegate: Option<control::PairingDelegateProxy>,
+    pub pairing_delegate: Option<PairingDelegate>,
     pub event_listeners: Vec<Weak<ControlControlHandle>>,
+
+    watch_peers_publisher: hanging_get::Publisher<HashMap<PeerId, Peer>>,
+    watch_peers_handle: hanging_get::Handle<PeerWatcher>,
 
     // Pending requests to obtain a Host.
     host_requests: Slab<Waker>,
@@ -190,19 +216,30 @@ impl HostDispatcherState {
     /// Used to set the pairing delegate. If there is a prior pairing delegate connected to the
     /// host it will fail. It checks if the existing stored connection is closed, and will
     /// overwrite it if so.
-    pub fn set_pairing_delegate(
-        &mut self,
-        delegate: Option<control::PairingDelegateProxy>,
-    ) -> bool {
+    pub fn set_pairing_delegate(&mut self, delegate: PairingDelegateProxy) {
+        self.inspect.has_pairing_delegate.set(true.to_property());
+        let assign = match &self.pairing_delegate {
+            None => true,
+            Some(delegate) => delegate.is_closed(),
+        };
+        if assign {
+            self.pairing_delegate = Some(PairingDelegate::Sys(delegate));
+        }
+    }
+
+    /// Used to set the pairing delegate. If there is a prior pairing delegate connected to the
+    /// host it will fail. It checks if the existing stored connection is closed, and will
+    /// overwrite it if so.
+    pub fn set_control_pairing_delegate(&mut self, delegate: Option<control::PairingDelegateProxy>) -> bool {
         self.inspect.has_pairing_delegate.set(delegate.is_some().to_property());
         match delegate {
             Some(delegate) => {
-                let assign = match self.pairing_delegate {
+                let assign = match &self.pairing_delegate {
                     None => true,
-                    Some(ref pd) => pd.is_closed(),
+                    Some(delegate) => delegate.is_closed(),
                 };
                 if assign {
-                    self.pairing_delegate = Some(delegate);
+                    self.pairing_delegate = Some(PairingDelegate::Control(delegate));
                 }
                 assign
             }
@@ -215,7 +252,7 @@ impl HostDispatcherState {
 
     /// Returns the current pairing delegate proxy if it exists and has not been closed. Clears the
     /// if the handle is closed.
-    pub fn pairing_delegate(&mut self) -> Option<control::PairingDelegateProxy> {
+    pub fn pairing_delegate(&mut self) -> Option<PairingDelegate> {
         if let Some(delegate) = &self.pairing_delegate {
             if delegate.is_closed() {
                 self.inspect.has_pairing_delegate.set(false.to_property());
@@ -323,6 +360,8 @@ impl HostDispatcher {
         stash: Stash,
         inspect: inspect::Node,
         gas_channel_sender: mpsc::Sender<LocalServiceDelegateRequest>,
+        watch_peers_publisher: hanging_get::Publisher<HashMap<PeerId, Peer>>,
+        watch_peers_handle: hanging_get::Handle<PeerWatcher>,
     ) -> HostDispatcher {
         let hd = HostDispatcherState {
             active_id: None,
@@ -338,6 +377,8 @@ impl HostDispatcher {
             discoverable: None,
             pairing_delegate: None,
             event_listeners: vec![],
+            watch_peers_publisher,
+            watch_peers_handle,
             host_requests: Slab::new(),
             inspect: HostDispatcherInspect::new(inspect),
         };
@@ -393,8 +434,12 @@ impl HostDispatcher {
         self.state.write().set_active_host(host)
     }
 
-    pub fn set_pairing_delegate(&self, delegate: Option<control::PairingDelegateProxy>) -> bool {
+    pub fn set_pairing_delegate(&self, delegate: PairingDelegateProxy) {
         self.state.write().set_pairing_delegate(delegate)
+    }
+
+    pub fn set_control_pairing_delegate(&self, delegate: Option<control::PairingDelegateProxy>) -> bool {
+        self.state.write().set_control_pairing_delegate(delegate)
     }
 
     pub async fn start_discovery(&self) -> types::Result<Arc<DiscoveryRequestToken>> {
@@ -570,7 +615,7 @@ impl HostDispatcher {
 
     /// Returns the current pairing delegate proxy if it exists and has not been closed. Clears the
     /// if the handle is closed.
-    pub fn pairing_delegate(&self) -> Option<control::PairingDelegateProxy> {
+    pub fn pairing_delegate(&self) -> Option<PairingDelegate> {
         self.state.write().pairing_delegate()
     }
 
@@ -580,7 +625,7 @@ impl HostDispatcher {
         self.stash().store_bond(bond_data)
     }
 
-    pub fn on_device_updated(&self, peer: Peer) {
+    pub fn on_device_updated(&self, peer: Peer) -> impl Future<Output = ()> {
         // TODO(825): generic method for this pattern
         let mut d = control::RemoteDevice::from(peer.clone());
         self.notify_event_listeners(|listener| {
@@ -589,28 +634,53 @@ impl HostDispatcher {
                 .map_err(|e| fx_log_err!("Failed to send device updated event: {:?}", e));
         });
 
-        let mut state = self.state.write();
-        let node = state.inspect.peers().create_child(format!("peer {}", peer.id));
-        let peer = Inspectable::new(peer, node);
-        let _drop_old_value = state.peers.insert(peer.id.clone(), peer);
-        state.inspect.peer_count.set(state.peers.len() as u64);
+        let update_peer = peer.clone();
+
+        let mut publisher = {
+            let mut state = self.state.write();
+            let node = state.inspect.peers().create_child(format!("peer {}", peer.id));
+            let peer = Inspectable::new(peer, node);
+            let _drop_old_value = state.peers.insert(peer.id.clone(), peer);
+            state.inspect.peer_count.set(state.peers.len() as u64);
+            state.watch_peers_publisher.clone()
+        };
+
+        // Wait for the hanging get watcher to udpate so we can linearize updates
+        async move {
+            publisher.update(move |peers| {peers.insert(update_peer.id, update_peer); true})
+                .await
+                .expect("Fatal error: Peer Watcher HangingGet unreachable")
+        }
     }
 
-    pub fn on_device_removed(&self, id: PeerId) {
-        {
+    pub fn on_device_removed(&self, id: PeerId) -> impl Future<Output = ()> {
+        let mut publisher = {
             let mut state = self.state.write();
             state.peers.remove(&id);
-            state.inspect.peer_count.set(state.peers.len() as u64)
+            state.inspect.peer_count.set(state.peers.len() as u64);
+            self.notify_event_listeners(|listener| {
+                let _res = listener
+                    .send_on_device_removed(&id.to_string())
+                    .map_err(|e| fx_log_err!("Failed to send device removed event: {:?}", e));
+            });
+            state.watch_peers_publisher.clone()
+        };
+
+        // Wait for the hanging get watcher to udpate so we can linearize updates
+        async move {
+            publisher.update(move |peers| {peers.remove(&id); true})
+                .await
+                .expect("Fatal error: Peer Watcher HangingGet unreachable")
         }
-        self.notify_event_listeners(|listener| {
-            let _res = listener
-                .send_on_device_removed(&id.to_string())
-                .map_err(|e| fx_log_err!("Failed to send device removed event: {:?}", e));
-        })
     }
 
     pub fn get_peers(&self) -> Vec<Peer> {
         self.state.read().peers.values().map(|p| (*p).clone()).collect()
+    }
+
+    pub async fn watch_peers(&self) -> hanging_get::Subscriber<PeerWatcher> {
+        let mut handle = self.state.write().watch_peers_handle.clone();
+        handle.new_subscriber().await.expect("Fatal error: Peer Watcher HangingGet unreachable")
     }
 
     async fn spawn_gas_proxy(&self, gatt_server_proxy: Server_Proxy) -> Result<(), Error> {
@@ -749,13 +819,15 @@ impl HostDispatcher {
 }
 
 impl HostListener for HostDispatcher {
-    fn on_peer_updated(&mut self, peer: Peer) {
-        self.on_device_updated(peer)
+    type PeerUpdatedFut = BoxFuture<'static, ()>;
+    fn on_peer_updated(&mut self, peer: Peer) -> Self::PeerUpdatedFut {
+        self.on_device_updated(peer).boxed()
     }
-    fn on_peer_removed(&mut self, id: PeerId) {
-        self.on_device_removed(id)
+    type PeerRemovedFut = BoxFuture<'static, ()>;
+    fn on_peer_removed(&mut self, id: PeerId) -> Self::PeerRemovedFut {
+        self.on_device_removed(id).boxed()
     }
-    type HostBondFut = futures::future::BoxFuture<'static, Result<(), anyhow::Error>>;
+    type HostBondFut = BoxFuture<'static, Result<(), anyhow::Error>>;
     fn on_new_host_bond(&mut self, data: BondingData) -> Self::HostBondFut {
         self.store_bond(data).boxed()
     }
@@ -942,12 +1014,15 @@ mod tests {
         let inspector = inspect::Inspector::new();
         let system_inspect = inspector.root().create_child("system");
         let (gas_channel_sender, _generic_access_req_stream) = mpsc::channel(0);
+        let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
         let dispatcher = HostDispatcher::new(
             "test".to_string(),
             Appearance::Display,
             stash,
             system_inspect,
             gas_channel_sender,
+            watch_peers_broker.new_publisher(),
+            watch_peers_broker.new_handle(),
         );
         let peer_id = PeerId(1);
 
@@ -988,12 +1063,17 @@ mod tests {
         let inspector = inspect::Inspector::new();
         let system_inspect = inspector.root().create_child("system");
         let (gas_channel_sender, _generic_access_req_stream) = mpsc::channel(0);
+
+        let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
+
         let dispatcher = HostDispatcher::new(
             "test".to_string(),
             Appearance::Display,
             stash,
             system_inspect,
             gas_channel_sender,
+            watch_peers_broker.new_publisher(),
+            watch_peers_broker.new_handle(),
         );
         // Call a function that used to use the self.state.write().gas_channel_sender.send().await
         // pattern, which caused a deadlock by yielding to the executor while holding onto a write

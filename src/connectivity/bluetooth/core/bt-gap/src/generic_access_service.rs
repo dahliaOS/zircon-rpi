@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 use {
     anyhow::{format_err, Error},
+    async_helpers::hanging_get::server as hanging_get,
     fidl::endpoints::{create_endpoints, create_request_stream, ClientEnd},
     fidl_fuchsia_bluetooth_gatt::{
         self as gatt, LocalServiceDelegateOnReadValueResponder,
@@ -12,6 +13,7 @@ use {
     },
     fuchsia_syslog::{fx_log_info, fx_log_warn},
     futures::{channel::mpsc, SinkExt, StreamExt},
+    std::collections::HashMap,
 };
 
 use crate::host_dispatcher::HostDispatcher;
@@ -226,12 +228,15 @@ mod tests {
         let stash = Stash::stub().expect("Create stash stub");
         let inspector = inspect::Inspector::new();
         let system_inspect = inspector.root().create_child("system");
+        let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
         let dispatcher = HostDispatcher::new(
             TEST_DEVICE_NAME.to_string(),
             TEST_DEVICE_APPEARANCE,
             stash,
             system_inspect,
             gas_task_channel,
+            watch_peers_broker.new_publisher(),
+            watch_peers_broker.new_handle(),
         );
 
         let service = GenericAccessService { hd: dispatcher.clone(), generic_access_req_stream };

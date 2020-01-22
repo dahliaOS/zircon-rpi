@@ -1,6 +1,7 @@
 // Copyright 2018 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+#![allow(unused)]
 
 // Macros used to serialize bonding data FIDL types for persistent storage.
 #[macro_use]
@@ -8,24 +9,32 @@ extern crate serde_derive;
 
 use {
     anyhow::{format_err, Context as _, Error},
+    async_helpers::hanging_get::server as hanging_get,
     fidl::endpoints::ServiceMarker,
-    fidl_fuchsia_bluetooth::Appearance,
+    fidl_fuchsia_bluetooth::{Appearance, self as btfidl},
     fidl_fuchsia_bluetooth_bredr::ProfileMarker,
     fidl_fuchsia_bluetooth_control::ControlRequestStream,
     fidl_fuchsia_bluetooth_gatt::Server_Marker,
     fidl_fuchsia_bluetooth_le::{CentralMarker, PeripheralMarker},
     fidl_fuchsia_device::{NameProviderMarker, DEFAULT_DEVICE_NAME},
     fuchsia_async as fasync,
+    fuchsia_bluetooth::{
+        types::{Peer, PeerId},
+    },
     fuchsia_component::{client::connect_to_service, server::ServiceFs},
     fuchsia_syslog::{self as syslog, fx_log_err, fx_log_info, fx_log_warn},
     futures::{channel::mpsc, future::try_join3, FutureExt, StreamExt, TryFutureExt, TryStreamExt},
     pin_utils::pin_mut,
+    std::{
+        collections::{HashMap, HashSet},
+    }
 };
 
 use crate::{
     adapters::{AdapterEvent::*, *},
     generic_access_service::GenericAccessService,
     host_dispatcher::{HostService::*, *},
+    watch_peers::PeerWatcher,
 };
 
 mod adapters;
@@ -37,6 +46,7 @@ mod store;
 #[cfg(test)]
 mod test;
 mod types;
+mod watch_peers;
 
 const BT_GAP_COMPONENT_ID: &'static str = "bt-gap";
 
@@ -70,12 +80,26 @@ async fn run() -> Result<(), Error> {
 
     let local_name = get_host_name().await.unwrap_or(DEFAULT_DEVICE_NAME.to_string());
     let (gas_channel_sender, generic_access_req_stream) = mpsc::channel(0);
+
+    // Initialize a HangingGetBroker to process watch_peers requests
+    let watch_peers_broker = hanging_get::HangingGetBroker::new(
+        HashMap::new(),
+        |new_peers: &HashMap<PeerId, Peer>, watcher: PeerWatcher| { watcher.observe(new_peers); },
+        hanging_get::DEFAULT_CHANNEL_SIZE
+    );
+    let watch_peers_publisher = watch_peers_broker.new_publisher();
+    let watch_peers_handle = watch_peers_broker.new_handle();
+
+    // Process the watch_peers broker in the background
+    fasync::spawn(watch_peers_broker.run());
     let hd = HostDispatcher::new(
         local_name,
         Appearance::Display,
         stash,
         inspect.root().create_child("system"),
         gas_channel_sender,
+        watch_peers_publisher,
+        watch_peers_handle,
     );
     let watch_hd = hd.clone();
     let central_hd = hd.clone();
@@ -84,6 +108,7 @@ async fn run() -> Result<(), Error> {
     let profile_hd = hd.clone();
     let gatt_hd = hd.clone();
     let bootstrap_hd = hd.clone();
+    let access_hd = hd.clone();
 
     let host_watcher_task = async {
         let stream = watch_hosts();
@@ -151,6 +176,13 @@ async fn run() -> Result<(), Error> {
             fasync::spawn(
                 services::bootstrap::run(bootstrap_hd.clone(), request_stream)
                     .unwrap_or_else(|e| fx_log_warn!("Bootstrap service failed: {:?}", e)),
+            );
+        })
+        .add_fidl_service(move |request_stream| {
+            fx_log_info!("Serving Access Service");
+            fasync::spawn(
+                services::access::run(access_hd.clone(), request_stream)
+                    .unwrap_or_else(|e| fx_log_warn!("Acces service failed: {:?}", e)),
             );
         });
     fs.take_and_serve_directory_handle()?;

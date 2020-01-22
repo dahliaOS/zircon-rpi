@@ -5,6 +5,8 @@
 use {
     fidl_fuchsia_bluetooth_control as fctrl,
     fidl_fuchsia_bluetooth_sys::{
+        self as sys,
+        PairingDelegateProxy,
         PairingDelegateOnPairingRequestResponder,
         PairingDelegateRequest::{self, *},
         PairingDelegateRequestStream, PairingKeypress, PairingMethod,
@@ -18,7 +20,7 @@ use {
     std::convert::TryFrom,
 };
 
-use crate::host_dispatcher::HostDispatcher;
+use crate::host_dispatcher::{HostDispatcher, PairingDelegate};
 
 // Number of concurrent requests allowed to the pairing delegate at a single time
 const MAX_CONCURRENT_REQUESTS: usize = 100;
@@ -33,11 +35,32 @@ pub fn start_pairing_delegate(
 }
 
 async fn handler(
-    pd: Option<fctrl::PairingDelegateProxy>,
+    pd: Option<PairingDelegate>,
     event: PairingDelegateRequest,
 ) -> fidl::Result<()> {
     match pd {
-        Some(pd) => match event {
+        Some(PairingDelegate::Sys(pd)) => match event {
+            OnPairingRequest { peer, method, displayed_passkey, responder } => {
+                let peer = match Peer::try_from(peer) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        fx_log_warn!("Received malformed peer from bt-host: {}", e);
+                        return Ok(());
+                    }
+                };
+                on_pairing_request(pd, peer, method, displayed_passkey, responder).await;
+                Ok(())
+            }
+            OnPairingComplete { id, success, control_handle: _ } => {
+                on_pairing_complete(pd, id.into(), success)
+            }
+            OnRemoteKeypress { id, keypress, control_handle: _ } => {
+                on_keypress(pd, id.into(), keypress)
+            }
+        },
+        // TODO(fxr/36378) - DEPRECATED
+        // Handle an upstream using the deprecated fuchsia.bluetooth.control.PairingDelegate protocol
+        Some(PairingDelegate::Control(pd)) => match event {
             OnPairingRequest { peer, method, displayed_passkey, responder } => {
                 let peer = match Peer::try_from(peer) {
                     Ok(p) => p,
@@ -161,4 +184,31 @@ mod compat {
     ) -> fidl::Result<()> {
         pd.on_remote_keypress(&format!("{}", id), keypress_to_control(keypress))
     }
+}
+
+async fn on_pairing_request(
+    pd: PairingDelegateProxy,
+    mut peer: Peer,
+    method: sys::PairingMethod,
+    displayed_passkey: u32,
+    responder: PairingDelegateOnPairingRequestResponder,
+) -> fidl::Result<()> {
+    let passkey_ref = displayed_passkey;
+    let (status, passkey) = pd.on_pairing_request((&peer).into(), method, passkey_ref).await?;
+    let _ = responder.send(status, passkey);
+    Ok(())
+}
+
+fn on_pairing_complete(pd: PairingDelegateProxy, id: PeerId, success: bool) -> fidl::Result<()> {
+    if let Err(e) = pd.on_pairing_complete(&mut id.into(), success) {
+        fx_log_warn!("Failed to propagate pairing cancelled upstream: {}", e);
+    };
+    Ok(())
+}
+
+fn on_keypress(pd: PairingDelegateProxy, id: PeerId, key: sys::PairingKeypress) -> fidl::Result<()> {
+    if let Err(e) = pd.on_remote_keypress(&mut id.into(), key) {
+        fx_log_warn!("Failed to propagate pairing upstream: {}", e);
+    };
+    Ok(())
 }

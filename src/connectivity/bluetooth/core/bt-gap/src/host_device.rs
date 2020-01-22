@@ -132,8 +132,11 @@ impl HostDevice {
 }
 
 pub trait HostListener {
-    fn on_peer_updated(&mut self, peer: Peer);
-    fn on_peer_removed(&mut self, id: PeerId);
+    type PeerUpdatedFut: Future<Output = ()>;
+    fn on_peer_updated(&mut self, peer: Peer) -> Self::PeerUpdatedFut;
+
+    type PeerRemovedFut: Future<Output = ()>;
+    fn on_peer_removed(&mut self, id: PeerId) -> Self::PeerRemovedFut;
 
     type HostBondFut: Future<Output = Result<(), anyhow::Error>>;
     fn on_new_host_bond(&mut self, data: BondingData) -> Self::HostBondFut;

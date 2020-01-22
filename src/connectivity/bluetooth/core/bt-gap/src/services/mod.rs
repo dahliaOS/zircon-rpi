@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod bootstrap;
+pub mod access;
 mod control;
 mod pairing_delegate;
 
