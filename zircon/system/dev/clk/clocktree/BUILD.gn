@@ -1,0 +1,33 @@
+# Copyright 2020 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+zx_library("clocktree-lib") {
+    sdk = "static"
+    sdk_headers = [
+        "dev/clk/clocktree/clocktree.h",
+        "dev/clk/clocktree/baseclock.h",
+    ]
+    sources = [ "clocktree.cc", "baseclock.cc" ]
+    deps = [
+        "$zx/system/ulib/fbl",
+        "$zx/system/ulib/zircon",
+        "$zx/system/ulib/zx",
+    ]
+}
+
+zx_test("clocktree-lib-test") {
+    testonly = true
+    output_name = "clocktree-lib-test"
+    sources = [
+        "clocktree-test.cc",
+    ]
+    deps = [
+        ":clocktree-lib",
+        "$zx/system/ulib/fbl",
+        "$zx/system/ulib/fdio",
+        "$zx/system/ulib/zircon",
+        "$zx/system/ulib/zx",
+        "$zx/system/ulib/zxtest",
+    ]
+}
