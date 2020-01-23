@@ -444,9 +444,6 @@ async fn main() -> Result<(), Error> {
         return Err(format_err!("Can't play media - no codecs found or media player missing"));
     }
 
-    let mut peers =
-        connected_peers::ConnectedPeers::new(streams, cobalt_logger.clone(), opts.domain);
-
     let profile_svc = fuchsia_component::client::connect_to_service::<ProfileMarker>()
         .context("Failed to connect to Bluetooth Profile service")?;
 
@@ -469,6 +466,13 @@ async fn main() -> Result<(), Error> {
 
     profile_svc.add_search(ServiceClassProfileIdentifier::AudioSource, &mut attrs.into_iter())?;
 
+    let mut peers = connected_peers::ConnectedPeers::new(
+        streams,
+        profile_svc,
+        cobalt_logger.clone(),
+        opts.domain,
+    );
+
     fx_log_info!("Registered Service ID {}", service_id);
 
     if let Some(e) = status.error {
@@ -478,6 +482,7 @@ async fn main() -> Result<(), Error> {
     lifecycle.set(LifecycleState::Ready).await.expect("lifecycle server to set value");
 
     let mut evt_stream = profile_svc.take_event_stream();
+    
     while let Some(evt) = evt_stream.next().await {
         match evt {
             Err(e) => return Err(e.into()),
@@ -489,7 +494,7 @@ async fn main() -> Result<(), Error> {
                     attributes
                 );
                 let peer_id = peer_id.parse().expect("peer ids from profile should parse");
-                peers.found(peer_id, profile);
+                peers.found(&inspect, peer_id, profile);
             }
             Ok(ProfileEvent::OnConnected { device_id, service_id: _, channel, protocol }) => {
                 fx_log_info!("Connection from {}: {:?} {:?}!", device_id, channel, protocol);
