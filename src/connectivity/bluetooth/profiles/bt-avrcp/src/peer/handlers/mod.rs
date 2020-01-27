@@ -259,6 +259,7 @@ async fn handle_get_play_status(
     Ok(Box::new(response))
 }
 
+/// Sends status command response. Send's Implemented/Stable on response code on success.
 fn send_status_response(
     _inner: Arc<Mutex<ControlChannelHandlerInner>>,
     command: impl TargetCommand,
@@ -342,6 +343,7 @@ async fn handle_status_command(
     }
 }
 
+/// Sends control command response. Send's Accepted on response code on success.
 fn send_control_response(
     command: impl TargetCommand,
     result: Result<Box<dyn VendorDependent>, StatusCode>,
@@ -367,12 +369,24 @@ fn send_control_response(
     }
 }
 
+async fn handle_set_absolute_volume(
+    cmd: SetAbsoluteVolumeCommand,
+    target_delegate: Arc<TargetDelegate>,
+) -> Result<Box<dyn VendorDependent>, StatusCode> {
+    let set_volume = target_delegate.send_set_absolute_volume_command(cmd.volume()).await?;
+
+    let response =
+        SetAbsoluteVolumeResponse::new(set_volume).map_err(|_| StatusCode::InternalError)?;
+
+    Ok(Box::new(response))
+}
+
 async fn handle_control_command(
     inner: Arc<Mutex<ControlChannelHandlerInner>>,
     command: impl TargetCommand,
     control_command: ControlCommand,
 ) -> Result<(), Error> {
-    let _delegate = inner.lock().target_delegate.clone();
+    let delegate = inner.lock().target_delegate.clone();
 
     let pdu_id = control_command.pdu_id();
 
@@ -382,8 +396,10 @@ async fn handle_control_command(
             ControlCommand::SetPlayerApplicationSettingValue(_) => {},
             ControlCommand::RequestContinuingResponse(_) => {},
             ControlCommand::AbortContinuingResponse(_) => {},
-            ControlCommand::SetAbsoluteVolume(_) => {},
             */
+            ControlCommand::SetAbsoluteVolume(cmd) => {
+                handle_set_absolute_volume(cmd, delegate).await
+            }
             _ => {
                 // TODO: remove when we have finish implementing the rest of this enum
                 Err(StatusCode::InvalidParameter)
@@ -419,7 +435,10 @@ mod test {
     use super::*;
     use crate::peer_manager::TargetDelegate;
     use fidl::endpoints::create_proxy_and_stream;
-    use fidl_fuchsia_bluetooth_avrcp::{TargetAvcError, TargetHandlerMarker, TargetHandlerRequest};
+    use fidl_fuchsia_bluetooth_avrcp::{
+        AbsoluteVolumeHandlerMarker, AbsoluteVolumeHandlerProxy, AbsoluteVolumeHandlerRequest,
+        TargetAvcError, TargetHandlerMarker, TargetHandlerProxy, TargetHandlerRequest,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[derive(Debug)]
@@ -509,7 +528,8 @@ mod test {
         }
     }
 
-    fn create_command_handler() -> ControlChannelHandler {
+    /// Creates a simple target handler that responds with error and basic values for most commands.
+    fn create_dumby_target_handler() -> TargetHandlerProxy {
         let (target_proxy, mut target_stream) = create_proxy_and_stream::<TargetHandlerMarker>()
             .expect("Error creating TargetHandler endpoint");
 
@@ -553,8 +573,23 @@ mod test {
             }
         });
 
+        target_proxy
+    }
+
+    fn create_command_handler(
+        target_proxy: Option<TargetHandlerProxy>,
+        absolute_volume_proxy: Option<AbsoluteVolumeHandlerProxy>,
+    ) -> ControlChannelHandler {
         let target_delegate = Arc::new(TargetDelegate::new());
-        target_delegate.set_target_handler(target_proxy).expect("unable to set target proxy");
+        if let Some(target_proxy) = target_proxy {
+            target_delegate.set_target_handler(target_proxy).expect("unable to set target proxy");
+        }
+
+        if let Some(absolute_volume_proxy) = absolute_volume_proxy {
+            target_delegate
+                .set_absolute_volume_handler(absolute_volume_proxy)
+                .expect("unable to set absolute_volume proxy");
+        }
 
         let cmd_handler = ControlChannelHandler::new(&"test_peer".to_string(), target_delegate);
         cmd_handler
@@ -563,7 +598,8 @@ mod test {
     /// currently not implemented so expecting InvalidParameter to be returned
     #[fuchsia_async::run_singlethreaded(test)]
     async fn handle_get_element_attribute_cmd() -> Result<(), Error> {
-        let cmd_handler = create_command_handler();
+        let target_proxy = create_dumby_target_handler();
+        let cmd_handler = create_command_handler(Some(target_proxy), None);
 
         // generic vendor status command
         let packet_body: Vec<u8> = [
@@ -590,7 +626,8 @@ mod test {
     /// send passthrough is implemented. expect it's accepted
     #[fuchsia_async::run_singlethreaded(test)]
     async fn handle_send_passthrough() -> Result<(), Error> {
-        let cmd_handler = create_command_handler();
+        let target_proxy = create_dumby_target_handler();
+        let cmd_handler = create_command_handler(Some(target_proxy), None);
 
         // generic vendor status command
         let packet_body: Vec<u8> = [
@@ -607,5 +644,96 @@ mod test {
         .expect_accept();
 
         cmd_handler.handle_command_internal(command).await
+    }
+
+    /// test we get a command and it responds as expected.
+    #[fuchsia_async::run_singlethreaded(test)]
+    async fn handle_set_absolute_volume_cmd() -> Result<(), Error> {
+        let (volume_proxy, mut volume_stream) =
+            create_proxy_and_stream::<AbsoluteVolumeHandlerMarker>()
+                .expect("Error creating AbsoluteVolumeHandler endpoint");
+
+        let cmd_handler = create_command_handler(None, Some(volume_proxy));
+
+        // vendor status command
+        let packet_body: Vec<u8> = [
+            0x50, // SetAbsoluteVolumeCommand
+            0x00, // single packet
+            0x00, 0x01, // param len, 1 byte
+            0x20, // volume level
+        ]
+        .to_vec();
+
+        let command = MockAvcCommand::new(
+            AvcPacketType::Command(AvcCommandType::Control),
+            AvcOpCode::VendorDependent,
+            packet_body,
+        )
+        .expect_accept()
+        .expect_body(vec![
+            0x50, // SetAbsoluteVolumeCommand
+            0x00, // single packet
+            0x00, 0x01, // param len, 1 byte
+            0x32, // volume level
+        ]);
+
+        let handle_command_fut = cmd_handler.handle_command_internal(command).fuse();
+        pin_mut!(handle_command_fut);
+
+        let handle_stream = async move {
+            match volume_stream.next().await {
+                Some(Ok(AbsoluteVolumeHandlerRequest::SetVolume {
+                    requested_volume,
+                    responder,
+                })) => {
+                    assert_eq!(requested_volume, 0x20); // 0x20 is the encoded volume
+                    responder.send(0x32 as u8).expect("unable to send");
+                }
+                _ => assert!(false, "unexpected state"),
+            }
+        }
+        .fuse();
+        pin_mut!(handle_stream);
+
+        loop {
+            futures::select! {
+                _= handle_stream => {},
+                result = handle_command_fut => {
+                    return result
+                }
+            }
+        }
+    }
+
+    /// test we get a command and it responds as expected.
+    #[fuchsia_async::run_singlethreaded(test)]
+    async fn handle_set_absolute_volume_cmd_back_packet() -> Result<(), Error> {
+        // absolute volume handler shouldn't even get called since the packet decode should fail.
+
+        let (volume_proxy, volume_stream) =
+            create_proxy_and_stream::<AbsoluteVolumeHandlerMarker>()
+                .expect("Error creating AbsoluteVolumeHandler endpoint");
+
+        let cmd_handler = create_command_handler(None, Some(volume_proxy));
+
+        // encode invalid packet
+        let packet_body: Vec<u8> = [
+            0x50, // SetAbsoluteVolumeCommand
+            0x00, // single packet
+            0x00, 0x00, // param len, 0 byte
+        ]
+        .to_vec();
+
+        let command = MockAvcCommand::new(
+            AvcPacketType::Command(AvcCommandType::Control),
+            AvcOpCode::VendorDependent,
+            packet_body,
+        )
+        .expect_reject(0x50, StatusCode::ParameterContentError);
+
+        cmd_handler.handle_command_internal(command).await?;
+
+        drop(volume_stream);
+        Ok(())
     }
 }
