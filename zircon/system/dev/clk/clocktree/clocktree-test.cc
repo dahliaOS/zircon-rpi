@@ -282,4 +282,15 @@ TEST(ClockGateTest, TestExtraneousEnableDisable) {
     EXPECT_EQ(test.DisableCount(), 1);
 }
 
+TEST(ClockMuxTest, TestReparentTrivial) {
+  // Ask a clock who its input is. Change the parent to somebody else and try
+  // again. Observe that the change was successful.
+  constexpr uint32_t kClkChild = 0;
+  constexpr uint32_t kClkFirstParent = 1;
+  constexpr uint32_t kClkSecondParent = 2;
+  constexpr uint32_t kClkCount = 3;
+
+  TestClockMux
+}
+
 }  // namespace clk
