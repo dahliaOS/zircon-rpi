@@ -27,8 +27,10 @@ template <typename T, typename VP, class MT, class HL>
 class MerkleTree {
  public:
   MerkleTree() = default;
+  MerkleTree(MerkleTree&& other) = default;
+  MerkleTree& operator=(MerkleTree&& other) = default;
   virtual ~MerkleTree() = default;
-  DISALLOW_COPY_ASSIGN_AND_MOVE(MerkleTree);
+  //DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(MerkleTree);
 
   size_t GetNodeSize() const { return hash_list_.GetNodeSize(); }
   void SetNodeSize(size_t node_size) { hash_list_.SetNodeSize(); }

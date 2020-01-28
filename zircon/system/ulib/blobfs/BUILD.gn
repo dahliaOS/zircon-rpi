@@ -49,6 +49,8 @@ zx_library("blobfs") {
     sources += [
       "allocator/allocator.cc",
       "blob-cache.cc",
+      "blob-loader.cc",
+      "blob-verifier.cc",
       "blob.cc",
       "blobfs.cc",
       "cache-node.cc",

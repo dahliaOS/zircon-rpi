@@ -30,8 +30,9 @@ const size_t kMaxNodeSize = 32768;
 class NodeDigest {
  public:
   NodeDigest() = default;
+  NodeDigest(NodeDigest&& other) = default;
   ~NodeDigest() = default;
-  DISALLOW_COPY_ASSIGN_AND_MOVE(NodeDigest);
+  DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(NodeDigest);
 
   const Digest& get() const { return digest_; }
   size_t len() const { return digest_.len(); }

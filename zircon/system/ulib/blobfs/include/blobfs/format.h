@@ -261,6 +261,10 @@ struct NodePrelude {
     bool IsExtentContainer() const {
         return flags & kBlobFlagExtentContainer;
     }
+
+    bool IsInode() const {
+      return !IsExtentContainer();
+    }
 };
 
 struct ExtentContainer;

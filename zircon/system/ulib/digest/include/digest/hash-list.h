@@ -20,8 +20,9 @@ namespace internal {
 class HashListBase {
  public:
   HashListBase() = default;
+  HashListBase(HashListBase&& other) = default;
   virtual ~HashListBase() = default;
-  DISALLOW_COPY_ASSIGN_AND_MOVE(HashListBase);
+  DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(HashListBase);
 
   size_t data_off() const { return data_off_; }
   size_t data_len() const { return data_len_; }
@@ -91,6 +92,8 @@ class HashListBase {
 template <typename T>
 class HashList : public HashListBase {
  public:
+  HashList() = default;
+  HashList(HashList&& other) = default;
   static_assert(sizeof(T) == sizeof(uint8_t), "Do not invoke HashList directly.");
 
   T *list() const { return list_; }
