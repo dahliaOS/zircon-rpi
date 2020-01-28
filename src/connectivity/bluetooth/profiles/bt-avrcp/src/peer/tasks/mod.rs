@@ -5,6 +5,7 @@ use super::*;
 
 mod notification_stream;
 
+use futures::stream::FuturesUnordered;
 use notification_stream::NotificationStream;
 
 /// Processes incoming commands from the control stream and dispatches them to the control command
@@ -20,21 +21,34 @@ async fn process_control_stream(peer: Arc<RwLock<RemotePeer>>) {
         }
     };
 
-    let mut command_stream = connection.take_command_stream();
+    let processing_commands = FuturesUnordered::new();
+    pin_mut!(processing_commands);
 
-    while let Some(result) = command_stream.next().await {
-        match result {
-            Ok(command) => {
-                let handle_command_fut = { peer.read().command_handler.handle_command(command) };
+    let command_stream = connection.take_command_stream().fuse();
+    pin_mut!(command_stream);
 
-                if let Err(e) = handle_command_fut.await {
+    loop {
+        futures::select! {
+            result = processing_commands.select_next_some() => {
+                 if let Err(e) = result {
                     fx_log_info!("Command returned error from command handler {:?}", e);
+                    // received an recoverable error from the client.
+                    break;
                 }
             }
-            Err(e) => {
-                fx_log_info!("Command stream returned error {:?}", e);
-                break;
+            result = command_stream.select_next_some() => {
+                match result {
+                    Ok(command) => {
+                        let handle_command_fut = { peer.read().command_handler.handle_command(command) };
+                        processing_commands.push(handle_command_fut);
+                    }
+                    Err(e) => {
+                        fx_log_info!("Command stream returned error {:?}", e);
+                        break;
+                    }
+                }
             }
+            complete => break,
         }
     }
     // command stream closed or errored. Disconnect the peer.
