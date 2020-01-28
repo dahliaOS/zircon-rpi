@@ -125,8 +125,17 @@ macro_rules! tofrom_decodable_enum {
     ($name:ident<$raw_type:ty, $error_type:ident, $error_path:ident> {
         $($variant:ident => $val:expr),*,
     }) => {
+
         impl From<&$name> for $raw_type {
             fn from(v: &$name) -> $raw_type {
+                match v {
+                    $($name::$variant => $val),*,
+                }
+            }
+        }
+
+        impl From<$name> for $raw_type {
+            fn from(v: $name) -> $raw_type {
                 match v {
                     $($name::$variant => $val),*,
                 }

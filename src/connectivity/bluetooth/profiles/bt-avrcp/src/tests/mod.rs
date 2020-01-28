@@ -462,13 +462,13 @@ async fn test_spawn_peer_manager_with_fidl_client_and_mock_profile() -> Result<(
 
                     assert!(
                         register_notification_command.event_id()
-                            == &NotificationEventId::EventPlaybackPosChanged
+                            == NotificationEventId::EventPlaybackPosChanged
                             || register_notification_command.event_id()
-                                == &NotificationEventId::EventVolumeChanged
+                                == NotificationEventId::EventVolumeChanged
                     );
 
                     match register_notification_command.event_id() {
-                        &NotificationEventId::EventPlaybackPosChanged => {
+                        NotificationEventId::EventPlaybackPosChanged => {
                             position_changed_events += 1;
 
                             let intirm_response = PlaybackPosChangedNotificationResponse::new(
@@ -491,7 +491,7 @@ async fn test_spawn_peer_manager_with_fidl_client_and_mock_profile() -> Result<(
                                     .send_response(AvcResponseType::Changed, &change_response[..]);
                             }
                         }
-                        &NotificationEventId::EventVolumeChanged => {
+                        NotificationEventId::EventVolumeChanged => {
                             let intirm_response = VolumeChangedNotificationResponse::new(0x22)
                                 .encode_packet()
                                 .expect("unable to encode volume response packet");

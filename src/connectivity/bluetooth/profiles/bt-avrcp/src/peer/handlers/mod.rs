@@ -4,7 +4,7 @@
 
 use super::*;
 
-use fidl_fuchsia_bluetooth_avrcp::TargetPassthroughError;
+use fidl_fuchsia_bluetooth_avrcp::{Notification, TargetPassthroughError};
 
 mod decoders;
 
@@ -98,10 +98,10 @@ impl ControlChannelHandler {
                             .send_response(AvcResponseType::NotImplemented, &[])
                             .map_err(|e| Error::AvctpError(e)),
                         DecodeError::VendorInvalidPreamble(pdu_id, _error) => {
-                            send_avc_reject(command, pdu_id, StatusCode::InvalidCommand)
+                            send_avc_reject(&command, pdu_id, StatusCode::InvalidCommand)
                         }
                         DecodeError::VendorPduNotImplemented(pdu_id) => {
-                            send_avc_reject(command, pdu_id, StatusCode::InvalidParameter)
+                            send_avc_reject(&command, pdu_id, StatusCode::InvalidParameter)
                         }
                         DecodeError::VendorPacketTypeNotImplemented(_packet_type) => {
                             // remote sent a vendor packet that was not a status, control, or notify type.
@@ -118,7 +118,7 @@ impl ControlChannelHandler {
                                 PacketError::OutOfRange => StatusCode::InvalidCommand,
                                 _ => StatusCode::InternalError,
                             };
-                            send_avc_reject(command, u8::from(&pdu_id), status_code)
+                            send_avc_reject(&command, u8::from(&pdu_id), status_code)
                         }
                     };
                 }
@@ -193,7 +193,7 @@ async fn handle_passthrough_command<'a>(
 }
 
 fn send_avc_reject(
-    command: impl TargetCommand,
+    command: &impl TargetCommand,
     pdu: u8,
     status_code: StatusCode,
 ) -> Result<(), Error> {
@@ -203,22 +203,132 @@ fn send_avc_reject(
     command.send_response(AvcResponseType::Rejected, &buf[..]).map_err(|e| Error::AvctpError(e))
 }
 
-// TODO: implement target notifications.
-//   if the target handler isn't set and the remote registers for available players
-//   changed, we should still hold on to until the target handler is set.
+// Parse a notification and return a response encoder impl
+fn notification_response(
+    notification: &Notification,
+    notify_event_id: NotificationEventId,
+) -> Result<Box<dyn VendorDependent>, StatusCode> {
+    Ok(match notify_event_id {
+        NotificationEventId::EventPlaybackStatusChanged => {
+            Box::new(PlaybackStatusChangedNotificationResponse::new(
+                notification.status.ok_or(StatusCode::InternalError)?.into(),
+            ))
+        }
+        NotificationEventId::EventTrackChanged => Box::new(TrackChangedNotificationResponse::new(
+            notification.track_id.ok_or(StatusCode::InternalError)?,
+        )),
+        NotificationEventId::EventAddressedPlayerChanged => {
+            // uid_counter is zero until we implement a uid database
+            Box::new(AddressedPlayerChangedNotificationResponse::new(
+                notification.player_id.ok_or(StatusCode::InternalError)?,
+                0,
+            ))
+        }
+        NotificationEventId::EventPlaybackPosChanged => {
+            Box::new(PlaybackPosChangedNotificationResponse::new(
+                notification.pos.ok_or(StatusCode::InternalError)?,
+            ))
+        }
+        NotificationEventId::EventVolumeChanged => {
+            Box::new(VolumeChangedNotificationResponse::new(
+                notification.volume.ok_or(StatusCode::InternalError)?,
+            ))
+        }
+        /*
+        NotificationEventId::EventTrackReachedEnd => {}
+        NotificationEventId::EventTrackReachedStart => {}
+        NotificationEventId::EventBattStatusChanged => {}
+        NotificationEventId::EventSystemStatusChanged => {}
+        NotificationEventId::EventPlayerApplicationSettingChanged => {}
+        NotificationEventId::EventNowPlayingContentChanged => {}
+        NotificationEventId::EventAvailablePlayersChanged => {}
+        NotificationEventId::EventUidsChanged => {}
+        */
+        _ => return Err(StatusCode::InvalidParameter),
+    })
+}
+
+fn send_notification(
+    command: &impl TargetCommand,
+    notify_event_id: NotificationEventId,
+    pdu_id: u8,
+    notification: &Notification,
+    success_response_type: AvcResponseType,
+) -> Result<(), Error> {
+    match notification_response(&notification, notify_event_id) {
+        Ok(encoder) => match encoder.encode_packet() {
+            Ok(packet) => command
+                .send_response(success_response_type, &packet[..])
+                .map_err(|e| Error::AvctpError(e)),
+            Err(e) => {
+                fx_log_err!("unable to encode target response packet {:?}", e);
+                send_avc_reject(command, pdu_id, StatusCode::InternalError)
+            }
+        },
+        Err(status_code) => send_avc_reject(command, pdu_id, status_code),
+    }
+}
+
 async fn handle_notify_command(
     inner: Arc<Mutex<ControlChannelHandlerInner>>,
     command: impl TargetCommand,
-    _notify_command: RegisterNotificationCommand,
+    notify_command: RegisterNotificationCommand,
 ) -> Result<(), Error> {
-    let _delegate = inner.lock().target_delegate.clone();
+    let delegate = inner.lock().target_delegate.clone();
+    let pdu_id = notify_command.raw_pdu_id();
 
-    // interim responses should be returned within 1000ms.
-    // let timer = fasync::Timer::new(Time::after(Duration::from_millis(1000)));
+    let notification_fut = delegate.send_get_notification(notify_command.event_id().into()).fuse();
+    pin_mut!(notification_fut);
 
-    // final responses return when changes occur.
-    // TODO: remove. temporary response
-    command.send_response(AvcResponseType::NotImplemented, &[]).map_err(|e| Error::AvctpError(e))
+    let interim_timer = fasync::Timer::new(Time::after(Duration::from_millis(1000))).fuse();
+    pin_mut!(interim_timer);
+
+    let notification: Notification = futures::select! {
+        _ = interim_timer => {
+            fx_log_err!("target handler timed out with interim response");
+            return send_avc_reject(&command, pdu_id, StatusCode::InternalError);
+        }
+        result = notification_fut => {
+           match result {
+               Ok(notification) => notification,
+               Err(target_error) => {
+                    return send_avc_reject(&command, pdu_id, target_error.into());
+               }
+           }
+        }
+    };
+
+    // send interim value
+    send_notification(
+        &command,
+        notify_command.event_id(),
+        pdu_id,
+        &notification,
+        AvcResponseType::Interim,
+    )?;
+
+    let notification = match delegate
+        .send_watch_notification(
+            notify_command.event_id().into(),
+            notification,
+            notify_command.playback_interval(),
+        )
+        .await
+    {
+        Ok(notification) => notification,
+        Err(target_error) => {
+            return send_avc_reject(&command, pdu_id, target_error.into());
+        }
+    };
+
+    // send changed value
+    send_notification(
+        &command,
+        notify_command.event_id(),
+        pdu_id,
+        &notification,
+        AvcResponseType::Changed,
+    )
 }
 
 async fn handle_get_capabilities(
@@ -278,7 +388,7 @@ fn send_status_response(
                 }
                 Err(e) => {
                     fx_log_err!("Error trying to encode response packet. Sending internal_error rejection to peer {:?}", e);
-                    send_avc_reject(command, u8::from(&pdu_id), StatusCode::InternalError)
+                    send_avc_reject(&command, u8::from(&pdu_id), StatusCode::InternalError)
                 }
             }
         }
@@ -287,7 +397,7 @@ fn send_status_response(
                 "Error trying to encode response packet. Sending rejection to peer {:?}",
                 status_code
             );
-            send_avc_reject(command, u8::from(&pdu_id), status_code)
+            send_avc_reject(&command, u8::from(&pdu_id), status_code)
         }
     }
 }
@@ -356,7 +466,7 @@ fn send_control_response(
                 .map_err(|e| Error::AvctpError(e)),
             Err(e) => {
                 fx_log_err!("Error trying to encode response packet. Sending internal_error rejection to peer {:?}", e);
-                send_avc_reject(command, u8::from(&pdu_id), StatusCode::InternalError)
+                send_avc_reject(&command, u8::from(&pdu_id), StatusCode::InternalError)
             }
         },
         Err(status_code) => {
@@ -364,7 +474,7 @@ fn send_control_response(
                 "Error trying to encode response packet. Sending rejection to peer {:?}",
                 status_code
             );
-            send_avc_reject(command, u8::from(&pdu_id), status_code)
+            send_avc_reject(&command, u8::from(&pdu_id), status_code)
         }
     }
 }
