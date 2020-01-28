@@ -290,7 +290,7 @@ TEST(ClockMuxTest, TestReparentTrivial) {
   constexpr uint32_t kClkSecondParent = 2;
   constexpr uint32_t kClkCount = 3;
 
-  TestClockMux
+  TestMuxClockTrivial t(nullptr, 0);
 }
 
 }  // namespace clk

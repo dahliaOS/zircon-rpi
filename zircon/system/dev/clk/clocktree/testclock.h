@@ -76,4 +76,21 @@ class TestFailClock : public BaseClock {
     const uint32_t parent_;
 };
 
+class TestMuxClockTrivial : public BaseClock {
+ public:
+  TestMuxClockTrivial(const uint32_t* parents, size_t n)
+    : parents_(parents), n_(n), index_(0) {}
+
+  zx_status_t SetInput(const uint32_t index) override;
+  zx_status_t GetNumInputs(uint32_t* out) override;
+  zx_status_t GetInput(uint32_t* out) override;
+
+  uint32_t ParentId() override;
+
+ private:
+  const uint32_t* parents_;
+  const size_t n_;
+  const uint32_t index_;
+};
+
 }
