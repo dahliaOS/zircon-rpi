@@ -372,7 +372,11 @@ TEST(ClockMuxTest, TestReparentEnableDisable) {
   is_enabled = false;
   EXPECT_OK(tree.IsEnabled(kClkFirstParent, &is_enabled));
   EXPECT_TRUE(is_enabled);
-
 }
+
+// TEST(ClockMuxTest, TestReparentFail) {
+//   // What happens if we tell the clock hardware to reparent and the operation fails?
+//   // Ensure that if the hardware fails to reparent we 
+// }
 
 }  // namespace clk
