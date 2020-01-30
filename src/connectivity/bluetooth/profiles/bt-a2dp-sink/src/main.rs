@@ -453,7 +453,10 @@ async fn main() -> Result<(), Error> {
         .add_service(
             &mut service_def,
             SecurityLevel::EncryptionOptional,
-            ChannelParameters::new_empty(),
+            ChannelParameters {
+                channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                ..ChannelParameters::new_empty()
+            },
         )
         .await?;
 

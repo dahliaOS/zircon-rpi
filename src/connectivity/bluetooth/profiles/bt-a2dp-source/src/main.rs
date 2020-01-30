@@ -141,7 +141,14 @@ impl Peers {
         }
         let (status, channel) = self
             .profile
-            .connect_l2cap(&id.to_string(), PSM_AVDTP as u16, ChannelParameters::new_empty())
+            .connect_l2cap(
+                &id.to_string(),
+                PSM_AVDTP as u16,
+                ChannelParameters {
+                    channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                    ..ChannelParameters::new_empty()
+                },
+            )
             .await?;
 
         if let Some(e) = status.error {
@@ -307,7 +314,10 @@ async fn main() -> Result<(), Error> {
         .add_service(
             &mut service_def,
             SecurityLevel::EncryptionOptional,
-            ChannelParameters::new_empty(),
+            ChannelParameters {
+                channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                ..ChannelParameters::new_empty()
+            },
         )
         .await?;
 

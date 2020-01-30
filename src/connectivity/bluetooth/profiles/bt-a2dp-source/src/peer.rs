@@ -5,7 +5,9 @@
 use {
     bt_avdtp::{self as avdtp, ServiceCapability, StreamEndpoint, StreamEndpointId},
     fidl::encoding::Decodable,
-    fidl_fuchsia_bluetooth_bredr::{ChannelParameters, ProfileDescriptor, ProfileProxy, PSM_AVDTP},
+    fidl_fuchsia_bluetooth_bredr::{
+        ChannelMode, ChannelParameters, ProfileDescriptor, ProfileProxy, PSM_AVDTP,
+    },
     fuchsia_async as fasync,
     fuchsia_bluetooth::types::PeerId,
     fuchsia_syslog::{self, fx_log_info, fx_log_warn, fx_vlog},
@@ -172,7 +174,10 @@ impl Peer {
                 .connect_l2cap(
                     &peer_id.to_string(),
                     PSM_AVDTP as u16,
-                    ChannelParameters::new_empty(),
+                    ChannelParameters {
+                        channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                        ..ChannelParameters::new_empty()
+                    },
                 )
                 .await
                 .expect("FIDL error: {}");

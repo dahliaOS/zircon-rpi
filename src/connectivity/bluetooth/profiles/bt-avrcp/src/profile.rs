@@ -181,7 +181,10 @@ impl ProfileServiceImpl {
             .add_service(
                 &mut service_def,
                 SecurityLevel::EncryptionOptional,
-                ChannelParameters::new_empty(),
+                ChannelParameters {
+                    channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                    ..ChannelParameters::new_empty()
+                },
             )
             .await?;
 
@@ -204,7 +207,14 @@ impl ProfileService for ProfileServiceImpl {
         async move {
             let (status, channel) = self
                 .profile_svc
-                .connect_l2cap(&peer_id, psm, ChannelParameters::new_empty())
+                .connect_l2cap(
+                    &peer_id,
+                    psm,
+                    ChannelParameters {
+                        channel_mode: Some(ChannelMode::EnhancedRetransmission),
+                        ..ChannelParameters::new_empty()
+                    },
+                )
                 .await
                 .map_err(|e| format_err!("Profile service error: {:?}", e))?;
             let status: bt::Status = status;
