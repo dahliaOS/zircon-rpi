@@ -49,6 +49,7 @@ class BaseClock {
 
     zx_status_t EnableInternal();
     zx_status_t DisableInternal();
+    zx_status_t IsEnabledInternal(bool* out);
 
     const char* name_;
     const uint32_t id_;

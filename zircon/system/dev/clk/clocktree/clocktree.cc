@@ -73,13 +73,25 @@ zx_status_t ClockTree::GetRate(const uint32_t id, Hertz* out) {
 }
 
 zx_status_t ClockTree::SetInput(const uint32_t id, const uint32_t input_index) {
-    return ZX_ERR_NOT_SUPPORTED;
+    if (!InRange(id)) { return ZX_ERR_OUT_OF_RANGE; }
+
+    BaseClock* self = clocks_[id];
+
+    return self->SetInput(input_index);
 }
 zx_status_t ClockTree::GetNumInputs(const uint32_t id, uint32_t* out) {
-    return ZX_ERR_NOT_SUPPORTED;
+    if (!InRange(id)) { return ZX_ERR_OUT_OF_RANGE; }
+
+    BaseClock* self = clocks_[id];
+
+    return self->GetNumInputs(out);
 }
 zx_status_t ClockTree::GetInput(const uint32_t id, uint32_t* out) {
-    return ZX_ERR_NOT_SUPPORTED;
+    if (!InRange(id)) { return ZX_ERR_OUT_OF_RANGE; }
+
+    BaseClock* self = clocks_[id];
+
+    return self->GetInput(out);
 }
 
 // Helper functions

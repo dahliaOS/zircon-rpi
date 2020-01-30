@@ -42,5 +42,18 @@ zx_status_t BaseClock::DisableInternal() {
     return result;
 }
 
+zx_status_t BaseClock::IsEnabledInternal(bool* out) {
+    zx_status_t result = IsEnabled(out);
+
+    if (result == ZX_ERR_NOT_SUPPORTED) {
+        // This clock hw doesn't support determining if it's enabled or not so
+        // we're going to fall back on the number of times enable has been
+        // called on it.
+        *out = EnableCount() > 0;
+        return ZX_OK;
+    }
+
+    return result;
+}
 
 }  // namespace clk

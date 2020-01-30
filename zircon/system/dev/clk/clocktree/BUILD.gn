@@ -21,6 +21,7 @@ zx_test("clocktree-lib-test") {
     output_name = "clocktree-lib-test"
     sources = [
         "clocktree-test.cc",
+        "testclock.cc",
     ]
     deps = [
         ":clocktree-lib",

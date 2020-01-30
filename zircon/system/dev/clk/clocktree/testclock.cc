@@ -6,10 +6,28 @@
 
 namespace clk {
 
-zx_status_t TestMuxClockTrivial::SetInput(const uint32_t index) override;
-zx_status_t TestMuxClockTrivial::GetNumInputs(uint32_t* out) override;
-zx_status_t TestMuxClockTrivial::GetInput(uint32_t* out) override;
+zx_status_t TestMuxClockTrivial::SetInput(const uint32_t index) {
+    if (index >= n_) { return ZX_ERR_OUT_OF_RANGE; }
 
-  uint32_t ParentId() override;
+    index_ = index;
+
+    return ZX_OK;
+}
+
+zx_status_t TestMuxClockTrivial::GetNumInputs(uint32_t* out) {
+    *out = n_;
+
+    return ZX_OK;
+}
+
+zx_status_t TestMuxClockTrivial::GetInput(uint32_t* out) {
+    *out = index_;
+
+    return ZX_OK;
+}
+
+uint32_t TestMuxClockTrivial::ParentId() {
+    return parents_[index_];
+}
 
 }  // namespace clk

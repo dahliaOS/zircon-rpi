@@ -290,7 +290,89 @@ TEST(ClockMuxTest, TestReparentTrivial) {
   constexpr uint32_t kClkSecondParent = 2;
   constexpr uint32_t kClkCount = 3;
 
-  TestMuxClockTrivial t(nullptr, 0);
+  const uint32_t parents[] = { kClkFirstParent, kClkSecondParent };
+  TestMuxClockTrivial t("trivial mux", kClkChild, parents, countof(parents));
+  TestNullClock p1("parent 1", kClkFirstParent, kClkNoParent);
+  TestNullClock p2("parent 2", kClkSecondParent, kClkNoParent);
+
+  BaseClock* clocks[kClkCount] = { &t, &p1, &p2 };
+
+  ClockTree tree(clocks, kClkCount);
+
+  // By default, clocks are parented to their first input.
+  uint32_t input = std::numeric_limits<uint32_t>::max();
+
+  EXPECT_OK(tree.GetInput(kClkChild, &input));
+  EXPECT_EQ(input, 0);
+  EXPECT_EQ(t.ParentId(), kClkFirstParent);
+
+  // Try reparenting, make sure it works.
+  EXPECT_OK(tree.SetInput(kClkChild, 1));
+  EXPECT_OK(tree.GetInput(kClkChild, &input));
+  EXPECT_EQ(input, 1);
+  EXPECT_EQ(t.ParentId(), kClkSecondParent);
+
+  uint32_t num_inputs;
+  EXPECT_OK(tree.GetNumInputs(kClkChild, &num_inputs));
+  EXPECT_EQ(num_inputs, 2);
+
+  // Try to reparent to a clock that's out of range and ensure that it doesn't
+  // work.
+  EXPECT_NOT_OK(tree.SetInput(kClkChild, num_inputs));
+}
+
+TEST(ClockMuxTest, TestReparentEnableDisable) {
+  // If a clock is enabled and it is reparented to a new clock, it should move
+  // its vote from the old parent to the new parent.
+  // This ensures that the old parent is disabled when it has no more
+  // dependencies.
+
+  const uint32_t kClkChild = 0;
+  const uint32_t kClkFirstParent = 1;
+  const uint32_t kClkSecondParent = 2;
+  const uint32_t kClkCount = 3;
+
+  const uint32_t parents[] = { kClkFirstParent, kClkSecondParent };
+  TestMuxClockTrivial t("mux under test", kClkChild, parents, countof(parents));
+  TestGateClock p1("parent 1", kClkFirstParent, kClkNoParent);
+  TestGateClock p2("parent 2", kClkSecondParent, kClkNoParent);
+
+  BaseClock* clocks[kClkCount] = { &t, &p1, &p2 };
+
+  ClockTree tree(clocks, kClkCount);
+
+  EXPECT_OK(tree.Enable(kClkChild));
+  
+  // Validate the state of the clock tree.
+  bool is_enabled = false;
+  EXPECT_OK(tree.IsEnabled(kClkChild, &is_enabled));
+  EXPECT_TRUE(is_enabled);
+
+  is_enabled = false;
+  EXPECT_OK(tree.IsEnabled(kClkFirstParent, &is_enabled));
+  EXPECT_TRUE(is_enabled);
+
+  is_enabled = true;
+  EXPECT_OK(tree.IsEnabled(kClkFirstParent, &is_enabled));
+  EXPECT_FALSE(is_enabled);
+
+  // Now reparent the child clock to the second parent and validate that the
+  // first parent becomes disabled and the second parent becomes enabled.
+  EXPECT_OK(tree.SetInput(kClkChild, 1));
+
+  // Verify the new state of the clock tree.
+  is_enabled = false;
+  EXPECT_OK(tree.IsEnabled(kClkChild, &is_enabled));
+  EXPECT_TRUE(is_enabled);
+
+  is_enabled = true;
+  EXPECT_OK(tree.IsEnabled(kClkFirstParent, &is_enabled));
+  EXPECT_FALSE(is_enabled);
+
+  is_enabled = false;
+  EXPECT_OK(tree.IsEnabled(kClkFirstParent, &is_enabled));
+  EXPECT_TRUE(is_enabled);
+
 }
 
 }  // namespace clk
