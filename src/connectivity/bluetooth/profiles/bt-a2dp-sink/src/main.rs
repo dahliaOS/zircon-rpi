@@ -466,6 +466,8 @@ async fn main() -> Result<(), Error> {
 
     profile_svc.add_search(ServiceClassProfileIdentifier::AudioSource, &mut attrs.into_iter())?;
 
+    let mut evt_stream = profile_svc.take_event_stream();
+    
     let mut peers = connected_peers::ConnectedPeers::new(
         streams,
         profile_svc,
@@ -480,8 +482,6 @@ async fn main() -> Result<(), Error> {
     }
 
     lifecycle.set(LifecycleState::Ready).await.expect("lifecycle server to set value");
-
-    let mut evt_stream = profile_svc.take_event_stream();
     
     while let Some(evt) = evt_stream.next().await {
         match evt {
