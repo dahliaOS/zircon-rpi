@@ -42,6 +42,10 @@ impl VendorCommand for GetCapabilitiesCommand {
 
 impl Decodable for GetCapabilitiesCommand {
     fn decode(buf: &[u8]) -> PacketResult<Self> {
+        if buf.len() < 1 {
+            return Err(Error::InvalidMessageLength);
+        }
+        
         let capability_id = GetCapabilitiesCapabilityId::try_from(buf[0])?;
 
         Ok(Self { capability_id })
