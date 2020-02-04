@@ -23,6 +23,7 @@
 #include <fbl/function.h>
 #include <fbl/mutex.h>
 #include <soc/aml-common/aml-pwm-regs.h>
+#include <lib/zx/profile.h>
 
 namespace serial {
 
@@ -74,13 +75,16 @@ class AmlUart : public DeviceType,
   int IrqThread();
   void HandleRX();
   void HandleTX();
-  fit::closure MakeReadCallbackLocked(zx_status_t status, void* buf, size_t len) TA_REQ(read_lock_);
-  fit::closure MakeWriteCallbackLocked(zx_status_t status) TA_REQ(write_lock_);
+  fit::inline_function<void(), sizeof(max_align_t)*2> MakeReadCallbackLocked(zx_status_t status, void* buf, size_t len) TA_REQ(read_lock_);
+  fit::inline_function<void(), sizeof(max_align_t)*2> MakeWriteCallbackLocked(zx_status_t status) TA_REQ(write_lock_);
 
   const pdev_protocol_t pdev_;
   const serial_port_info_t serial_port_info_;
   ddk::MmioBuffer mmio_;
   zx::interrupt irq_;
+  zx::port port_;
+  zx::profile low_latency_;
+  zx::profile high_throughput_;
 
   thrd_t irq_thread_ TA_GUARDED(enable_lock_);
   bool enabled_ TA_GUARDED(enable_lock_) = false;
@@ -102,6 +106,14 @@ class AmlUart : public DeviceType,
   void* write_cookie_ TA_GUARDED(write_lock_) = nullptr;
   const uint8_t* write_buffer_ TA_GUARDED(write_lock_) = nullptr;
   size_t write_size_ TA_GUARDED(write_lock_) = 0;
+  bool hs_mode_ = false;
+  size_t sleep_for_ = 0;
+  unsigned char rx_buf_[128];
+  size_t rx_offset_ = 0;
+  zx_time_t read_start_ = 0;
+  zx_time_t read_end_ = 0;
+  zx_duration_t worst_case_ = 0;  
+  bool rx_polling_ = false;
 };
 
 }  // namespace serial

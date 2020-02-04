@@ -64,7 +64,7 @@ class Status : public hwreg::RegisterBase<Status, uint32_t> {
   DEF_BIT(17, frame_error);
   DEF_BIT(16, parity_error);
   DEF_FIELD(15, 8, tx_count);
-  DEF_FIELD(7, 0, rx_count);
+  DEF_FIELD(6, 0, rx_count);
 
   static auto Get() { return hwreg::RegisterAddr<Status>(0xC); }
 };

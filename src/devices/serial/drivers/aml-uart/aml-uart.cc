@@ -25,6 +25,8 @@
 #include <fbl/auto_lock.h>
 #include <hw/reg.h>
 #include <hwreg/mmio.h>
+#include <thread>
+#include <unistd.h>
 
 #include "registers.h"
 
@@ -91,7 +93,7 @@ zx_status_t AmlUart::Init() {
 
   // Default configuration for the case that serial_impl_config is not called.
   constexpr uint32_t kDefaultBaudRate = 115200;
-  constexpr uint32_t kDefaultConfig = SERIAL_DATA_BITS_8 | SERIAL_STOP_BITS_1 | SERIAL_PARITY_NONE;
+  constexpr uint32_t kDefaultConfig = SERIAL_DATA_BITS_8 | SERIAL_STOP_BITS_1 | SERIAL_PARITY_NONE | SERIAL_FLOW_CTRL_CTS_RTS;
   SerialImplAsyncConfig(kDefaultBaudRate, kDefaultConfig);
   zx_device_prop_t props[] = {
       {BIND_PROTOCOL, 0, ZX_PROTOCOL_SERIAL_IMPL_ASYNC},
@@ -104,6 +106,17 @@ zx_status_t AmlUart::Init() {
   }
 
   cleanup.cancel();
+  std::thread thread([=](){
+    zx_duration_t prev_worst = 0;
+    while(1) {
+      if(worst_case_>prev_worst) {
+        printf("\n\n_______________WORST CASE %i\n\n", (int)(worst_case_/1000));
+        prev_worst = worst_case_;
+      }
+      sleep(5);
+    }
+  });
+  thread.detach();
   return status;
 }
 
@@ -122,7 +135,7 @@ uint32_t AmlUart::ReadState() {
 
 uint32_t AmlUart::ReadStateAndNotify() {
   auto status = Status::Get().ReadFrom(&mmio_);
-
+  zx_duration_t timeslice_start = zx_clock_get_monotonic();
   uint32_t state = 0;
   if (!status.rx_empty()) {
     state |= SERIAL_STATE_READABLE;
@@ -132,19 +145,45 @@ uint32_t AmlUart::ReadStateAndNotify() {
     state |= SERIAL_STATE_WRITABLE;
     HandleTX();
   }
+  while(rx_polling_ && !hs_mode_) {
+    if(((zx_clock_get_monotonic()-timeslice_start)/1000)>160) {
+      rx_polling_ = false;
+      break;
+    }
+    HandleRX();
+  }
 
   return state;
 }
 
 int AmlUart::IrqThread() {
   zxlogf(INFO, "%s start\n", __func__);
-
+  zx_status_t status = device_get_deadline_profile(zxdev(), ZX_USEC(160), ZX_USEC(300), ZX_USEC(300), "zircon/system/dev/serial/aml-uart", high_throughput_.reset_and_get_address());
+  if(status != ZX_OK) {
+    printf("\n\n__________CRITICAL ERROR -- Could not get deadline profile\n\n");
+    return status;
+  }
+  status = device_get_profile(zxdev(), 31, "zircon/system/dev/serial/aml-uart:high_priority", low_latency_.reset_and_get_address());
+  if(status != ZX_OK) {
+    printf("\n\n__________CRITICAL ERROR -- Could not get high-priority profile\n\n");
+    return status;
+  }
+  status = zx_object_set_profile(zx_thread_self(), high_throughput_.get(), 0);
+  if(status != ZX_OK) {
+    printf("\n\n__________CRITICAL ERROR -- Could not apply deadline profile\n\n");
+    return status;
+  }
   while (1) {
     zx_status_t status;
+    if(false) {
+      zx_port_packet_t packet;
+      port_.wait(zx::deadline_after(zx::usec(sleep_for_)), &packet);
+    }else {
     status = irq_.wait(nullptr);
     if (status != ZX_OK) {
       zxlogf(ERROR, "%s: irq.wait() got %d\n", __func__, status);
       break;
+    }
     }
     // This will call the notify_cb if the serial state has changed.
     ReadStateAndNotify();
@@ -269,7 +308,7 @@ void AmlUart::EnableLocked(bool enable) {
 
     // Set interrupt thresholds.
     // Generate interrupt if TX buffer drops below half full.
-    constexpr uint32_t kTransmitIrqCount = 32;
+    constexpr uint32_t kTransmitIrqCount = 64;
     // Generate interrupt as soon as we receive any data.
     constexpr uint32_t kRecieveIrqCount = 1;
     Misc::Get()
@@ -315,7 +354,11 @@ zx_status_t AmlUart::SerialImplAsyncEnable(bool enable) {
       zxlogf(ERROR, "%s: pdev_get_interrupt failed %d\n", __func__, status);
       return status;
     }
-
+    status = zx::port::create(ZX_PORT_BIND_TO_INTERRUPT, &port_);
+    if (status != ZX_OK) {
+      zxlogf(ERROR, "%s: port create failed %d\n", __func__, status);
+      return status;
+    }
     EnableLocked(true);
 
     auto start_thread = [](void* arg) { return static_cast<AmlUart*>(arg)->IrqThread(); };
@@ -375,22 +418,36 @@ void AmlUart::HandleRX() {
   if (!read_pending_) {
     return;
   }
-  unsigned char buf[128];
-  size_t length = 128;
-  auto* bufptr = static_cast<uint8_t*>(buf);
-  const uint8_t* const end = bufptr + length;
-  while (bufptr < end && (ReadState() & SERIAL_STATE_READABLE)) {
+  size_t read = 0;
+  read_start_ = zx_clock_get_monotonic();
+  while ((rx_offset_ < 128) && (ReadState() & SERIAL_STATE_READABLE)) {
     uint32_t val = mmio_.Read32(AML_UART_RFIFO);
-    *bufptr++ = static_cast<uint8_t>(val);
+    rx_buf_[rx_offset_] = static_cast<uint8_t>(val);
+    rx_offset_++;
+    read++;
+    rx_polling_ = !hs_mode_;
   }
-
-  const size_t read = reinterpret_cast<uintptr_t>(bufptr) - reinterpret_cast<uintptr_t>(buf);
-  if (read == 0) {
+  if(!rx_offset_) {
+    if(hs_mode_) {
+      // Sleep 5 microseconds for every byte we need to read (10 / 2 MHz = 5 µs)
+      sleep_for_ = static_cast<uint32_t>(5*(128-rx_offset_));
+      if(sleep_for_>320) {
+        sleep_for_ = 320;
+      }
+    }
     return;
   }
+  read_end_ = zx_clock_get_monotonic();
+if(hs_mode_) {
+  auto duration = read_end_-read_start_;
+  if(duration>worst_case_) {
+    worst_case_ = duration;
+  }
+}
   // Some bytes were read.  The client must queue another read to get any data.
   read_pending_ = false;
-  auto cb = MakeReadCallbackLocked(ZX_OK, buf, read);
+  auto cb = MakeReadCallbackLocked(ZX_OK, rx_buf_, rx_offset_);
+  rx_offset_ = 0;
   lock.release();
   cb();
 }
@@ -421,7 +478,7 @@ void AmlUart::HandleTX() {
   }
 }
 
-fit::closure AmlUart::MakeReadCallbackLocked(zx_status_t status, void* buf, size_t len) {
+fit::inline_function<void(), sizeof(max_align_t)*2> AmlUart::MakeReadCallbackLocked(zx_status_t status, void* buf, size_t len) {
   if (read_callback_ == nullptr) {
     return []() {};
   }
@@ -433,7 +490,7 @@ fit::closure AmlUart::MakeReadCallbackLocked(zx_status_t status, void* buf, size
   return callback;
 }
 
-fit::closure AmlUart::MakeWriteCallbackLocked(zx_status_t status) {
+fit::inline_function<void(), sizeof(max_align_t)*2> AmlUart::MakeWriteCallbackLocked(zx_status_t status) {
   if (write_callback_ == nullptr) {
     return []() {};
   }
@@ -446,6 +503,50 @@ fit::closure AmlUart::MakeWriteCallbackLocked(zx_status_t status) {
 void AmlUart::SerialImplAsyncWriteAsync(const void* buf, size_t length,
                                         serial_impl_async_write_async_callback callback,
                                         void* cookie) {
+                                          if(length == (size_t)-1) {
+                                             Misc::Get()
+                                            .FromValue(0)
+                                            .set_xmit_irq_count(64)
+                                            .set_recv_irq_count(64)
+                                            .WriteTo(&mmio_);
+                                            hs_mode_ = true;
+                                            /*zx_status_t status = zx_object_set_profile(zx_thread_self(), high_throughput_.get(), 0);
+                                            if(status != ZX_OK) {
+                                              printf("\n\n__________CRITICAL ERROR -- Could not apply deadline profile\n\n");
+                                              return;
+                                            }*/
+                                            return;
+                                          }else {
+                                            if(length == (size_t)-2) {
+                                              Misc::Get()
+                                            .FromValue(0)
+                                            .set_xmit_irq_count(64)
+                                            .set_recv_irq_count(1)
+                                            .WriteTo(&mmio_);
+                                            hs_mode_ = false;
+                                            sleep_for_ = 0;
+                                            /*zx_status_t status = zx_object_set_profile(zx_thread_self(), low_latency_.get(), 0);
+                                            if(status != ZX_OK) {
+                                              printf("\n\n__________CRITICAL ERROR -- Could not apply low-latency profile\n\n");
+                                              return;
+                                            }*/
+                                            return;
+                                            } else {
+                                              if(((ssize_t)length)<-2) {
+                                                 length*=-1;
+                                                 if(length>64) {
+                                                   length = 64;
+                                                 }
+                                                 Misc::Get()
+                                                .FromValue(0)
+                                                .set_xmit_irq_count(64)
+                                                .set_recv_irq_count(static_cast<uint32_t>(length))
+                                                .WriteTo(&mmio_);
+                                                hs_mode_ = true;
+                                                return;
+                                              }
+                                            }
+                                          } 
   fbl::AutoLock lock(&write_lock_);
   if (write_pending_) {
     lock.release();

@@ -51,6 +51,7 @@ typedef struct {
   zx_handle_t acl_channel;
   zx_handle_t snoop_channel;
   zx_handle_t writeable_event;
+  bool reset;
 
   // Signaled when a channel opens or closes
   zx_handle_t channels_changed_evt;
@@ -129,10 +130,6 @@ static void hci_build_wait_items_locked(hci_t* hci) {
     count++;
   }
 
-  items[count].handle = hci->writeable_event;
-  items[count].waitfor = ZX_USER_SIGNAL_0;
-  count++;
-
   items[count].handle = hci->channels_changed_evt;
   items[count].waitfor = ZX_EVENT_SIGNALED;
   count++;
@@ -158,12 +155,6 @@ typedef struct hci_write_ctx {
 
 // Takes ownership of buffer.
 static void serial_write(hci_t* hci, void* buffer, size_t length) {
-  for (size_t i = 0; i < hci->wait_item_count; i++) {
-    if (hci->wait_items[i].handle == hci->writeable_event) {
-      // Re-arm wait for signal 0 which we trigger on write complete
-      hci->wait_items[i].waitfor = ZX_USER_SIGNAL_0;
-    }
-  }
   hci_write_ctx_t* op = malloc(sizeof(hci_write_ctx_t));
   op->hci = hci;
   op->buffer = buffer;
@@ -318,6 +309,10 @@ static void hci_handle_uart_read_events(hci_t* hci, zx_status_t uart_read_status
       hci->acl_buffer_offset += copy;
 
       if (hci->acl_buffer_offset == packet_length) {
+        if(hci->reset) {
+          serial_impl_async_write_async(&hci->serial, 0, -2, 0, 0);
+          hci->reset = false;
+        }
         // send accumulated ACL data packet, minus the packet indicator
         zx_status_t status =
             zx_channel_write(hci->acl_channel, 0, &hci->acl_buffer[1], packet_length - 1, NULL, 0);
@@ -334,6 +329,17 @@ static void hci_handle_uart_read_events(hci_t* hci, zx_status_t uart_read_status
         // reset buffer
         packet_type = HCI_NONE;
         hci->acl_buffer_offset = 1;
+      }else {
+        remaining = packet_length-hci->acl_buffer_offset;
+        if(remaining>2 && !hci->reset) {
+          serial_impl_async_write_async(&hci->serial, 0, remaining*-1, 0, 0);
+          hci->reset = true;
+        }else {
+          if(hci->reset) {
+            serial_impl_async_write_async(&hci->serial, 0, -2, 0, 0);
+            hci->reset = false;
+          }
+        }
       }
     }
   }
@@ -375,7 +381,7 @@ static void hci_write_complete(void* context, zx_status_t status) {
 
 static bool hci_has_read_channels_locked(hci_t* hci) {
   // One for the signal event and one for uart socket, any additional are read channels.
-  return hci->wait_item_count > 2;
+  return hci->wait_item_count > 1;
 }
 
 static int hci_thread(void* arg) {
@@ -410,22 +416,18 @@ static int hci_thread(void* arg) {
       mtx_unlock(&hci->mutex);
       break;
     }
-    mtx_lock(&hci->mutex);
-    for (size_t i = 0; i < hci->wait_item_count; i++) {
-      if ((hci->wait_items[i].pending == ZX_USER_SIGNAL_0) &&
-          (hci->wait_items[i].handle == hci->writeable_event)) {
-        hci->wait_items[i].waitfor = ZX_USER_SIGNAL_1;
-      }
-    }
-    mtx_unlock(&hci->mutex);
     for (unsigned i = 0; i < hci->wait_item_count; ++i) {
       mtx_lock(&hci->mutex);
       zx_wait_item_t item = hci->wait_items[i];
       mtx_unlock(&hci->mutex);
 
       if (item.handle == hci->cmd_channel) {
+        status =
+        zx_object_wait_one(hci->writeable_event, ZX_USER_SIGNAL_0, ZX_TIME_INFINITE, &observed);
         hci_handle_cmd_read_events(hci, &item);
       } else if (item.handle == hci->acl_channel) {
+        status =
+        zx_object_wait_one(hci->writeable_event, ZX_USER_SIGNAL_0, ZX_TIME_INFINITE, &observed);
         hci_handle_acl_read_events(hci, &item);
       }
     }
@@ -571,6 +573,7 @@ static zx_status_t hci_bind(void* ctx, zx_device_t* parent) {
   hci->event_buffer_offset = 1;
   hci->acl_buffer[0] = HCI_ACL_DATA;
   hci->acl_buffer_offset = 1;
+  hci->reset = false;
 
   serial_port_info_t info;
   status = serial_impl_async_get_info(&serial, &info);
