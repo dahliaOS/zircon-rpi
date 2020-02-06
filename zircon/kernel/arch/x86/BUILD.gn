@@ -110,6 +110,7 @@ zx_library("x86") {
     "$zx/kernel/dev/hw_rng",
     "$zx/kernel/dev/iommu/dummy",
     "$zx/kernel/dev/iommu/intel",
+    "$zx/kernel/lib/acpi_lite",
     "$zx/kernel/lib/acpi_tables",
     "$zx/kernel/lib/cmdline",
     "$zx/kernel/lib/code_patching",
@@ -143,9 +144,6 @@ zx_library("x86") {
     # <arch/aspace.h> uses various fbl things
     "$zx/system/ulib/fbl:headers",
 
-    # <arch/x86/acpi.h> has #include <acpica/acpi.h>.
-    "$zx/third_party/lib/acpica:headers",
-
     # <arch/x86/ioport.h> has #include <bitmap/rle-bitmap.h>.
     "$zx/system/ulib/bitmap:headers",
 
@@ -172,6 +170,7 @@ source_set("tests") {
   ]
   deps = [
     ":headers",
+    "$zx/kernel/lib/acpi_lite:headers",
     "$zx/kernel/lib/acpi_tables:headers",
     "$zx/kernel/lib/console:headers",
     "$zx/kernel/lib/topology:headers",

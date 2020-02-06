@@ -16,13 +16,14 @@
 #include <arch/x86/platform_access.h>
 #include <fbl/auto_call.h>
 #include <kernel/timer.h>
+#include <lk/init.h>
 #include <vm/vm_aspace.h>
 
 #include "system_priv.h"
 extern "C" {
-#include <acpica/accommon.h>
-#include <acpica/achware.h>
 #include <acpica/acpi.h>
+#include <acpica/aclocal.h>
+#include <acpica/achware.h>
 }
 
 #include <pow2.h>
@@ -32,6 +33,38 @@ extern "C" {
 #define MAX_LONG_TERM_POWER_LIMIT 0x7FFF
 
 namespace {
+
+#define ACPI_MAX_INIT_TABLES 32
+static bool acpi_initialized = false;
+
+/**
+ * @brief  Initialize early-access ACPI tables
+ *
+ * This function enables *only* the ACPICA Table Manager subsystem.
+ * The rest of the ACPI subsystem will remain uninitialized.
+ */
+void init_acpica_tables(uint level) {
+  DEBUG_ASSERT(!acpi_initialized);
+
+  ACPI_STATUS status;
+  status = AcpiInitializeTables(nullptr, ACPI_MAX_INIT_TABLES, FALSE);
+
+  if (status == AE_NOT_FOUND) {
+    TRACEF("WARNING: could not find ACPI tables\n");
+    return;
+  } else if (status == AE_NO_MEMORY) {
+    TRACEF("WARNING: could not initialize ACPI tables\n");
+    return;
+  } else if (status != AE_OK) {
+    TRACEF("WARNING: could not initialize ACPI tables for unknown reason\n");
+    return;
+  }
+
+  acpi_initialized = true;
+  LTRACEF("ACPI tables initialized\n");
+}
+
+LK_INIT_HOOK(acpica_tables, &init_acpica_tables, LK_INIT_LEVEL_THREADING)
 
 // This thread performs the work for suspend/resume.  We use a separate thread
 // rather than the invoking thread to let us lean on the context switch code
@@ -193,6 +226,10 @@ zx_status_t x86_set_pkg_pl1(const zx_system_powerctl_arg_t* arg, MsrAccess* msr)
 }
 
 zx_status_t acpi_transition_s_state(const zx_system_powerctl_arg_t* arg) {
+  if (!acpi_initialized) {
+    return ZX_ERR_BAD_STATE;
+  }
+
   uint8_t target_s_state = arg->acpi_transition_s_state.target_s_state;
   uint8_t sleep_type_a = arg->acpi_transition_s_state.sleep_type_a;
   uint8_t sleep_type_b = arg->acpi_transition_s_state.sleep_type_b;
@@ -233,10 +270,10 @@ zx_status_t acpi_transition_s_state(const zx_system_powerctl_arg_t* arg) {
     DEBUG_ASSERT(target_s_state == 5);
     arch_disable_ints();
 
-    ACPI_STATUS acpi_status =
+    uint32_t acpi_status =
         x86_acpi_transition_s_state(&regs, target_s_state, sleep_type_a, sleep_type_b);
     arch_enable_ints();
-    if (acpi_status != AE_OK) {
+    if (acpi_status != 0) {
       return ZX_ERR_INTERNAL;
     }
   }
