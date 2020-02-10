@@ -58,8 +58,8 @@ use byteorder::{ByteOrder, NetworkEndian};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 use crate::{
-    sealed, LinkLocalAddr, LinkLocalAddress, MulticastAddr, MulticastAddress, SpecifiedAddr,
-    SpecifiedAddress, UnicastAddr, UnicastAddress, Witness,
+    sealed, LinkLocalAddr, LinkLocalAddress, MulticastAddr, MulticastAddress, ScopeableAddress,
+    SpecifiedAddr, SpecifiedAddress, UnicastAddr, UnicastAddress, Witness,
 };
 
 // NOTE on passing by reference vs by value: Clippy advises us to pass IPv4
@@ -360,6 +360,7 @@ pub trait IpAddress:
     + Sync
     + Send
     + LinkLocalAddress
+    + ScopeableAddress
     + sealed::Sealed
     + 'static
 {
@@ -572,6 +573,34 @@ impl LinkLocalAddress for IpAddr {
     #[inline]
     fn is_linklocal(&self) -> bool {
         map_ip_addr!(self, is_linklocal)
+    }
+}
+
+impl ScopeableAddress for Ipv4Addr {
+    /// Is this address scopeable?
+    ///
+    /// Although IPv4 defines a link local subnet, IPv4 addresses are never
+    /// scopeable.
+    fn is_scopeable(&self) -> bool {
+        false
+    }
+}
+
+impl ScopeableAddress for Ipv6Addr {
+    /// Is this address scopeable?
+    fn is_scopeable(&self) -> bool {
+        // NOTE(brunodalbo): Our is_linklocal implementation correctly supports
+        // detecting link local multicasts. So just returning is_linklocal is
+        // fine. We may need to add more scopes here in the future for other
+        // IPv6 scopes that can have scoping information.
+        self.is_linklocal()
+    }
+}
+
+impl ScopeableAddress for IpAddr {
+    #[inline]
+    fn is_scopeable(&self) -> bool {
+        map_ip_addr!(self, is_scopeable)
     }
 }
 
