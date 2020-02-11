@@ -21,11 +21,12 @@ impl PeerWatcher {
         PeerWatcher { last_seen: HashMap::new(), responder }
     }
 
-    pub fn observe(self, new_peers: &HashMap<PeerId, Peer>) {
-        let (updated, removed) = peers_diff(&self.last_seen, new_peers);
+    // Written as an associated function in order to match the signature of the HangingGet
+    pub fn observe(new_peers: &HashMap<PeerId, Peer>, watcher: PeerWatcher) {
+        let (updated, removed) = peers_diff(&watcher.last_seen, new_peers);
         let mut updated = updated.values().map(|p| p.into());
         let mut removed: Vec<btfidl::PeerId> = removed.iter().map(|&p| p.into()).collect();
-        if let Err(err) = self.responder.send(&mut updated, &mut removed.iter_mut()) {
+        if let Err(err) = watcher.responder.send(&mut updated, &mut removed.iter_mut()) {
             fx_log_warn!("Unable to respond to watch_peers hanging get: {:?}", err);
         }
     }
@@ -38,16 +39,3 @@ fn peers_diff(prev: &HashMap<PeerId, Peer>, new: &HashMap<PeerId, Peer>) -> (Has
     let updated = new.into_iter().filter(|(id, p)| !(prev.get(id) == Some(p))).map(|(id,p)| (*id, p.clone())).collect();
     (updated, removed)
 }
-
-/*
-// TODO(nickpollard)
-fn new_broker() -> hanging_get::HangingGetBroker<HashMap<PeerId, Peer>,PeerWatcher,()> {
-    // Initialize a HangingGetBroker to process watch_peers requests
-    let watch_peers_broker = hanging_get::HangingGetBroker::new(
-        HashMap::new(),
-        |new_peers: &HashMap<PeerId, Peer>, watcher: PeerWatcher| { watcher.observe(new_peers); },
-        hanging_get::DEFAULT_CHANNEL_SIZE
-    );
-    watch_peers_broker
-}
-*/

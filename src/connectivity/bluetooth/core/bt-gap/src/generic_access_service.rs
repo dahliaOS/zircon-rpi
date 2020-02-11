@@ -229,6 +229,7 @@ mod tests {
         let inspector = inspect::Inspector::new();
         let system_inspect = inspector.root().create_child("system");
         let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
+        let watch_hosts_broker = hanging_get::HangingGetBroker::new(Vec::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
         let dispatcher = HostDispatcher::new(
             TEST_DEVICE_NAME.to_string(),
             TEST_DEVICE_APPEARANCE,
@@ -237,6 +238,8 @@ mod tests {
             gas_task_channel,
             watch_peers_broker.new_publisher(),
             watch_peers_broker.new_handle(),
+            watch_hosts_broker.new_publisher(),
+            watch_hosts_broker.new_handle(),
         );
 
         let service = GenericAccessService { hd: dispatcher.clone(), generic_access_req_stream };

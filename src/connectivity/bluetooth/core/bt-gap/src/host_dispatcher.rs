@@ -187,6 +187,9 @@ struct HostDispatcherState {
     watch_peers_publisher: hanging_get::Publisher<HashMap<PeerId, Peer>>,
     watch_peers_handle: hanging_get::Handle<PeerWatcher>,
 
+    watch_hosts_publisher: hanging_get::Publisher<Vec<HostInfo>>,
+    watch_hosts_handle: hanging_get::Handle<sys::HostWatcherWatchResponder>,
+
     // Pending requests to obtain a Host.
     host_requests: Slab<Waker>,
 
@@ -362,6 +365,8 @@ impl HostDispatcher {
         gas_channel_sender: mpsc::Sender<LocalServiceDelegateRequest>,
         watch_peers_publisher: hanging_get::Publisher<HashMap<PeerId, Peer>>,
         watch_peers_handle: hanging_get::Handle<PeerWatcher>,
+        watch_hosts_publisher: hanging_get::Publisher<Vec<HostInfo>>,
+        watch_hosts_handle: hanging_get::Handle<sys::HostWatcherWatchResponder>,
     ) -> HostDispatcher {
         let hd = HostDispatcherState {
             active_id: None,
@@ -379,6 +384,8 @@ impl HostDispatcher {
             event_listeners: vec![],
             watch_peers_publisher,
             watch_peers_handle,
+            watch_hosts_publisher,
+            watch_hosts_handle,
             host_requests: Slab::new(),
             inspect: HostDispatcherInspect::new(inspect),
         };
@@ -645,7 +652,7 @@ impl HostDispatcher {
             state.watch_peers_publisher.clone()
         };
 
-        // Wait for the hanging get watcher to udpate so we can linearize updates
+        // Wait for the hanging get watcher to update so we can linearize updates
         async move {
             publisher.update(move |peers| {peers.insert(update_peer.id, update_peer); true})
                 .await
@@ -666,7 +673,7 @@ impl HostDispatcher {
             state.watch_peers_publisher.clone()
         };
 
-        // Wait for the hanging get watcher to udpate so we can linearize updates
+        // Wait for the hanging get watcher to update so we can linearize updates
         async move {
             publisher.update(move |peers| {peers.remove(&id); true})
                 .await
@@ -681,6 +688,11 @@ impl HostDispatcher {
     pub async fn watch_peers(&self) -> hanging_get::Subscriber<PeerWatcher> {
         let mut handle = self.state.write().watch_peers_handle.clone();
         handle.new_subscriber().await.expect("Fatal error: Peer Watcher HangingGet unreachable")
+    }
+
+    pub async fn watch_hosts(&self) -> hanging_get::Subscriber<sys::HostWatcherWatchResponder> {
+        let mut handle = self.state.write().watch_hosts_handle.clone();
+        handle.new_subscriber().await.expect("Fatal error: Host Watcher HangingGet unreachable")
     }
 
     async fn spawn_gas_proxy(&self, gatt_server_proxy: Server_Proxy) -> Result<(), Error> {
@@ -772,6 +784,8 @@ impl HostDispatcher {
         let id = host_device.read().get_info().id.into();
         self.state.write().add_host(id, host_device.clone());
 
+        self.notify_host_watchers().await;
+
         // Start listening to Host interface events.
         fasync::spawn(host_device::watch_events(self.clone(), host_device.clone()).map(|r| {
             r.unwrap_or_else(|err| {
@@ -784,7 +798,18 @@ impl HostDispatcher {
         Ok(())
     }
 
-    pub fn rm_adapter(&self, host_path: &Path) {
+    // Update our hanging_get server with the latest hosts. This will notify any pending
+    // hanging_gets and any new requests will see the new results.
+    async fn notify_host_watchers(&self) {
+        let mut publisher = self.state.write().watch_hosts_publisher.clone();
+        // Wait for the hanging get watcher to update so we can linearize updates
+        let current_hosts: Vec<_> = self.state.write().host_devices.values().map(|host| host.read().get_info().clone()).collect();
+        publisher.set(current_hosts)
+            .await
+            .expect("Fatal error: Host Watcher HangingGet unreachable");
+    }
+
+    pub async fn rm_adapter(&self, host_path: &Path) {
         fx_log_info!("Host removed: {:?}", host_path);
 
         let mut hd = self.state.write();
@@ -803,6 +828,8 @@ impl HostDispatcher {
                 let _ = listener.send_on_adapter_removed(&id.to_string());
             })
         }
+
+        self.notify_host_watchers().await;
 
         // Reset the active ID if it got removed.
         if let Some(active_id) = active_id {
@@ -1015,6 +1042,7 @@ mod tests {
         let system_inspect = inspector.root().create_child("system");
         let (gas_channel_sender, _generic_access_req_stream) = mpsc::channel(0);
         let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
+        let watch_hosts_broker = hanging_get::HangingGetBroker::new(Vec::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
         let dispatcher = HostDispatcher::new(
             "test".to_string(),
             Appearance::Display,
@@ -1023,6 +1051,8 @@ mod tests {
             gas_channel_sender,
             watch_peers_broker.new_publisher(),
             watch_peers_broker.new_handle(),
+            watch_hosts_broker.new_publisher(),
+            watch_hosts_broker.new_handle(),
         );
         let peer_id = PeerId(1);
 
@@ -1065,6 +1095,7 @@ mod tests {
         let (gas_channel_sender, _generic_access_req_stream) = mpsc::channel(0);
 
         let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
+        let watch_hosts_broker = hanging_get::HangingGetBroker::new(Vec::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
 
         let dispatcher = HostDispatcher::new(
             "test".to_string(),
@@ -1074,6 +1105,8 @@ mod tests {
             gas_channel_sender,
             watch_peers_broker.new_publisher(),
             watch_peers_broker.new_handle(),
+            watch_hosts_broker.new_publisher(),
+            watch_hosts_broker.new_handle(),
         );
         // Call a function that used to use the self.state.write().gas_channel_sender.send().await
         // pattern, which caused a deadlock by yielding to the executor while holding onto a write

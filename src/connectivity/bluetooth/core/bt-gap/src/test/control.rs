@@ -26,6 +26,7 @@ async fn close_channel_when_client_dropped() -> Result<(), Error> {
     let (client, server) = create_fidl_endpoints::<ControlMarker>()?;
     let (gas_channel_sender, _ignored_gas_task_req_stream) = mpsc::channel(0);
     let watch_peers_broker = hanging_get::HangingGetBroker::new(HashMap::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
+    let watch_hosts_broker = hanging_get::HangingGetBroker::new(Vec::new(), |_, _| (), hanging_get::DEFAULT_CHANNEL_SIZE);
     let hd = HostDispatcher::new(
         "test".to_string(),
         Appearance::Display,
@@ -34,6 +35,8 @@ async fn close_channel_when_client_dropped() -> Result<(), Error> {
         gas_channel_sender,
         watch_peers_broker.new_publisher(),
         watch_peers_broker.new_handle(),
+        watch_hosts_broker.new_publisher(),
+        watch_hosts_broker.new_handle(),
     );
     let serve_until_done = start_control_service(hd, server);
 

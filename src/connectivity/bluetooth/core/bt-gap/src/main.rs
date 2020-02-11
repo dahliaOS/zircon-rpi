@@ -18,9 +18,7 @@ use {
     fidl_fuchsia_bluetooth_le::{CentralMarker, PeripheralMarker},
     fidl_fuchsia_device::{NameProviderMarker, DEFAULT_DEVICE_NAME},
     fuchsia_async as fasync,
-    fuchsia_bluetooth::{
-        types::{Peer, PeerId},
-    },
+    fuchsia_bluetooth::types::{HostInfo, Peer, PeerId},
     fuchsia_component::{client::connect_to_service, server::ServiceFs},
     fuchsia_syslog::{self as syslog, fx_log_err, fx_log_info, fx_log_warn},
     futures::{channel::mpsc, future::try_join3, FutureExt, StreamExt, TryFutureExt, TryStreamExt},
@@ -35,6 +33,7 @@ use crate::{
     generic_access_service::GenericAccessService,
     host_dispatcher::{HostService::*, *},
     watch_peers::PeerWatcher,
+    services::host_watcher,
 };
 
 mod adapters;
@@ -84,11 +83,20 @@ async fn run() -> Result<(), Error> {
     // Initialize a HangingGetBroker to process watch_peers requests
     let watch_peers_broker = hanging_get::HangingGetBroker::new(
         HashMap::new(),
-        |new_peers: &HashMap<PeerId, Peer>, watcher: PeerWatcher| { watcher.observe(new_peers); },
+        PeerWatcher::observe,
         hanging_get::DEFAULT_CHANNEL_SIZE
     );
     let watch_peers_publisher = watch_peers_broker.new_publisher();
     let watch_peers_handle = watch_peers_broker.new_handle();
+
+    // Initialize a HangingGetBroker to process watch_hosts requests
+    let watch_hosts_broker = hanging_get::HangingGetBroker::new(
+        Vec::new(),
+        host_watcher::observe_hosts,
+        hanging_get::DEFAULT_CHANNEL_SIZE
+    );
+    let watch_hosts_publisher = watch_hosts_broker.new_publisher();
+    let watch_hosts_handle = watch_hosts_broker.new_handle();
 
     // Process the watch_peers broker in the background
     fasync::spawn(watch_peers_broker.run());
@@ -100,6 +108,8 @@ async fn run() -> Result<(), Error> {
         gas_channel_sender,
         watch_peers_publisher,
         watch_peers_handle,
+        watch_hosts_publisher,
+        watch_hosts_handle,
     );
     let watch_hd = hd.clone();
     let central_hd = hd.clone();
@@ -123,7 +133,7 @@ async fn run() -> Result<(), Error> {
                     result?
                 }
                 AdapterRemoved(device_path) => {
-                    watch_hd.rm_adapter(&device_path);
+                    watch_hd.rm_adapter(&device_path).await;
                 }
             }
         }

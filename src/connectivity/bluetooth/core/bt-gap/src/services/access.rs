@@ -75,6 +75,7 @@ async fn handler(
         AccessRequest::WatchPeers{ responder } => {
             match watch_peers_subscriber.register(PeerWatcher::new(responder)).await {
                 Ok(()) => Ok(()),
+                // TODO(nickpollard): respond with error if error?
                 Err(e) => Err(format_err!("Could not watch peers")),
             }
         }
