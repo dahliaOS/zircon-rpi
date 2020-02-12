@@ -8,6 +8,7 @@
 //! network protocols. Some general utilities are defined in the crate root,
 //! while protocol-specific operations are defined in their own modules.
 
+#![feature(never_type)]
 #![cfg_attr(not(std), no_std)]
 
 #[cfg(std)]
@@ -189,6 +190,36 @@ pub trait LinkLocalAddress {
     fn is_linklocal(&self) -> bool;
 }
 
+/// The scope used by an implementation of [`ScopeableAddress`].
+///
+/// A scope is either the `Global` scope or some `NonGlobal` scope, `S`.
+pub enum Scope<S> {
+    Global,
+    NonGlobal(S),
+}
+
+impl<S> Scope<S> {
+    /// Is this the global scope?
+    ///
+    /// `is_global` returns true if `self` is [`Scope::Global`], and false
+    /// otherwise.
+    pub fn is_global(&self) -> bool {
+        match self {
+            Scope::Global => true,
+            Scope::NonGlobal(_) => false,
+        }
+    }
+
+    /// Map `Scope<S>` to `Scope<T>` by applying a function to the non-global
+    /// scope.
+    pub fn map<T, F: FnOnce(S) -> T>(self, f: F) -> Scope<T> {
+        match self {
+            Scope::Global => Scope::Global,
+            Scope::NonGlobal(scope) => Scope::NonGlobal(f(scope)),
+        }
+    }
+}
+
 /// An address that can be tied to some scope identifier.
 ///
 /// `ScopeableAddress` is implemented by address types for which some values can
@@ -196,22 +227,29 @@ pub trait LinkLocalAddress {
 /// belonging to a particular scope class require extra metadata to identify the
 /// scope identifier. The scope identifier is typically the networking interface
 /// identifier.
+///
+/// Address types which are never in any identified scope may still implement
+/// `ScopeableAddress` by setting the associated `NonGlobalScope` type to the
+/// never type, which has the effect of ensuring that the [`scope`] method
+/// always returns [`Scope::Global`].
 pub trait ScopeableAddress {
-    /// Is this a scopeable address?
+    /// The type of all non-global scopes.
+    type NonGlobalScope;
+
+    /// The scope of this address.
     ///
-    /// `is_scopeable` must maintain the invariant that, if it is called twice
-    /// on the same object, and in between those two calls, no code has operated
-    /// on a mutable reference to that object, both calls will return the same
-    /// value. This property is required in order to implement [`AddrAndScope`].
-    /// Note that, since this is not an `unsafe` trait, `unsafe` code may NOT
-    /// rely on this property for its soundness. However, code MAY rely on this
-    /// property for its correctness.
+    /// `scope` must maintain the invariant that, if it is called twice on the
+    /// same object, and in between those two calls, no code has operated on a
+    /// mutable reference to that object, both calls will return the same value.
+    /// This property is required in order to implement [`AddrAndZone`]. Note
+    /// that, since this is not an `unsafe` trait, `unsafe` code may NOT rely on
+    /// this property for its soundness. However, code MAY rely on this property
+    /// for its correctness.
     ///
-    /// If this type also implements [`SpecifiedAddress`] then
-    /// `a.is_scopeable()` implies `a.is_specified()`, since the unspecified
-    /// addresses are never scopeable (they are always part of a unique global
-    /// scope).
-    fn is_scopeable(&self) -> bool;
+    /// If this type also implements [`SpecifiedAddress`] then `a.scope() !=
+    /// Scope::Global` implies `a.is_specified()`, since the unspecified
+    /// addresses are always global.
+    fn scope(&self) -> Scope<Self::NonGlobalScope>;
 }
 
 /// An address which is guaranteed to be a specified address.
@@ -492,94 +530,94 @@ impl<A: LinkLocalAddress + SpecifiedAddress> From<LinkLocalAddr<A>> for Specifie
     }
 }
 
-/// A witness type for an address and sidecar scoping information.
+/// A witness type for an address and and a scope zone.
 ///
-/// `AddrAndScope` carries an address that *may* have scoping information,
-/// alongside the scoping information itself. The scope information is entirely
-/// opaque to this implementation and no guarantees are made on it.
+/// `AddrAndZone` carries an address that *may* have a scope, alongside the
+/// particular zone of that scope. The zone is also referred to as a "scope
+/// identifier" in some systems (such as Linux).
 ///
-/// Note that although `AddrAndScope` acts as a witness type, it does not
+/// Note that although `AddrAndZone` acts as a witness type, it does not
 /// implement [`Witness`] since it carries both the address and scoping
 /// information, and not only the witnessed address.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct AddrAndScope<A, S>(A, S);
+pub struct AddrAndZone<A, Z>(A, Z);
 
-impl<A: ScopeableAddress, S> AddrAndScope<A, S> {
-    /// Creates a new `AddrAndScope`, returning `Some` only if the provided
+impl<A: ScopeableAddress, Z> AddrAndZone<A, Z> {
+    /// Creates a new `AddrAndZone`, returning `Some` only if the provided
     /// `addr` is scopeable.
-    pub fn new(addr: A, scope_id: S) -> Option<Self> {
-        if addr.is_scopeable() {
-            Some(Self(addr, scope_id))
+    pub fn new(addr: A, zone: Z) -> Option<Self> {
+        if !addr.scope().is_global() {
+            Some(Self(addr, zone))
         } else {
             None
         }
     }
 
-    /// Turns this `AddrAndScope` into its forming parts.
-    pub fn into_addr_scope_id(self) -> (A, S) {
+    /// Turns this `AddrAndZone` into its forming parts.
+    pub fn into_addr_scope_id(self) -> (A, Z) {
         (self.0, self.1)
     }
 }
 
-impl<A, S> AddrAndScope<A, S> {
-    /// Construct a new `AddrAndScope` without checking to see if `addr` is
+impl<A, Z> AddrAndZone<A, Z> {
+    /// Construct a new `AddrAndZone` without checking to see if `addr` is
     /// actually a scopeable address.
     ///
     /// # Safety
     ///
     /// It is up to the caller to make sure that `addr` is a scopeable address
-    /// to avoid breaking the guarantees of `AddrAndScope`.
+    /// to avoid breaking the guarantees of `AddrAndZone`.
     #[inline]
-    pub const unsafe fn new_unchecked(addr: A, scope_id: S) -> Self {
-        Self(addr, scope_id)
+    pub const unsafe fn new_unchecked(addr: A, zone: Z) -> Self {
+        Self(addr, zone)
     }
 }
 
-impl<A: ScopeableAddress + SpecifiedAddress, S> AddrAndScope<A, S> {
-    /// Turns this `AddrAndScope` into its forming parts, providing a safe
+impl<A: ScopeableAddress + SpecifiedAddress, Z> AddrAndZone<A, Z> {
+    /// Turns this `AddrAndZone` into its forming parts, providing a safe
     /// `SpecifiedAddr`.
-    pub fn into_specified_addr_scope_id(self) -> (SpecifiedAddr<A>, S) {
+    pub fn into_specified_addr_zone(self) -> (SpecifiedAddr<A>, Z) {
         (SpecifiedAddr(self.0), self.1)
     }
 }
 
-impl<A: ScopeableAddress + Display, S: Display> Display for AddrAndScope<A, S> {
+impl<A: ScopeableAddress + Display, Z: Display> Display for AddrAndZone<A, Z> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}%{}", self.0, self.1)
     }
 }
 
-impl<A: ScopeableAddress, S> sealed::Sealed for AddrAndScope<A, S> {}
+impl<A: ScopeableAddress, Z> sealed::Sealed for AddrAndZone<A, Z> {}
 
-/// An address that may have associated scoping information.
+/// An address that may have an associated scope zone.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ScopedAddress<A, S> {
+pub enum ScopedAddress<A, Z> {
     Global(SpecifiedAddr<A>),
-    Scoped(AddrAndScope<A, S>),
+    Scoped(AddrAndZone<A, Z>),
 }
 
-impl<A: ScopeableAddress + SpecifiedAddress, S> ScopedAddress<A, S> {
-    /// Creates a new `ScopedAddress` with the provided optional scope.
+impl<A: ScopeableAddress + SpecifiedAddress, Z> ScopedAddress<A, Z> {
+    /// Creates a new `ScopedAddress` with the provided optional scope zone.
     ///
-    /// If `scope_id` is `None`, [`ScopedAddress::Global`] is returned.
-    /// Otherwise, a [`ScopedAddress::Scoped`] is returned only if the provided
-    /// `addr` is scopeable.
-    pub fn new(addr: A, scope_id: Option<S>) -> Option<Self> {
-        match scope_id {
-            Some(scope_id) => AddrAndScope::new(addr, scope_id).map(ScopedAddress::Scoped),
+    /// If `zone` is `None`, [`ScopedAddress::Global`] is returned. Otherwise, a
+    /// [`ScopedAddress::Scoped`] is returned only if the provided `addr` is
+    /// scopeable.
+    pub fn new(addr: A, zone: Option<Z>) -> Option<Self> {
+        match zone {
+            Some(zone) => AddrAndZone::new(addr, zone).map(ScopedAddress::Scoped),
             None => SpecifiedAddr::new(addr).map(ScopedAddress::Global),
         }
     }
 
     /// Decomposes this `ScopedAddress` into a `SpecifiedAddr` and an optional
-    /// scope identifier.
-    pub fn into_addr_scope_id(self) -> (SpecifiedAddr<A>, Option<S>) {
+    /// scope zone.
+    pub fn into_addr_zone(self) -> (SpecifiedAddr<A>, Option<Z>) {
         match self {
             ScopedAddress::Global(addr) => (addr, None),
-            ScopedAddress::Scoped(scope_and_addr) => {
-                let (addr, scope_id) = scope_and_addr.into_specified_addr_scope_id();
-                (addr, Some(scope_id))
+            ScopedAddress::Scoped(scope_and_zone) => {
+                let (addr, zone) = scope_and_zone.into_specified_addr_zone();
+                (addr, Some(zone))
             }
         }
     }
@@ -622,8 +660,14 @@ mod tests {
     }
 
     impl ScopeableAddress for Address {
-        fn is_scopeable(&self) -> bool {
-            self.is_linklocal()
+        type NonGlobalScope = ();
+
+        fn scope(&self) -> Scope<()> {
+            if self.is_linklocal() {
+                Scope::NonGlobal(())
+            } else {
+                Scope::Global
+            }
         }
     }
 
@@ -664,14 +708,14 @@ mod tests {
     }
 
     #[test]
-    fn test_addr_and_scope() {
-        let addr_and_scope = AddrAndScope::new(Address::LinkLocal, ());
-        assert_eq!(addr_and_scope, Some(AddrAndScope(Address::LinkLocal, ())));
-        assert_eq!(addr_and_scope.unwrap().into_addr_scope_id(), (Address::LinkLocal, ()));
-        assert_eq!(AddrAndScope::new(Address::Unicast, ()), None);
+    fn test_addr_and_zone() {
+        let addr_and_zone = AddrAndZone::new(Address::LinkLocal, ());
+        assert_eq!(addr_and_zone, Some(AddrAndZone(Address::LinkLocal, ())));
+        assert_eq!(addr_and_zone.unwrap().into_addr_scope_id(), (Address::LinkLocal, ()));
+        assert_eq!(AddrAndZone::new(Address::Unicast, ()), None);
         assert_eq!(
-            unsafe { AddrAndScope::new_unchecked(Address::LinkLocal, ()) },
-            AddrAndScope(Address::LinkLocal, ())
+            unsafe { AddrAndZone::new_unchecked(Address::LinkLocal, ()) },
+            AddrAndZone(Address::LinkLocal, ())
         );
     }
 
@@ -693,15 +737,15 @@ mod tests {
         assert_eq!(ScopedAddress::new(Address::Unspecified, Some(())), None);
         assert_eq!(
             ScopedAddress::new(Address::LinkLocal, Some(())),
-            Some(ScopedAddress::Scoped(AddrAndScope(Address::LinkLocal, ())))
+            Some(ScopedAddress::Scoped(AddrAndZone(Address::LinkLocal, ())))
         );
 
         assert_eq!(
-            ScopedAddress::new(Address::Unicast, None).unwrap().into_addr_scope_id(),
+            ScopedAddress::new(Address::Unicast, None).unwrap().into_addr_zone(),
             (SpecifiedAddr(Address::Unicast), None)
         );
         assert_eq!(
-            ScopedAddress::new(Address::LinkLocal, Some(())).unwrap().into_addr_scope_id(),
+            ScopedAddress::new(Address::LinkLocal, Some(())).unwrap().into_addr_zone(),
             (SpecifiedAddr(Address::LinkLocal), Some(()))
         );
     }

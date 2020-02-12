@@ -58,8 +58,8 @@ use byteorder::{ByteOrder, NetworkEndian};
 use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 use crate::{
-    sealed, LinkLocalAddr, LinkLocalAddress, MulticastAddr, MulticastAddress, ScopeableAddress,
-    SpecifiedAddr, SpecifiedAddress, UnicastAddr, UnicastAddress, Witness,
+    sealed, LinkLocalAddr, LinkLocalAddress, MulticastAddr, MulticastAddress, Scope,
+    ScopeableAddress, SpecifiedAddr, SpecifiedAddress, UnicastAddr, UnicastAddress, Witness,
 };
 
 // NOTE on passing by reference vs by value: Clippy advises us to pass IPv4
@@ -577,30 +577,49 @@ impl LinkLocalAddress for IpAddr {
 }
 
 impl ScopeableAddress for Ipv4Addr {
-    /// Is this address scopeable?
+    type NonGlobalScope = !;
+
+    /// The scope of this address.
     ///
     /// Although IPv4 defines a link local subnet, IPv4 addresses are never
-    /// scopeable.
-    fn is_scopeable(&self) -> bool {
-        false
+    /// scopeable, and so are always in the global scope.
+    fn scope(&self) -> Scope<!> {
+        Scope::Global
     }
 }
 
+/// The list of non-global IPv6 scopes.
+pub enum Ipv6NonGlobalScope {
+    /// The link-local scope.
+    LinkLocal,
+}
+
 impl ScopeableAddress for Ipv6Addr {
-    /// Is this address scopeable?
-    fn is_scopeable(&self) -> bool {
+    type NonGlobalScope = Ipv6NonGlobalScope;
+
+    /// The scope of this address.
+    fn scope(&self) -> Scope<Ipv6NonGlobalScope> {
         // NOTE(brunodalbo): Our is_linklocal implementation correctly supports
-        // detecting link local multicasts. So just returning is_linklocal is
-        // fine. We may need to add more scopes here in the future for other
-        // IPv6 scopes that can have scoping information.
-        self.is_linklocal()
+        // detecting link local multicasts. So just using is_linklocal is fine.
+        // We may need to add more scopes here in the future for other IPv6
+        // scopes that can have scoping information.
+        if self.is_linklocal() {
+            Scope::NonGlobal(Ipv6NonGlobalScope::LinkLocal)
+        } else {
+            Scope::Global
+        }
     }
 }
 
 impl ScopeableAddress for IpAddr {
+    type NonGlobalScope = IpAddr<!, Ipv6NonGlobalScope>;
+
     #[inline]
-    fn is_scopeable(&self) -> bool {
-        map_ip_addr!(self, is_scopeable)
+    fn scope(&self) -> Scope<IpAddr<!, Ipv6NonGlobalScope>> {
+        match self {
+            IpAddr::V4(addr) => addr.scope().map(IpAddr::V4),
+            IpAddr::V6(addr) => addr.scope().map(IpAddr::V6),
+        }
     }
 }
 
