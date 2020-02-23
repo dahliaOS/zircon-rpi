@@ -14,8 +14,9 @@ source_set("lib") {
 
   public_deps = [
     "//sdk/lib/sys/cpp",
-    "//src/lib/syslog/cpp",
     "//src/connectivity/weave/adaptation",
+    "//src/lib/fsl",
+    "//src/lib/syslog/cpp",
     "//zircon/public/lib/async-loop-cpp",
     "//zircon/public/lib/async-loop-default",
     "//zircon/public/lib/zx",
@@ -32,9 +33,7 @@ executable("bin") {
 
 group("weavestack") {
   testonly = true
-  public_deps = [
-    ":pkg",
-  ]
+  public_deps = [ ":pkg" ]
 }
 
 package("pkg") {
@@ -54,4 +53,3 @@ package("pkg") {
     },
   ]
 }
-

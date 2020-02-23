@@ -4,7 +4,20 @@
 
 #include "src/connectivity/weave/weavestack/app.h"
 
+static constexpr int RET_OK = 0;
+static constexpr int RET_INIT_ERR = 1;
+static constexpr int RET_RUN_ERR = 2;
+
 int main(void) {
   weavestack::App app;
-  return app.loop()->Run() != ZX_OK;
+
+  if (app.Init() != WEAVE_NO_ERROR) {
+    return RET_INIT_ERR;
+  }
+
+  if (app.Run() != ZX_OK) {
+    return RET_RUN_ERR;
+  }
+
+  return RET_OK;
 }
