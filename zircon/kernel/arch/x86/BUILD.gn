@@ -61,7 +61,6 @@ config("kernel") {
 zx_library("x86") {
   kernel = true
   sources = [
-    "acpi.S",
     "amd.cc",
     "arch.cc",
     "asm.S",
