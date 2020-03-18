@@ -3,13 +3,18 @@
 # found in the LICENSE file.
 
 group("storage") {
-  deps = [ "ext4" ]
+  deps = [
+    "chunked-compression",
+    "chunked-compression:chunked-compress-host",
+    "ext4",
+  ]
 }
 
 group("tests") {
   testonly = true
   deps = [
     "blobfs-corrupt:tests",
+    "chunked-compression:tests",
     "conformance:tests",
     "ext4:tests",
   ]
