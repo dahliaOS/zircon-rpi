@@ -65,6 +65,7 @@ zx_library("blobfs") {
   ]
   deps = [
     "$zx/system/ulib/bitmap",
+    "$zx/system/ulib/chunked-compression",
     "$zx/system/ulib/digest",
     "$zx/system/ulib/disk_inspector",
     "$zx/system/ulib/fbl",
@@ -96,6 +97,8 @@ zx_library("blobfs") {
       "cache-node.cc",
       "compression/blob-compressor.cc",
       "compression/blob-compressor.h",
+      "compression/chunked.cc",
+      "compression/chunked.h",
       "compression/compressed-block-collection.h",
       "compression/zstd-compressed-block-collection.cc",
       "compression/zstd-compressed-block-collection.h",

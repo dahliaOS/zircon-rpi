@@ -13,6 +13,7 @@
 #include <fbl/macros.h>
 #include <fs/trace.h>
 
+#include "chunked.h"
 #include "lz4.h"
 #include "zstd-plain.h"
 #include "zstd-seekable.h"
@@ -69,6 +70,24 @@ std::optional<BlobCompressor> BlobCompressor::Create(CompressionAlgorithm algori
       }
       auto result = BlobCompressor(std::move(compressor), std::move(compressed_blob));
       return std::make_optional(std::move(result));
+    }
+    case CompressionAlgorithm::CHUNKED: {
+      std::unique_ptr<ChunkedCompressor> compressor;
+      size_t output_limit;
+      zx_status_t status = ChunkedCompressor::Create(blob_size, &output_limit, &compressor);
+      if (status != ZX_OK) {
+        return std::nullopt;
+      }
+      fzl::OwnedVmoMapper compressed_blob;
+      status = compressed_blob.CreateAndMap(output_limit, "chunked-blob");
+      if (status != ZX_OK) {
+        return std::nullopt;
+      }
+      status = compressor->SetOutput(compressed_blob.start(), compressed_blob.size());
+      if (status != ZX_OK) {
+        return std::nullopt;
+      }
+      return BlobCompressor(std::move(compressor), std::move(compressed_blob));
     }
     default:
       return std::nullopt;
