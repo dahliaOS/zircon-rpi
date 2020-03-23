@@ -15,6 +15,8 @@ static_library("chunked-compression") {
     "chunked-decompressor.cc",
     "chunked-decompressor.h",
     "status.h",
+    "streaming-chunked-compressor.cc",
+    "streaming-chunked-compressor.h",
   ]
   public_deps = [
     "//src/lib/fxl",

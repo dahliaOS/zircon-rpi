@@ -24,6 +24,7 @@
 #include "src/storage/chunked-compression/chunked-compressor.h"
 #include "src/storage/chunked-compression/chunked-decompressor.h"
 #include "src/storage/chunked-compression/status.h"
+#include "src/storage/chunked-compression/streaming-chunked-compressor.h"
 
 namespace {
 
@@ -31,16 +32,56 @@ using chunked_compression::ChunkedArchiveHeader;
 using chunked_compression::ChunkedCompressor;
 using chunked_compression::ChunkedDecompressor;
 using chunked_compression::CompressionParams;
+using chunked_compression::StreamingChunkedCompressor;
 
 constexpr const char kAnsiUpLine[] = "\33[A";
 constexpr const char kAnsiClearLine[] = "\33[2K\r";
 
+class ProgressWriter {
+ public:
+  explicit ProgressWriter(int refresh_hz = 60) : refresh_hz_(refresh_hz) {
+    last_report_ = std::chrono::steady_clock::time_point::min();
+  }
+
+  void Update(const char* fmt, ...) {
+    auto now = std::chrono::steady_clock::now();
+    if (now < last_report_ + refresh_duration()) {
+      return;
+    }
+    last_report_ = now;
+    printf("%s%s", kAnsiUpLine, kAnsiClearLine);
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    fflush(stdout);
+  }
+
+  void Final(const char* fmt, ...) {
+    printf("%s%s", kAnsiUpLine, kAnsiClearLine);
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    fflush(stdout);
+  }
+
+  std::chrono::steady_clock::duration refresh_duration() const {
+    return std::chrono::seconds(1) / refresh_hz_;
+  }
+
+ private:
+  std::chrono::steady_clock::time_point last_report_;
+  int refresh_hz_;
+};
+
 void usage(const char* fname) {
-  fprintf(stderr, "Usage: %s [--level #] [d | c] source dest\n", fname);
+  fprintf(stderr, "Usage: %s [--level #] [--streaming] [d | c] source dest\n", fname);
   fprintf(stderr,
           "\
   c: Compress source, writing to dest.\n\
   d: Decompress source, writing to dest.\n\
+  --streaming: Use streaming compression\n\
   --level #: Compression level\n");
 }
 
@@ -69,6 +110,19 @@ int OpenAndMapForWriting(const char* file, size_t write_size, uint8_t** out_writ
   *out_fd = std::move(fd);
 
   return 0;
+}
+
+size_t GetSize(const char* file) {
+  struct stat info;
+  if (stat(file, &info) < 0) {
+    fprintf(stderr, "stat(%s) failed: %s\n", file, strerror(errno));
+    return 0;
+  }
+  if (!S_ISREG(info.st_mode)) {
+    fprintf(stderr, "%s is not a regular file\n", file);
+    return 0;
+  }
+  return info.st_size;
 }
 
 int OpenAndMapForReading(const char* file, fbl::unique_fd* out_fd, const uint8_t** out_buf,
@@ -119,20 +173,11 @@ int Compress(const uint8_t* src, size_t sz, const char* dst_file, int level) {
     return 1;
   }
 
-  const int refresh_hz = 60;
-  const std::chrono::duration refresh_duration = std::chrono::seconds(1) / refresh_hz;
-  std::chrono::time_point last_report = std::chrono::steady_clock::time_point::min();
-  printf("\n");
+  ProgressWriter progress;
   compressor.SetProgressCallback([&](size_t bytes_read, size_t bytes_total, size_t bytes_written) {
-    auto now = std::chrono::steady_clock::now();
-    if (last_report + refresh_duration <= now) {
-      last_report = now;
-      printf("%s%s", kAnsiUpLine, kAnsiClearLine);
-      printf("%2.0f%% (%lu bytes written)\n",
-             static_cast<double>(bytes_read) / static_cast<double>(bytes_total) * 100,
-             bytes_written);
-      fflush(stdout);
-    }
+    progress.Update("%2.0f%% (%lu bytes written)\n",
+                    static_cast<double>(bytes_read) / static_cast<double>(bytes_total) * 100,
+                    bytes_written);
   });
 
   size_t compressed_size;
@@ -141,10 +186,71 @@ int Compress(const uint8_t* src, size_t sz, const char* dst_file, int level) {
     return 1;
   }
 
-  printf("%s%s", kAnsiUpLine, kAnsiClearLine);
-  printf("Wrote %lu bytes (%2.0f%% compression)\n", compressed_size,
-         static_cast<double>(compressed_size) / static_cast<double>(sz) * 100);
-  fflush(stdout);
+  progress.Final("Wrote %lu bytes (%2.0f%% compression)\n", compressed_size,
+                 static_cast<double>(compressed_size) / static_cast<double>(sz) * 100);
+
+  ftruncate(dst_fd.get(), compressed_size);
+  return 0;
+}
+
+int CompressStream(fbl::unique_fd src_fd, size_t sz, const char* dst_file, int level) {
+  CompressionParams params;
+  params.compression_level = level;
+  params.chunk_size = CompressionParams::ChunkSizeForInputSize(sz);
+  StreamingChunkedCompressor compressor(params);
+  size_t output_limit = compressor.ComputeOutputSizeLimit(sz);
+
+  fbl::unique_fd dst_fd;
+  uint8_t* write_buf;
+  if (OpenAndMapForWriting(dst_file, output_limit, &write_buf, &dst_fd)) {
+    return 1;
+  }
+
+  if (compressor.Init(sz, write_buf, output_limit) != chunked_compression::kStatusOk) {
+    fprintf(stderr, "Final failed\n");
+    return 1;
+  }
+
+  ProgressWriter progress;
+  compressor.SetProgressCallback([&](size_t bytes_read, size_t bytes_total, size_t bytes_written) {
+    progress.Update("%2.0f%% (%lu bytes written)\n",
+                    static_cast<double>(bytes_read) / static_cast<double>(bytes_total) * 100,
+                    bytes_written);
+  });
+
+  FILE* in = fdopen(src_fd.get(), "r");
+  ZX_ASSERT(in != nullptr);
+  const size_t chunk_size = 8192;
+  uint8_t buf[chunk_size];
+  size_t bytes_read = 0;
+  for (size_t off = 0; off < sz; off += chunk_size) {
+    size_t r = fread(buf, sizeof(uint8_t), chunk_size, in);
+    if (r == 0) {
+      int err = ferror(in);
+      if (err) {
+        fprintf(stderr, "fread failed: %d\n", err);
+        return err;
+      }
+      break;
+    }
+    if (compressor.Update(buf, r) != chunked_compression::kStatusOk) {
+      fprintf(stderr, "Update failed\n");
+      return 1;
+    }
+    bytes_read += r;
+  }
+  if (bytes_read < sz) {
+    fprintf(stderr, "Only read %lu bytes (expected %lu)\n", bytes_read, sz);
+  }
+
+  size_t compressed_size;
+  if (compressor.Final(&compressed_size) != chunked_compression::kStatusOk) {
+    fprintf(stderr, "Final failed\n");
+    return 1;
+  }
+
+  progress.Final("Wrote %lu bytes (%2.0f%% compression)\n", compressed_size,
+                 static_cast<double>(compressed_size) / static_cast<double>(sz) * 100);
 
   ftruncate(dst_fd.get(), compressed_size);
   return 0;
@@ -229,6 +335,19 @@ int main(int argc, const char** argv) {
         return 1;
       }
       level = static_cast<int>(val);
+    }
+  }
+  bool stream = command_line.HasOption("streaming");
+  if (stream) {
+    if (mode == Mode::DECOMPRESS) {
+      printf("Ignoring --streaming flag for decompression\n");
+    } else {
+      fbl::unique_fd fd(open(input_file.c_str(), O_RDONLY));
+      if (!fd.is_valid()) {
+        fprintf(stderr, "Failed to open '%s'.\n", input_file.c_str());
+        return 1;
+      }
+      return CompressStream(std::move(fd), GetSize(input_file.c_str()), output_file.c_str(), level);
     }
   }
 

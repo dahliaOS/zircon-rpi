@@ -145,14 +145,17 @@ Status ChunkedArchiveHeader::ParseSeekTable(const uint8_t* data, size_t len,
 
 Status ChunkedArchiveHeader::CheckSeekTableEntry(const SeekTableEntry& entry) {
   if (entry.compressed_size == 0 || entry.decompressed_size == 0) {
+    FXL_LOG(ERROR) << "Zero-sized entry";
     return kStatusErrIoDataIntegrity;
   }
   __UNUSED uint64_t compressed_end;
   if (add_overflow(entry.compressed_offset, entry.compressed_size, &compressed_end)) {
+    FXL_LOG(ERROR) << "Compressed frame too big";
     return kStatusErrIoDataIntegrity;
   }
   __UNUSED uint64_t decompressed_end;
   if (add_overflow(entry.decompressed_offset, entry.decompressed_size, &decompressed_end)) {
+    FXL_LOG(ERROR) << "Decompressed frame too big";
     return kStatusErrIoDataIntegrity;
   }
   return kStatusOk;
