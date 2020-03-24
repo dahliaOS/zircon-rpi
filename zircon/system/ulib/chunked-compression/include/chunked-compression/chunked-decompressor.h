@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_
-#define SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_
+#ifndef CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_
+#define CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_
 
 #include <memory>
 
 #include <fbl/array.h>
 #include <fbl/function.h>
+#include <fbl/macros.h>
 
-#include "src/lib/fxl/macros.h"
-#include "src/storage/chunked-compression/chunked-archive.h"
-#include "src/storage/chunked-compression/status.h"
+#include "chunked-archive.h"
+#include "status.h"
 
 namespace chunked_compression {
 
@@ -20,9 +20,9 @@ class ChunkedDecompressor {
  public:
   ChunkedDecompressor();
   ~ChunkedDecompressor();
-  ChunkedDecompressor(ChunkedDecompressor&& o);
-  ChunkedDecompressor& operator=(ChunkedDecompressor&& o);
-  FXL_DISALLOW_COPY_AND_ASSIGN(ChunkedDecompressor);
+  ChunkedDecompressor(ChunkedDecompressor&& o) = default;
+  ChunkedDecompressor& operator=(ChunkedDecompressor&& o) = default;
+  DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(ChunkedDecompressor);
 
   // Convenience method to do a one-shot decompression of |data|, returning an allocated buffer
   // containing the decompressed bytes.
@@ -65,4 +65,4 @@ class ChunkedDecompressor {
 
 }  // namespace chunked_compression
 
-#endif  // SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_
+#endif  // CHUNKED_COMPRESSION_CHUNKED_DECOMPRESSOR_H_

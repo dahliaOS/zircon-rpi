@@ -469,6 +469,7 @@ aggregate_manifest("legacy-aux") {
 #------------------
     ":test.sys.crashsvc-test",
 #------------------
+    ":test.sys.chunked-compression-unittests",
 #------------------
 #------------------
 #------------------
@@ -1009,6 +1010,9 @@ aggregate_manifest("legacy-tests") {
 #------------------
 #------------------
 #------------------
+#------------------
+#------------------
+    ":test.sys.chunked-compression-unittests",
 #------------------
 #------------------
     ":test.sys.crashsvc-test",

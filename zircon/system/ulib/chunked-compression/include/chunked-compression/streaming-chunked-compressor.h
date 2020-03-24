@@ -2,19 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_STORAGE_CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_
-#define SRC_STORAGE_CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_
+#ifndef CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_
+#define CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_
 
 #include <memory>
 #include <optional>
 
 #include <fbl/array.h>
 #include <fbl/function.h>
+#include <fbl/macros.h>
 
-#include "src/lib/fxl/macros.h"
-#include "src/storage/chunked-compression/chunked-archive.h"
-#include "src/storage/chunked-compression/chunked-compressor.h"
-#include "src/storage/chunked-compression/status.h"
+#include "chunked-archive.h"
+#include "chunked-compressor.h"
+#include "status.h"
 
 namespace chunked_compression {
 
@@ -25,7 +25,7 @@ class StreamingChunkedCompressor {
   ~StreamingChunkedCompressor();
   StreamingChunkedCompressor(StreamingChunkedCompressor&& o);
   StreamingChunkedCompressor& operator=(StreamingChunkedCompressor&& o);
-  FXL_DISALLOW_COPY_AND_ASSIGN(StreamingChunkedCompressor);
+  DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(StreamingChunkedCompressor);
 
   // Returns the minimum size that a buffer must be to hold the result of compressing |len| bytes.
   size_t ComputeOutputSizeLimit(size_t len);
@@ -41,6 +41,7 @@ class StreamingChunkedCompressor {
 
  private:
   Status AppendToFrame(const void* data, size_t len);
+  void MoveFrom(StreamingChunkedCompressor&& o);
   uint8_t* compressed_output_;
   size_t compressed_output_len_;
   size_t compressed_output_offset_;
@@ -60,4 +61,4 @@ class StreamingChunkedCompressor {
 
 }  // namespace chunked_compression
 
-#endif  // SRC_STORAGE_CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_
+#endif  // CHUNKED_COMPRESSION_STREAMING_CHUNKED_COMPRESSOR_H_

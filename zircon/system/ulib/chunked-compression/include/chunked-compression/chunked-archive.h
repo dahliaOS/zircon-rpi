@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_
-#define SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_
+#ifndef CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_
+#define CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_
 
 #include <optional>
 
 #include <fbl/algorithm.h>
 #include <fbl/array.h>
+#include <fbl/macros.h>
 
-#include "src/lib/fxl/macros.h"
-#include "src/storage/chunked-compression/status.h"
+#include "status.h"
 
 namespace chunked_compression {
 
@@ -19,6 +19,8 @@ using ArchiveMagicType = uint64_t;
 using ChunkCountType = uint32_t;
 
 constexpr ArchiveMagicType kChunkedCompressionArchiveMagic = 0x60427041'62407140;
+
+constexpr ChunkCountType kChunkArchiveMaxFrames = UINT32_MAX;
 
 constexpr size_t kChunkArchiveMagicOffset = 0ul;
 constexpr size_t kChunkArchiveReservedOffset = 8ul;
@@ -48,7 +50,7 @@ class ChunkedArchiveHeader {
   // Creates an empty archive with no seek table entries.
   ChunkedArchiveHeader() = default;
   ~ChunkedArchiveHeader() = default;
-  FXL_DISALLOW_COPY_ASSIGN_AND_MOVE(ChunkedArchiveHeader);
+  DISALLOW_COPY_ASSIGN_AND_MOVE(ChunkedArchiveHeader);
 
   // Validates that |data| is a valid chunked archive header and fills |out| with a copy of its
   // contents.
@@ -98,7 +100,7 @@ class ChunkedArchiveWriter {
   ChunkedArchiveWriter(void* dst, size_t dst_len, size_t num_frames);
   ChunkedArchiveWriter() = delete;
   ~ChunkedArchiveWriter() = default;
-  FXL_DISALLOW_COPY_ASSIGN_AND_MOVE(ChunkedArchiveWriter);
+  DISALLOW_COPY_ASSIGN_AND_MOVE(ChunkedArchiveWriter);
 
   // Computes the number of frames which will be used to compress a |size|-byte input.
   static size_t NumFramesForDataSize(size_t size, size_t chunk_size) {
@@ -131,9 +133,9 @@ class ChunkedArchiveWriter {
   uint8_t* const dst_;
   SeekTableEntry* seek_table_;
   unsigned current_frame_ = 0;
-  unsigned num_frames_;
+  ChunkCountType num_frames_;
 };
 
 }  // namespace chunked_compression
 
-#endif  // SRC_STORAGE_CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_
+#endif  // CHUNKED_COMPRESSION_CHUNKED_ARCHIVE_H_

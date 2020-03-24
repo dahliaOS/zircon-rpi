@@ -2,18 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunked-compressor.h"
-
 #include <zircon/assert.h>
 
 #include <algorithm>
 
+#include <chunked-compression/chunked-archive.h>
+#include <chunked-compression/chunked-compressor.h>
+#include <chunked-compression/status.h>
 #include <fbl/algorithm.h>
 #include <zstd/zstd.h>
 
-#include "src/lib/fxl/logging.h"
-#include "src/storage/chunked-compression/chunked-archive.h"
-#include "src/storage/chunked-compression/status.h"
+#include "logging.h"
 
 namespace chunked_compression {
 
@@ -39,7 +38,7 @@ size_t CompressionParams::MinChunkSize() { return 131072; /* 128K, or 32 4k page
 size_t CompressionParams::MaxChunkSize() { return 1048576; /* 1M, or 256 4k pages */ }
 
 struct ChunkedCompressor::CompressionContext {
-  CompressionContext() {}
+  CompressionContext() = default;
   explicit CompressionContext(ZSTD_CCtx* ctx) : inner_(ctx) {}
   ~CompressionContext() { ZSTD_freeCCtx(inner_); }
 
@@ -52,13 +51,6 @@ ChunkedCompressor::ChunkedCompressor(CompressionParams params)
     : params_(params), context_(std::make_unique<CompressionContext>(ZSTD_createCCtx())) {}
 
 ChunkedCompressor::~ChunkedCompressor() {}
-
-ChunkedCompressor::ChunkedCompressor(ChunkedCompressor&& o) : context_(std::move(o.context_)) {}
-
-ChunkedCompressor& ChunkedCompressor::operator=(ChunkedCompressor&& o) {
-  context_ = std::move(o.context_);
-  return *this;
-}
 
 Status ChunkedCompressor::CompressBytes(const void* data, size_t len,
                                         fbl::Array<uint8_t>* compressed_data_out,
@@ -124,7 +116,7 @@ Status ChunkedCompressor::Compress(const void* data, size_t len, void* dst, size
     entry.compressed_size = compressed_chunk_size;
     status = header_writer.AddEntry(entry);
     if (status != kStatusOk) {
-      FXL_LOG(ERROR) << "Failed to write chunk " << chunks_written;
+      FX_LOGF(ERROR, kLogTag, "Failed to write chunk %u", chunks_written);
       return status;
     }
 
@@ -152,7 +144,7 @@ Status ChunkedCompressor::CompressChunk(const void* data, size_t len, void* dst,
   size_t compressed_size =
       ZSTD_compressCCtx(context_->inner_, dst, dst_len, data, len, params_.compression_level);
   if (ZSTD_isError(compressed_size)) {
-    FXL_LOG(ERROR) << "Compression failed: " << ZSTD_getErrorName(compressed_size);
+    FX_LOGF(ERROR, kLogTag, "Compression failed: %s", ZSTD_getErrorName(compressed_size));
     return kStatusErrInternal;
   }
   *bytes_written_out = compressed_size;

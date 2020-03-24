@@ -2,29 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "streaming-chunked-compressor.h"
-
 #include <zircon/assert.h>
 
 #include <algorithm>
 
+#include <chunked-compression/chunked-archive.h>
+#include <chunked-compression/chunked-compressor.h>
+#include <chunked-compression/status.h>
+#include <chunked-compression/streaming-chunked-compressor.h>
 #include <fbl/algorithm.h>
 #include <zstd/zstd.h>
 
-#include "src/lib/fxl/logging.h"
-#include "src/storage/chunked-compression/chunked-archive.h"
-#include "src/storage/chunked-compression/chunked-compressor.h"
-#include "src/storage/chunked-compression/status.h"
+#include "logging.h"
 
 namespace chunked_compression {
 
 struct StreamingChunkedCompressor::CompressionContext {
-  CompressionContext() {}
+  CompressionContext() = default;
   explicit CompressionContext(ZSTD_CCtx* ctx) : inner_(ctx) {}
   ~CompressionContext() { ZSTD_freeCCtx(inner_); }
 
-  size_t current_output_frame_start_;
-  size_t current_output_frame_relative_pos_;
+  size_t current_output_frame_start_ = 0ul;
+  size_t current_output_frame_relative_pos_ = 0ul;
 
   ZSTD_CCtx* inner_;
 };
@@ -37,12 +36,34 @@ StreamingChunkedCompressor::StreamingChunkedCompressor(CompressionParams params)
 
 StreamingChunkedCompressor::~StreamingChunkedCompressor() {}
 
-StreamingChunkedCompressor::StreamingChunkedCompressor(StreamingChunkedCompressor&& o)
-    : context_(std::move(o.context_)) {}
+StreamingChunkedCompressor::StreamingChunkedCompressor(StreamingChunkedCompressor&& o) {
+  MoveFrom(std::move(o));
+}
 
 StreamingChunkedCompressor& StreamingChunkedCompressor::operator=(StreamingChunkedCompressor&& o) {
-  context_ = std::move(o.context_);
+  MoveFrom(std::move(o));
   return *this;
+}
+
+void StreamingChunkedCompressor::MoveFrom(StreamingChunkedCompressor&& o) {
+  compressed_output_ = o.compressed_output_;
+  o.compressed_output_ = nullptr;
+
+  compressed_output_len_ = o.compressed_output_len_;
+  compressed_output_offset_ = o.compressed_output_offset_;
+  o.compressed_output_offset_ = 0ul;
+
+  input_len_ = o.input_len_;
+  input_offset_ = o.input_offset_;
+  o.input_offset_ = 0ul;
+
+  writer_ = std::move(o.writer_);
+
+  progress_callback_ = std::move(o.progress_callback_);
+
+  params_ = o.params_;
+
+  context_ = std::move(o.context_);
 }
 
 size_t StreamingChunkedCompressor::ComputeOutputSizeLimit(size_t len) {
@@ -64,13 +85,15 @@ Status StreamingChunkedCompressor::Init(size_t data_len, void* dst, size_t dst_l
 
   size_t r = ZSTD_initCStream(context_->inner_, params_.compression_level);
   if (ZSTD_isError(r)) {
-    FXL_LOG(ERROR) << "Failed to init stream";
+    FX_LOG(ERROR, kLogTag, "Failed to init stream");
     return kStatusErrInternal;
   }
 
   compressed_output_ = static_cast<uint8_t*>(dst);
   compressed_output_len_ = dst_len;
   compressed_output_offset_ = metadata_size;
+  context_->current_output_frame_start_ = metadata_size;
+  context_->current_output_frame_relative_pos_ = 0ul;
 
   input_len_ = data_len;
   input_offset_ = 0ul;
@@ -115,7 +138,7 @@ Status StreamingChunkedCompressor::Final(size_t* compressed_size_out) {
     return kStatusErrBadState;
   }
   // There should not be any pending output frames.
-  ZX_DEBUG_ASSERT(context_->current_output_frame_relative_pos_ > 0ul);
+  ZX_DEBUG_ASSERT(context_->current_output_frame_relative_pos_ == 0ul);
 
   Status status = writer_->Finalize();
   if (status == kStatusOk) {
@@ -140,31 +163,35 @@ Status StreamingChunkedCompressor::AppendToFrame(const void* data, size_t len) {
 
   // |out_buf| is set up to be relative to the current output frame we are processing.
   ZSTD_outBuffer out_buf;
-  // dst is the start of the frame
+  // dst is the start of the frame.
   out_buf.dst = static_cast<uint8_t*>(compressed_output_) + context_->current_output_frame_start_;
-  // size is the total number of bytes left in the output buffer
-  out_buf.size = compressed_output_len_ - compressed_output_offset_;
-  // pos is the progress past the start of the frame, so far.
+  // size is the total number of bytes left in the output buffer, from the start of the current
+  // frame.
+  out_buf.size = compressed_output_len_ - context_->current_output_frame_start_;
+  // pos is the progress past the start of the frame so far.
   out_buf.pos = context_->current_output_frame_relative_pos_;
+
+  ZX_DEBUG_ASSERT(context_->current_output_frame_start_ + out_buf.size <= compressed_output_len_);
+  ZX_DEBUG_ASSERT(out_buf.pos <= out_buf.size);
 
   size_t r = ZSTD_compressStream(context_->inner_, &out_buf, &in_buf);
   if (ZSTD_isError(r)) {
-    FXL_LOG(ERROR) << "ZSTD_compressStream failed";
+    FX_LOGF(ERROR, kLogTag, "ZSTD_compressStream failed: %s", ZSTD_getErrorName(r));
     return kStatusErrInternal;
   } else if (in_buf.pos < in_buf.size) {
-    FXL_LOG(ERROR) << "Partial read";
+    FX_LOG(ERROR, kLogTag, "Partial read");
     return kStatusErrInternal;
   }
 
   r = ZSTD_flushStream(context_->inner_, &out_buf);
   if (ZSTD_isError(r)) {
-    FXL_LOG(ERROR) << "ZSTD_flushStream failed";
+    FX_LOGF(ERROR, kLogTag, "ZSTD_flushStream failed: %s", ZSTD_getErrorName(r));
     return kStatusErrInternal;
   }
   if (will_finish_frame) {
     r = ZSTD_endStream(context_->inner_, &out_buf);
     if (ZSTD_isError(r)) {
-      FXL_LOG(ERROR) << "ZSTD_endStream failed";
+      FX_LOGF(ERROR, kLogTag, "ZSTD_endStream failed: %s", ZSTD_getErrorName(r));
       return kStatusErrInternal;
     }
   }
@@ -182,6 +209,7 @@ Status StreamingChunkedCompressor::AppendToFrame(const void* data, size_t len) {
     entry.compressed_size = compressed_output_offset_ - context_->current_output_frame_start_;
     Status status = writer_->AddEntry(entry);
     if (status != kStatusOk) {
+      FX_LOG(ERROR, kLogTag, "Failed to create seek table entry");
       return status;
     }
 

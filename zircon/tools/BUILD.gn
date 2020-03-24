@@ -33,6 +33,7 @@ foreach(host, standard_build_hosts) {
     # developers.  Not listed here are tools whose only use is via GN rules
     # in this build.
     deps = [
+      "$zx/system/ulib/chunked-compression:chunked-compress",
       "$zx/third_party/uapp/mkfs-msdosfs",
       "blobfs",
       "bootserver",

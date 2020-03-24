@@ -2,19 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunked-decompressor.h"
-
+#include <chunked-compression/chunked-archive.h>
+#include <chunked-compression/chunked-decompressor.h>
+#include <chunked-compression/status.h>
 #include <fbl/array.h>
 #include <zstd/zstd.h>
 
-#include "src/lib/fxl/logging.h"
-#include "src/storage/chunked-compression/chunked-archive.h"
-#include "src/storage/chunked-compression/status.h"
+#include "logging.h"
 
 namespace chunked_compression {
 
 struct ChunkedDecompressor::DecompressionContext {
-  DecompressionContext() {}
+  DecompressionContext() = default;
   explicit DecompressionContext(ZSTD_DCtx* ctx) : inner_(ctx) {}
   ~DecompressionContext() { ZSTD_freeDCtx(inner_); }
 
@@ -25,21 +24,13 @@ ChunkedDecompressor::ChunkedDecompressor()
     : context_(std::make_unique<DecompressionContext>(ZSTD_createDCtx())) {}
 ChunkedDecompressor::~ChunkedDecompressor() {}
 
-ChunkedDecompressor::ChunkedDecompressor(ChunkedDecompressor&& o)
-    : context_(std::move(o.context_)) {}
-
-ChunkedDecompressor& ChunkedDecompressor::operator=(ChunkedDecompressor&& o) {
-  context_ = std::move(o.context_);
-  return *this;
-}
-
 Status ChunkedDecompressor::DecompressBytes(const void* data, size_t len,
                                             fbl::Array<uint8_t>* data_out,
                                             size_t* bytes_written_out) {
   Status status;
   ChunkedArchiveHeader header;
   if ((status = ChunkedArchiveHeader::Parse(data, len, &header)) != kStatusOk) {
-    FXL_LOG(ERROR) << "Failed to parse header";
+    FX_LOG(ERROR, kLogTag, "Failed to parse header");
     return status;
   }
   ChunkedDecompressor decompressor;
@@ -97,7 +88,7 @@ Status ChunkedDecompressor::DecompressFrame(const ChunkedArchiveHeader& header, 
   size_t decompressed_size =
       ZSTD_decompressDCtx(context_->inner_, dst, dst_len, frame_data, frame_len);
   if (ZSTD_isError(decompressed_size)) {
-    FXL_LOG(ERROR) << "Decompression failed: " << ZSTD_getErrorName(decompressed_size);
+    FX_LOGF(ERROR, kLogTag, "Decompression failed: %s", ZSTD_getErrorName(decompressed_size));
     return kStatusErrInternal;
   }
 

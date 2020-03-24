@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef SRC_STORAGE_CHUNKED_COMPRESSION_STATUS_H_
-#define SRC_STORAGE_CHUNKED_COMPRESSION_STATUS_H_
+#ifndef CHUNKED_COMPRESSION_STATUS_H_
+#define CHUNKED_COMPRESSION_STATUS_H_
 
 namespace chunked_compression {
 
@@ -42,4 +42,4 @@ constexpr Status kStatusErrIoDataIntegrity = -42;
 
 }  // namespace chunked_compression
 
-#endif  // SRC_STORAGE_CHUNKED_COMPRESSION_STATUS_H_
+#endif  // CHUNKED_COMPRESSION_STATUS_H_

@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,13 +19,11 @@
 #include <thread>
 #include <vector>
 
+#include <chunked-compression/chunked-compressor.h>
+#include <chunked-compression/chunked-decompressor.h>
+#include <chunked-compression/status.h>
+#include <chunked-compression/streaming-chunked-compressor.h>
 #include <fbl/unique_fd.h>
-
-#include "src/lib/fxl/command_line.h"
-#include "src/storage/chunked-compression/chunked-compressor.h"
-#include "src/storage/chunked-compression/chunked-decompressor.h"
-#include "src/storage/chunked-compression/status.h"
-#include "src/storage/chunked-compression/streaming-chunked-compressor.h"
 
 namespace {
 
@@ -87,7 +86,7 @@ void usage(const char* fname) {
 
 int OpenAndMapForWriting(const char* file, size_t write_size, uint8_t** out_write_buf,
                          fbl::unique_fd* out_fd) {
-  fbl::unique_fd fd(open(file, O_RDWR | O_CREAT | O_TRUNC));
+  fbl::unique_fd fd(open(file, O_RDWR | O_CREAT | O_TRUNC, 0644));
   if (!fd.is_valid()) {
     fprintf(stderr, "Failed to open '%s': %s\n", file, strerror(errno));
     return 1;
@@ -284,21 +283,58 @@ int Decompress(const uint8_t* src, size_t sz, const char* dst_file) {
 
 }  // namespace
 
-int main(int argc, const char** argv) {
-  if (argc < 4) {
-    usage(argv[0]);
-    return 1;
-  }
-  const fxl::CommandLine command_line = fxl::CommandLineFromArgcArgv(argc, argv);
-  const auto& positional_args = command_line.positional_args();
+int main(int argc, char* const* argv) {
+  bool stream = false;
+  int level = CompressionParams::DefaultCompressionLevel();
+  while (1) {
+    static struct option opts[] = {
+        {"stream", no_argument, nullptr, 's'},
+        {"level", required_argument, nullptr, 'l'},
+        {nullptr, 0, nullptr, 0},
+    };
+    int c = getopt_long(argc, argv, "sl:", opts, nullptr);
 
-  if (positional_args.size() < 3) {
-    usage(argv[0]);
+    if (c < 0) {
+      break;
+    }
+    switch (c) {
+      case 'l': {
+        char* endp;
+        long val = strtol(optarg, &endp, 10);
+        if (endp != optarg + strlen(optarg)) {
+          usage(argv[0]);
+          return 1;
+        } else if (level < CompressionParams::MinCompressionLevel() ||
+                   level > CompressionParams::MaxCompressionLevel()) {
+          fprintf(stderr, "Invalid level, should be in range %d <= level <= %d\n",
+                  CompressionParams::MinCompressionLevel(),
+                  CompressionParams::MaxCompressionLevel());
+          return 1;
+        }
+        level = static_cast<int>(val);
+        break;
+      }
+      case 's': {
+        stream = true;
+        break;
+      }
+      default:
+        usage(argv[0]);
+        return 1;
+    }
+  }
+
+  const char* bin_name = argv[0];
+  argc -= optind;
+  argv += optind;
+
+  if (argc < 3) {
+    usage(bin_name);
     return 1;
   }
-  const std::string& mode_str = positional_args[0];
-  const std::string& input_file = positional_args[1];
-  const std::string& output_file = positional_args[2];
+  const char* mode_str = argv[0];
+  const char* input_file = argv[1];
+  const char* output_file = argv[2];
 
   enum Mode {
     COMPRESS,
@@ -306,58 +342,36 @@ int main(int argc, const char** argv) {
     UNKNOWN,
   };
   Mode mode = Mode::UNKNOWN;
-  if (mode_str == "d") {
+  if (!strcmp(mode_str, "d")) {
     mode = Mode::DECOMPRESS;
-  } else if (mode_str == "c") {
+  } else if (!strcmp(mode_str, "c")) {
     mode = Mode::COMPRESS;
   } else {
     fprintf(stderr, "Invalid mode (should be 'd' or 'c').\n");
-    usage(argv[0]);
+    usage(bin_name);
     return 1;
   }
 
-  int level = CompressionParams::DefaultCompressionLevel();
-  if (command_line.HasOption("level")) {
-    if (mode == Mode::DECOMPRESS) {
-      printf("Ignoring --level flag for decompression\n");
-    } else {
-      std::string level_str;
-      ZX_ASSERT(command_line.GetOptionValue("level", &level_str));
-      char* endp;
-      long val = strtol(level_str.c_str(), &endp, 10);
-      if (endp != level_str.c_str() + level_str.length()) {
-        usage(argv[0]);
-        return 1;
-      } else if (level < CompressionParams::MinCompressionLevel() ||
-                 level > CompressionParams::MaxCompressionLevel()) {
-        fprintf(stderr, "Invalid level, should be in range %d <= level <= %d\n",
-                CompressionParams::MinCompressionLevel(), CompressionParams::MaxCompressionLevel());
-        return 1;
-      }
-      level = static_cast<int>(val);
-    }
-  }
-  bool stream = command_line.HasOption("streaming");
   if (stream) {
     if (mode == Mode::DECOMPRESS) {
       printf("Ignoring --streaming flag for decompression\n");
     } else {
-      fbl::unique_fd fd(open(input_file.c_str(), O_RDONLY));
+      fbl::unique_fd fd(open(input_file, O_RDONLY));
       if (!fd.is_valid()) {
-        fprintf(stderr, "Failed to open '%s'.\n", input_file.c_str());
+        fprintf(stderr, "Failed to open '%s'.\n", input_file);
         return 1;
       }
-      return CompressStream(std::move(fd), GetSize(input_file.c_str()), output_file.c_str(), level);
+      return CompressStream(std::move(fd), GetSize(input_file), output_file, level);
     }
   }
 
   fbl::unique_fd src_fd;
   const uint8_t* src_data;
   size_t src_size;
-  if (OpenAndMapForReading(input_file.c_str(), &src_fd, &src_data, &src_size)) {
+  if (OpenAndMapForReading(input_file, &src_fd, &src_data, &src_size)) {
     return 1;
   }
 
-  return mode == Mode::COMPRESS ? Compress(src_data, src_size, output_file.c_str(), level)
-                                : Decompress(src_data, src_size, output_file.c_str());
+  return mode == Mode::COMPRESS ? Compress(src_data, src_size, output_file, level)
+                                : Decompress(src_data, src_size, output_file);
 }

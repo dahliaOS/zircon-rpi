@@ -1,0 +1,58 @@
+# Copyright 2020 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+zx_library("chunked-compression") {
+  host = true
+  sdk = "source"
+  sdk_headers = [
+    "chunked-compression/chunked-archive.h",
+    "chunked-compression/chunked-compressor.h",
+    "chunked-compression/chunked-decompressor.h",
+    "chunked-compression/status.h",
+    "chunked-compression/streaming-chunked-compressor.h",
+  ]
+  sources = [
+    "chunked-archive.cc",
+    "chunked-compressor.cc",
+    "chunked-decompressor.cc",
+    "logging.h",
+    "streaming-chunked-compressor.cc",
+  ]
+  public_deps = [ "$zx/system/ulib/fbl:headers" ]
+  deps = [
+    "$zx/system/ulib/fbl",
+    "$zx/third_party/ulib/zstd",
+  ]
+
+  if (is_fuchsia) {
+    deps += [ "$zx/system/ulib/syslog" ]
+  }
+}
+
+zx_host_tool("chunked-compress") {
+  sources = [ "main.cc" ]
+  deps = [
+    ":chunked-compression",
+    "$zx/system/ulib/fbl",
+  ]
+}
+
+zx_test("chunked-compression-unittests") {
+  testonly = true
+  output_name = "chunked-compression-unittests"
+  sources = [
+    "chunked-compressor-test.cc",
+    "chunked-decompressor-test.cc",
+    "streaming-chunked-compressor-test.cc",
+  ]
+  deps = [
+    ":chunked-compression",
+    "$zx/system/ulib/zxtest",
+  ]
+}
+
+group("test") {
+  testonly = true
+  deps = [ ":chunked-compression-unittests" ]
+}

@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunked-archive.h"
-
 #include <zircon/compiler.h>
 
+#include <chunked-compression/chunked-archive.h>
+#include <chunked-compression/status.h>
 #include <fbl/array.h>
 
-#include "src/lib/fxl/logging.h"
-#include "src/storage/chunked-compression/status.h"
+#include "logging.h"
 
 namespace chunked_compression {
 namespace {
@@ -80,7 +79,8 @@ Status ChunkedArchiveHeader::Serialize(void* dst, size_t dst_len) const {
 
   reinterpret_cast<ArchiveMagicType*>(target + kChunkArchiveMagicOffset)[0] =
       kChunkedCompressionArchiveMagic;
-  reinterpret_cast<ChunkCountType*>(target + kChunkArchiveNumChunksOffset)[0] = seek_table_.size();
+  ChunkCountType num_elements = static_cast<ChunkCountType>(seek_table_.size());
+  reinterpret_cast<ChunkCountType*>(target + kChunkArchiveNumChunksOffset)[0] = num_elements;
   SeekTableEntry* target_seek_table =
       reinterpret_cast<SeekTableEntry*>(target + kChunkArchiveSeekTableOffset);
   for (unsigned i = 0; i < seek_table_.size(); ++i) {
@@ -115,7 +115,7 @@ Status ChunkedArchiveHeader::ParseSeekTable(const uint8_t* data, size_t len,
   if (status != kStatusOk) {
     return status;
   } else if (len < kChunkArchiveSeekTableOffset + (num_chunks * sizeof(SeekTableEntry))) {
-    FXL_LOG(ERROR) << "Invalid archive. Header too small for seek table size";
+    FX_LOG(ERROR, kLogTag, "Invalid archive. Header too small for seek table size");
     return kStatusErrIoDataIntegrity;
   }
 
@@ -127,14 +127,14 @@ Status ChunkedArchiveHeader::ParseSeekTable(const uint8_t* data, size_t len,
     // Validate each entry separately before calling EntriesOverlap pair-wise so we can assume
     // both entries are valid in EntriesOverlap.
     if ((status = CheckSeekTableEntry(entries[i])) != kStatusOk) {
-      FXL_LOG(ERROR) << "Invalid archive. Bad seek table entry " << i;
+      FX_LOGF(ERROR, kLogTag, "Invalid archive. Bad seek table entry %d\n", i);
       return status;
     }
   }
   for (unsigned i = 0; i < num_chunks; ++i) {
     for (unsigned j = i + 1; j < num_chunks; ++j) {
       if (EntriesOverlap(entries[i], entries[j])) {
-        FXL_LOG(ERROR) << "Invalid archive. Chunks " << i << " and " << j << " overlap.";
+        FX_LOGF(ERROR, kLogTag, "Invalid archive. Chunks %d and %d overlap\n", i, j);
         return kStatusErrIoDataIntegrity;
       }
     }
@@ -145,17 +145,17 @@ Status ChunkedArchiveHeader::ParseSeekTable(const uint8_t* data, size_t len,
 
 Status ChunkedArchiveHeader::CheckSeekTableEntry(const SeekTableEntry& entry) {
   if (entry.compressed_size == 0 || entry.decompressed_size == 0) {
-    FXL_LOG(ERROR) << "Zero-sized entry";
+    FX_LOG(ERROR, kLogTag, "Zero-sized entry");
     return kStatusErrIoDataIntegrity;
   }
   __UNUSED uint64_t compressed_end;
   if (add_overflow(entry.compressed_offset, entry.compressed_size, &compressed_end)) {
-    FXL_LOG(ERROR) << "Compressed frame too big";
+    FX_LOG(ERROR, kLogTag, "Compressed frame too big");
     return kStatusErrIoDataIntegrity;
   }
   __UNUSED uint64_t decompressed_end;
   if (add_overflow(entry.decompressed_offset, entry.decompressed_size, &decompressed_end)) {
-    FXL_LOG(ERROR) << "Decompressed frame too big";
+    FX_LOG(ERROR, kLogTag, "Decompressed frame too big");
     return kStatusErrIoDataIntegrity;
   }
   return kStatusOk;
@@ -171,8 +171,10 @@ bool ChunkedArchiveHeader::EntriesOverlap(const SeekTableEntry& a, const SeekTab
 // ChunkedArchiveWriter
 
 ChunkedArchiveWriter::ChunkedArchiveWriter(void* dst, size_t dst_len, size_t num_frames)
-    : dst_(static_cast<uint8_t*>(dst)), num_frames_(num_frames) {
+    : dst_(static_cast<uint8_t*>(dst)) {
+  ZX_ASSERT(num_frames < kChunkArchiveMaxFrames);
   ZX_ASSERT(dst_len >= kChunkArchiveSeekTableOffset + (num_frames * sizeof(SeekTableEntry)));
+  num_frames_ = static_cast<ChunkCountType>(num_frames);
   seek_table_ = reinterpret_cast<SeekTableEntry* const>(dst_ + kChunkArchiveSeekTableOffset);
 }
 

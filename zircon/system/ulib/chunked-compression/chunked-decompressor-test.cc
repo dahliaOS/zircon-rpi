@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunked-decompressor.h"
-
+#include <chunked-compression/chunked-decompressor.h>
 #include <fbl/array.h>
-#include <gtest/gtest.h>
+#include <zxtest/zxtest.h>
 
 namespace chunked_compression {
 namespace {}  // namespace

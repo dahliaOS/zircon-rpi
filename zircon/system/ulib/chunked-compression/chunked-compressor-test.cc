@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chunked-compressor.h"
-
 #include <zircon/assert.h>
 
+#include <chunked-compression/chunked-compressor.h>
 #include <fbl/algorithm.h>
 #include <fbl/array.h>
-#include <gtest/gtest.h>
+#include <zxtest/zxtest.h>
 
 namespace chunked_compression {
 namespace {
