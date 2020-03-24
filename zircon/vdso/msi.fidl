@@ -1,0 +1,18 @@
+// Copyright 2020 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// TODO(fxb/39732): This should be read as "library zx".
+library zz;
+
+[Transport = "Syscall"]
+protocol msi {
+    /// Allocates |count| MSIs and returns a handle to an MsiAllocation in |out_handle|.
+    /// Rights: handle must have resource kind ZX_RSRC_KIND_ROOT.
+    /// |out_handle| is a handle to an MsiAllocation.
+    msi_allocate(handle<resource> root, uint32 count)
+        -> (status status, handle out_handle);
+    /// |in_handle| is a handle to an MsiAllocation. |out_handle| is a handle to an MsiDispatcher.
+    msi_create(handle msi_alloc, uint32 msi_id, handle<vmo> vmo, usize vmo_offset, uint32 options)
+        -> (status status, handle out_handle);
+};

@@ -137,12 +137,6 @@ static bool allocation_support_test() {
   END_TEST;
 }
 
-int interrupt_waiter(void* arg) {
-  auto dispatcher = reinterpret_cast<InterruptDispatcher*>(arg);
-  zx_time_t out;
-  return (dispatcher->WaitForInterrupt(&out) == ZX_OK);
-}
-
 // Use a static var for tracking calls rather than a lambda to avoid storage issues with lambda
 // captures and function pointers without having to increase complexity in the dispatcher.
 static uint32_t register_call_count = 0;
@@ -166,15 +160,6 @@ static bool interrupt_creation_test() {
   size_t vmo_size = 48u;
   ASSERT_EQ(ZX_OK,
             VmObjectPaged::CreateContiguous(PMM_ALLOC_FLAG_ANY, vmo_size, 0 /* options */, &vmo));
-  ASSERT_EQ(ZX_OK, vmo->SetMappingCachePolicy(ZX_CACHE_POLICY_UNCACHED_DEVICE));
-  // This mapping must be created after the MsiDispatcher because the VMO's
-  // cache policy is set within Create().
-  fbl::RefPtr<VmMapping> mapping;
-  ASSERT_EQ(ZX_OK, VmAspace::kernel_aspace()->RootVmar()->CreateVmMapping(
-                       0 /* offset */, vmo_size, 0 /* align_pow2 */, 0 /* vmar_flags */, vmo,
-                       0 /* vmo offset */, ARCH_MMU_FLAG_PERM_READ | ARCH_MMU_FLAG_PERM_WRITE,
-                       nullptr, &mapping));
-  auto* reg_ptr = reinterpret_cast<uint32_t*>(mapping->base() + reg_offset);
 
   // This test emulates a block of MSI interrupts each taking up a given bit in a register for
   // their own masking. It validates that the MsiDispatcher masks / unmasks the correct bit, and
@@ -184,27 +169,29 @@ static bool interrupt_creation_test() {
   for (uint32_t msi_id = 0; msi_id < msi_cnt; msi_id++) {
     zx_rights_t rights;
     KernelHandle<InterruptDispatcher> interrupt;
-    ASSERT_EQ(ZX_OK,
-              MsiDispatcher::Create(alloc, msi_id, vmo, reg_offset, MSI_FLAG_HAS_PVM, &rights,
-                                    &interrupt, register_fn, true /* virtual interrupt */));
+    ASSERT_EQ(ZX_ERR_INVALID_ARGS,
+              MsiDispatcher::Create(alloc, msi_id, vmo, reg_offset, ZX_INTERRUPT_VIRTUAL, &rights,
+                                    &interrupt, register_fn));
+    // This should fail because the VMO has not had a cache policy set.
+    ASSERT_EQ(ZX_ERR_INVALID_ARGS,
+              MsiDispatcher::Create(alloc, msi_id, vmo, reg_offset, ZX_INTERRUPT_VIRTUAL, &rights,
+                                    &interrupt, register_fn));
+    ASSERT_EQ(ZX_OK, vmo->SetMappingCachePolicy(ZX_CACHE_POLICY_UNCACHED_DEVICE));
+    // Now Create() should succeed.
+    ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, msi_id, vmo, reg_offset, ZX_INTERRUPT_VIRTUAL,
+                                           &rights, &interrupt, register_fn));
+    // This mapping must be created after the MsiDispatcher because the VMO's
+    // cache policy is set within Create().
+    fbl::RefPtr<VmMapping> mapping;
+    ASSERT_EQ(ZX_OK, VmAspace::kernel_aspace()->RootVmar()->CreateVmMapping(
+                         0 /* offset */, vmo_size, 0 /* align_pow2 */, 0 /* vmar_flags */, vmo,
+                         0 /* vmo offset */, ARCH_MMU_FLAG_PERM_READ | ARCH_MMU_FLAG_PERM_WRITE,
+                         nullptr, &mapping));
+    auto* reg_ptr = reinterpret_cast<uint32_t*>(mapping->base() + reg_offset);
 
     // What the register should look like when |msi_id| is presently masked.
     uint32_t msi_id_masked = (1u << msi_id);
     // The mask bit should be set from creation of the object.
-    EXPECT_EQ(msi_id_masked, *reg_ptr);
-
-    // Now have a child thread wait on the interrupt and report success back.
-    auto thread =
-        Thread::Create("msi_object_waiter", interrupt_waiter,
-                       reinterpret_cast<void*>(interrupt.dispatcher().get()), DEFAULT_PRIORITY);
-    thread->Resume();
-    // Now that the child is waiting on the interrupt it should be unmasked.
-    EXPECT_EQ(msi_id_masked, *reg_ptr);
-    // Finally, trigger the interrupt, check for success, then ensure it was masked again.
-    interrupt.dispatcher()->Trigger(current_time());
-    int ret = 0;
-    EXPECT_EQ(ZX_OK, thread->Join(&ret, current_time() + ZX_SEC(1)));
-    EXPECT_EQ(1, ret);
     EXPECT_EQ(msi_id_masked, *reg_ptr);
   }
 
@@ -238,11 +225,13 @@ static bool interrupt_duplication_test() {
   // Id reservation in the allocation.
   zx_rights_t rights;
   KernelHandle<InterruptDispatcher> d1, d2;
-  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, 0, &rights, &d1, register_fn, true));
-  ASSERT_EQ(ZX_ERR_ALREADY_BOUND,
-            MsiDispatcher::Create(alloc, 0, vmo, 0, 0, &rights, &d2, register_fn, true));
+  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, ZX_INTERRUPT_VIRTUAL, &rights, &d1,
+                                         register_fn));
+  ASSERT_EQ(ZX_ERR_ALREADY_BOUND, MsiDispatcher::Create(alloc, 0, vmo, 0, ZX_INTERRUPT_VIRTUAL,
+                                                        &rights, &d2, register_fn));
   d1.reset();
-  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, 0, &rights, &d2, register_fn, true));
+  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, ZX_INTERRUPT_VIRTUAL, &rights, &d2,
+                                         register_fn));
 
   END_TEST;
 }
@@ -275,16 +264,15 @@ static bool interrupt_vmo_test() {
   KernelHandle<InterruptDispatcher> interrupt;
   // This should fail because the VMO is non-contiguous.
   ASSERT_EQ(ZX_ERR_INVALID_ARGS,
-            MsiDispatcher::Create(alloc, 0, vmo_noncontig, 0, MSI_FLAG_HAS_PVM, &rights, &interrupt,
-                                  register_fn, true /* virtual interrupt */));
+            MsiDispatcher::Create(alloc, 0, vmo_noncontig, 0, ZX_INTERRUPT_VIRTUAL, &rights,
+                                  &interrupt, register_fn));
   // This should fail because the VMO has not had a cache policy set.
-  ASSERT_EQ(ZX_ERR_INVALID_ARGS,
-            MsiDispatcher::Create(alloc, 0, vmo, 0, MSI_FLAG_HAS_PVM, &rights, &interrupt,
-                                  register_fn, true /* virtual interrupt */));
+  ASSERT_EQ(ZX_ERR_INVALID_ARGS, MsiDispatcher::Create(alloc, 0, vmo, 0, ZX_INTERRUPT_VIRTUAL,
+                                                       &rights, &interrupt, register_fn));
   ASSERT_EQ(ZX_OK, vmo->SetMappingCachePolicy(ZX_CACHE_POLICY_UNCACHED_DEVICE));
   // Now Create() should succeed.
-  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, MSI_FLAG_HAS_PVM, &rights, &interrupt,
-                                         register_fn, true /* virtual interrupt */));
+  ASSERT_EQ(ZX_OK, MsiDispatcher::Create(alloc, 0, vmo, 0, ZX_INTERRUPT_VIRTUAL, &rights,
+                                         &interrupt, register_fn));
   END_TEST;
 }
 

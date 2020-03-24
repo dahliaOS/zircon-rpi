@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <trace.h>
+#include <zircon/errors.h>
+#include <zircon/rights.h>
 #include <zircon/syscalls/iommu.h>
 #include <zircon/syscalls/pci.h>
 #include <zircon/syscalls/smc.h>
@@ -28,6 +30,9 @@
 #include <object/interrupt_dispatcher.h>
 #include <object/interrupt_event_dispatcher.h>
 #include <object/iommu_dispatcher.h>
+#include <object/msi_allocation.h>
+#include <object/msi_allocation_dispatcher.h>
+#include <object/msi_dispatcher.h>
 #include <object/process_dispatcher.h>
 #include <object/resource.h>
 #include <object/vcpu_dispatcher.h>
@@ -288,6 +293,58 @@ zx_status_t sys_ioports_release(zx_handle_t hrsrc, uint16_t io_addr, uint32_t le
   return ZX_ERR_NOT_SUPPORTED;
 }
 #endif
+
+// zx_status_t zx_msi_allocate
+zx_status_t sys_msi_allocate(zx_handle_t root, uint32_t count, user_out_handle* out) {
+  zx_status_t st;
+  if ((st = validate_resource(root, ZX_RSRC_KIND_ROOT)) != ZX_OK) {
+    return st;
+  }
+
+  fbl::RefPtr<MsiAllocation> alloc;
+  if ((st = MsiAllocation::Create(count, &alloc)) != ZX_OK) {
+    return st;
+  }
+
+  zx_rights_t rights;
+  KernelHandle<MsiAllocationDispatcher> alloc_handle;
+  if ((st = MsiAllocationDispatcher::Create(ktl::move(alloc), &alloc_handle, &rights)) != ZX_OK) {
+    return st;
+  }
+
+  return out->make(ktl::move(alloc_handle), rights);
+}
+
+// zx_status_t zx_msi_create
+zx_status_t sys_msi_create(zx_handle_t msi_alloc, uint32_t msi_id, zx_handle_t vmo,
+                           size_t vmo_offset, uint32_t options, user_out_handle* out) {
+  // The only flag supported is ZX_INTERRUPT_VIRTUAL.
+  const uint32_t options_mask = ZX_INTERRUPT_VIRTUAL;
+  if (options & ~options_mask) {
+    return ZX_ERR_INVALID_ARGS;
+  }
+
+  auto* up = ProcessDispatcher::GetCurrent();
+  fbl::RefPtr<MsiAllocationDispatcher> msi_alloc_disp;
+  zx_status_t st = up->GetDispatcherWithRights(msi_alloc, ZX_RIGHT_MANAGE_MSI, &msi_alloc_disp);
+  if (st != ZX_OK) {
+    return st;
+  }
+
+  fbl::RefPtr<VmObjectDispatcher> vmo_disp;
+  if ((st = up->GetDispatcherWithRights(vmo, ZX_RIGHT_MAP, &vmo_disp)) != ZX_OK) {
+    return st;
+  }
+
+  zx_rights_t rights;
+  KernelHandle<InterruptDispatcher> msi_handle;
+  if ((st = MsiDispatcher::Create(msi_alloc_disp->msi_allocation(), msi_id, vmo_disp->vmo(),
+                                  vmo_offset, 0, &rights, &msi_handle)) != ZX_OK) {
+    return st;
+  }
+
+  return out->make(ktl::move(msi_handle), rights);
+}
 
 // zx_status_t zx_pc_firmware_tables
 zx_status_t sys_pc_firmware_tables(zx_handle_t hrsrc, user_out_ptr<zx_paddr_t> acpi_rsdp,

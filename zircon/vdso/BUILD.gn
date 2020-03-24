@@ -46,6 +46,7 @@ fidl_library("zz") {
     "job.fidl",
     "ktrace.fidl",
     "misc.fidl",
+    "msi.fidl",
     "mtrace.fidl",
     "object.fidl",
     "pager.fidl",

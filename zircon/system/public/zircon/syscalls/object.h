@@ -593,6 +593,7 @@ typedef struct zx_info_msi {
   uint32_t base_irq_id;
   // The number of IRQs in the allocated block.
   uint32_t num_irq;
+  uint32_t unused; // align to 64 bit boundary for user_copy.
 } zx_info_msi_t;
 
 

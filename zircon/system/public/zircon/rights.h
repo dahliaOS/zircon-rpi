@@ -29,6 +29,7 @@ typedef uint32_t zx_rights_t;
 #define ZX_RIGHT_MANAGE_PROCESS ((zx_rights_t)1u << 17)
 #define ZX_RIGHT_MANAGE_THREAD ((zx_rights_t)1u << 18)
 #define ZX_RIGHT_APPLY_PROFILE ((zx_rights_t)1u << 19)
+#define ZX_RIGHT_MANAGE_MSI ((zx_rights_t)1u << 20)
 #define ZX_RIGHT_SAME_RIGHTS ((zx_rights_t)1u << 31)
 
 // Convenient names for commonly grouped rights.
@@ -69,7 +70,7 @@ typedef uint32_t zx_rights_t;
 
 #define ZX_DEFAULT_LOG_RIGHTS (ZX_RIGHTS_BASIC | ZX_RIGHT_WRITE | ZX_RIGHT_SIGNAL)
 
-#define ZX_DEFAULT_MSI_RIGHTS (ZX_RIGHTS_BASIC | ZX_RIGHT_INSPECT)
+#define ZX_DEFAULT_MSI_RIGHTS (ZX_RIGHTS_BASIC | ZX_RIGHT_MANAGE_MSI)
 
 #define ZX_DEFAULT_PCI_DEVICE_RIGHTS (ZX_RIGHTS_BASIC | ZX_RIGHTS_IO)
 

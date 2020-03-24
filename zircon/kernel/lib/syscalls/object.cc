@@ -9,6 +9,7 @@
 #include <lib/heap.h>
 #include <platform.h>
 #include <trace.h>
+#include <zircon/syscalls/object.h>
 #include <zircon/time.h>
 #include <zircon/types.h>
 
@@ -22,6 +23,7 @@
 #include <object/exception_dispatcher.h>
 #include <object/handle.h>
 #include <object/job_dispatcher.h>
+#include <object/msi_allocation_dispatcher.h>
 #include <object/process_dispatcher.h>
 #include <object/resource.h>
 #include <object/resource_dispatcher.h>
@@ -415,7 +417,7 @@ zx_status_t sys_object_get_info(zx_handle_t handle, uint32_t topic, user_out_ptr
         stats.flags = mp_is_cpu_online(i) ? ZX_INFO_CPU_STATS_FLAG_ONLINE : 0;
 
         stats.vm_entries = cpu->gstats.vm_entries;
-        stats.vm_exits  = cpu->gstats.vm_exits;
+        stats.vm_exits = cpu->gstats.vm_exits;
 #ifdef __aarch64__
         stats.wfi_wfe_instructions = cpu->gstats.wfi_wfe_instructions;
         stats.system_instructions = cpu->gstats.system_instructions;
@@ -734,6 +736,18 @@ zx_status_t sys_object_get_info(zx_handle_t handle, uint32_t topic, user_out_ptr
           return status;
       }
       return ZX_OK;
+    }
+    case ZX_INFO_MSI: {
+      fbl::RefPtr<MsiAllocationDispatcher> allocation;
+      zx_status_t status = up->GetDispatcherWithRights(handle, ZX_RIGHT_INSPECT, &allocation);
+      if (status != ZX_OK) {
+        return status;
+      }
+
+      zx_info_msi_t info = {};
+      allocation->GetInfo(&info);
+
+      return single_record_result(_buffer, buffer_size, _actual, _avail, info);
     }
 
     default:
