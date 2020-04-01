@@ -345,4 +345,29 @@ void AudioDeviceManager::AddDeviceByChannel(zx::channel device_channel, std::str
   AddDevice(std::move(new_device));
 }
 
+void AudioDeviceManager::AddDeviceByChannel2(fidl::InterfaceRequest<driver_fidl::StreamConfig> intf,
+                                             std::string device_name,
+                                             bool is_input) {
+  TRACE_DURATION("audio", "AudioDeviceManager::AddDeviceByChannel2");
+  AUD_VLOG(TRACE) << " adding2 " << (is_input ? "input" : "output") << " '" << device_name << "'";
+
+  // Hand the stream off to the proper type of class to manage.
+  std::shared_ptr<AudioDevice> new_device;
+  if (is_input) {
+    new_device =
+        AudioInput::Create(std::move(intf), &threading_model(), this, &link_matrix_);
+  } else {
+    new_device =
+        DriverOutput::Create(std::move(intf), &threading_model(), this, &link_matrix_);
+  }
+
+  if (new_device == nullptr) {
+    FX_LOGS(ERROR) << "Failed to instantiate audio " << (is_input ? "input" : "output") << " for '"
+                   << device_name << "'";
+  }
+
+  REP(AddingDevice(device_name, *new_device));
+  AddDevice(std::move(new_device));
+}
+
 }  // namespace media::audio

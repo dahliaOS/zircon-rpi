@@ -26,9 +26,14 @@ class DriverOutput : public AudioOutput {
 
   static std::shared_ptr<AudioOutput> Create(zx::channel channel, ThreadingModel* threading_model,
                                              DeviceRegistry* registry, LinkMatrix* link_matrix);
+  static std::shared_ptr<AudioOutput> Create(
+    ::fidl::InterfaceRequest<driver_fidl::StreamConfig> channel,
+    ThreadingModel* threading_model, DeviceRegistry* registry, LinkMatrix* link_matrix);
 
   DriverOutput(ThreadingModel* threading_model, DeviceRegistry* registry,
                zx::channel initial_stream_channel, LinkMatrix* link_matrix);
+  DriverOutput(ThreadingModel* threading_model, DeviceRegistry* registry,
+               ::fidl::InterfaceRequest<driver_fidl::StreamConfig> channel, LinkMatrix* link_matrix);
 
   ~DriverOutput();
 

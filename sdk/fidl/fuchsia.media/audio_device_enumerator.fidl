@@ -4,6 +4,8 @@
 
 library fuchsia.media;
 
+using fuchsia.hardware.audio;
+
 const uint32 AudioGainInfoFlag_Mute = 0x01;
 const uint32 AudioGainInfoFlag_AgcSupported = 0x02;
 const uint32 AudioGainInfoFlag_AgcEnabled = 0x04;
@@ -104,4 +106,7 @@ protocol AudioDeviceEnumerator {
 
     AddDeviceByChannel(handle<channel> device_channel, string:256 device_name,
                        bool is_input);
+    AddDeviceByChannel2(request<fuchsia.hardware.audio.StreamConfig> channel,
+                        string:256 device_name,
+                        bool is_input);
 };

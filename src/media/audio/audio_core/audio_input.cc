@@ -22,10 +22,27 @@ std::shared_ptr<AudioInput> AudioInput::Create(zx::channel channel, ThreadingMod
   return std::make_shared<AudioInput>(std::move(channel), threading_model, registry, link_matrix);
 }
 
+// static
+std::shared_ptr<AudioInput> AudioInput::Create(fidl::InterfaceRequest<driver_fidl::StreamConfig> intf,
+                                               ThreadingModel* threading_model,
+                                               DeviceRegistry* registry, LinkMatrix* link_matrix) {
+  return std::make_shared<AudioInput>(std::move(intf), threading_model, registry, link_matrix);
+}
+
 AudioInput::AudioInput(zx::channel channel, ThreadingModel* threading_model,
                        DeviceRegistry* registry, LinkMatrix* link_matrix)
-    : AudioDevice(Type::Input, threading_model, registry, link_matrix),
-      initial_stream_channel_(std::move(channel)) {}
+  : AudioDevice(Type::Input, threading_model, registry, link_matrix),
+    initial_stream_channel_(std::move(channel)) {
+  driver_.reset(new AudioDriver(this));
+}
+
+AudioInput::AudioInput(fidl::InterfaceRequest<driver_fidl::StreamConfig> intf,
+                       ThreadingModel* threading_model, DeviceRegistry* registry,
+                       LinkMatrix* link_matrix)
+  : AudioDevice(Type::Input, threading_model, registry, link_matrix),
+    initial_stream_channel_(intf.TakeChannel()) {
+  driver_.reset(new AudioDriver(this));  // TODO(andresoportus) Add suport for non-legacy here.
+}
 
 zx_status_t AudioInput::Init() {
   TRACE_DURATION("audio", "AudioInput::Init");
@@ -73,7 +90,7 @@ void AudioInput::OnDriverInfoFetched() {
   uint32_t pref_chan = 1;
   fuchsia::media::AudioSampleFormat pref_fmt = fuchsia::media::AudioSampleFormat::SIGNED_16;
 
-  zx_status_t res = SelectBestFormat(driver()->format_ranges(), &pref_fps, &pref_chan, &pref_fmt);
+  zx_status_t res = driver()->SelectBestFormat(&pref_fps, &pref_chan, &pref_fmt);
   if (res != ZX_OK) {
     FX_LOGS(ERROR) << "Audio input failed to find any compatible driver formats.  Req was "
                    << pref_fps << " Hz " << pref_chan << " channel(s) sample format(0x" << std::hex

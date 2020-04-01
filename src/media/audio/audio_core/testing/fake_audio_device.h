@@ -6,6 +6,7 @@
 #define SRC_MEDIA_AUDIO_AUDIO_CORE_TESTING_FAKE_AUDIO_DEVICE_H_
 
 #include "src/media/audio/audio_core/audio_device.h"
+#include "src/media/audio/audio_core/audio_driver.h"
 #include "src/media/audio/audio_core/device_registry.h"
 #include "src/media/audio/audio_core/mixer/mixer.h"
 #include "src/media/audio/audio_core/mixer/no_op.h"
@@ -53,7 +54,9 @@ class FakeAudioInput : public FakeAudioDevice {
   }
 
   FakeAudioInput(ThreadingModel* threading_model, DeviceRegistry* registry, LinkMatrix* link_matrix)
-      : FakeAudioDevice(Type::Input, threading_model, registry, link_matrix) {}
+      : FakeAudioDevice(Type::Input, threading_model, registry, link_matrix) {
+    driver_.reset(new AudioDriver(this));
+  }
 };
 
 class FakeAudioOutput : public FakeAudioDevice {
@@ -66,7 +69,9 @@ class FakeAudioOutput : public FakeAudioDevice {
 
   FakeAudioOutput(ThreadingModel* threading_model, DeviceRegistry* registry,
                   LinkMatrix* link_matrix)
-      : FakeAudioDevice(Type::Output, threading_model, registry, link_matrix) {}
+      : FakeAudioDevice(Type::Output, threading_model, registry, link_matrix) {
+    driver_.reset(new AudioDriver(this));
+  }
 
   void SetMinLeadTime(zx::duration min_lead_time) { min_lead_time_ = min_lead_time; }
 

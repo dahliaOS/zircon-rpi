@@ -25,6 +25,8 @@
 
 namespace media::audio {
 
+namespace driver_fidl = ::fuchsia::hardware::audio;
+
 class AudioDriver;
 class RingBuffer;
 
@@ -202,6 +204,9 @@ class AudioDevice : public AudioObject, public std::enable_shared_from_this<Audi
   DeviceRegistry& device_registry() { return device_registry_; }
   const fbl::RefPtr<AudioDeviceSettings>& device_settings() const { return device_settings_; }
 
+  // This object manages most interactions with the low-level driver for us.
+  std::unique_ptr<AudioDriver> driver_;
+
  private:
   void EstablishReferenceClock();
 
@@ -209,9 +214,6 @@ class AudioDevice : public AudioObject, public std::enable_shared_from_this<Audi
   ThreadingModel& threading_model_;
   ThreadingModel::OwnedDomainPtr mix_domain_;
   WakeupEvent mix_wakeup_;
-
-  // This object manages most interactions with the low-level driver for us.
-  std::unique_ptr<AudioDriver> driver_;
 
   // Persistable settings.  Note, this is instantiated by the audio device
   // itself during activate self so that it may be pre-populated with the
