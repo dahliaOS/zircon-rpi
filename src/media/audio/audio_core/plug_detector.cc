@@ -20,6 +20,7 @@
 #include "src/lib/fsl/io/device_watcher.h"
 #include "src/lib/syslog/cpp/logger.h"
 #include "src/media/audio/audio_core/reporter.h"
+#include "src/media/audio/lib/logging/logging.h"
 
 namespace media::audio {
 namespace {
@@ -27,9 +28,12 @@ namespace {
 static const struct {
   const char* path;
   bool is_input;
+  bool is_legacy;
 } AUDIO_DEVNODES[] = {
-    {.path = "/dev/class/audio-output", .is_input = false},
-    {.path = "/dev/class/audio-input", .is_input = true},
+    {.path = "/dev/class/audio-output", .is_input = false, .is_legacy = true},
+    {.path = "/dev/class/audio-input", .is_input = true, .is_legacy = true},
+    {.path = "/dev/class/audio-output-2", .is_input = false, .is_legacy = false},
+    {.path = "/dev/class/audio-input-2", .is_input = true, .is_legacy = false},
 };
 
 class PlugDetectorImpl : public PlugDetector {
@@ -50,15 +54,14 @@ class PlugDetectorImpl : public PlugDetector {
     // Create our watchers.
     for (const auto& devnode : AUDIO_DEVNODES) {
       auto watcher = fsl::DeviceWatcher::Create(
-          devnode.path,
-          [this, is_input = devnode.is_input](int dir_fd, const std::string& filename) {
-            AddAudioDevice(dir_fd, filename, is_input);
+          devnode.path, [this, is_input = devnode.is_input, is_legacy = devnode.is_legacy](
+                            int dir_fd, const std::string& filename) {
+            AddAudioDevice(dir_fd, filename, is_input, is_legacy);
           });
 
       if (watcher == nullptr) {
-        FX_LOGS(ERROR) << "PlugDetectorImpl failed to create DeviceWatcher for \"" << devnode.path
-                       << "\".";
-        return ZX_ERR_NO_MEMORY;
+        AUD_VLOG(TRACE) << "PlugDetectorImpl failed to create DeviceWatcher for \"" << devnode.path
+                        << "\".";
       }
 
       watchers_.emplace_back(std::move(watcher));
@@ -76,7 +79,7 @@ class PlugDetectorImpl : public PlugDetector {
   }
 
  private:
-  void AddAudioDevice(int dir_fd, const std::string& name, bool is_input) {
+  void AddAudioDevice(int dir_fd, const std::string& name, bool is_input, bool is_legacy) {
     TRACE_DURATION("audio", "PlugDetectorImpl::AddAudioDevice");
     if (!observer_) {
       return;
