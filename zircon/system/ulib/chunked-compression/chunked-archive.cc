@@ -90,6 +90,34 @@ Status ChunkedArchiveHeader::Serialize(void* dst, size_t dst_len) const {
   return kStatusOk;
 }
 
+std::optional<unsigned>
+ChunkedArchiveHeader::EntryForCompressedOffset(size_t offset) const {
+  // TODO(jfsulliv): Investigate if it is worth making this a binary search.
+  // For typical archives this is a small list so linear may be just as fast (if not faster)
+  for (unsigned i = 0; i < seek_table_.size(); ++i) {
+    const auto& entry = seek_table_[i];
+    if (entry.compressed_offset <= offset &&
+        offset < entry.compressed_offset + entry.compressed_size) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<unsigned>
+ChunkedArchiveHeader::EntryForDecompressedOffset(size_t offset) const {
+  // TODO(jfsulliv): Investigate if it is worth making this a binary search.
+  // For typical archives this is a small list so linear may be just as fast (if not faster)
+  for (unsigned i = 0; i < seek_table_.size(); ++i) {
+    const auto& entry = seek_table_[i];
+    if (entry.decompressed_offset <= offset &&
+        offset < entry.decompressed_offset + entry.decompressed_size) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
 Status ChunkedArchiveHeader::CheckMagic(const uint8_t* data, size_t len) {
   if (len < sizeof(kChunkedCompressionArchiveMagic)) {
     return kStatusErrIoDataIntegrity;

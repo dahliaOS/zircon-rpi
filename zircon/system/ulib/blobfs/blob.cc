@@ -51,8 +51,7 @@ using digest::Digest;
 using digest::MerkleTreeCreator;
 
 bool SupportsPaging(const Inode& inode) {
-  // Currently only uncompressed blobs can be paged.
-  return !inode.IsCompressed();
+  return !inode.IsCompressed() || inode.header.flags & kBlobFlagChunkCompressed;
 }
 
 }  // namespace

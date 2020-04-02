@@ -19,19 +19,30 @@
 
 #include "blob-verifier.h"
 #include "compression/algorithm.h"
+#include "compression/chunked.h"
 #include "compression/decompressor.h"
+#include "compression/seekable-decompressor.h"
 #include "iterator/block-iterator.h"
 
 namespace blobfs {
+
+namespace {
+
+constexpr size_t kScratchBufferSize = 4 * kBlobfsBlockSize;
+
+}
 
 BlobLoader::BlobLoader(
       TransactionManager* txn_manager,
       BlockIteratorProvider* block_iter_provider,
       NodeFinder* node_finder,
       UserPager* pager,
-      BlobfsMetrics* metrics) :
+      BlobfsMetrics* metrics,
+      fzl::OwnedVmoMapper scratch_vmo,
+      storage::OwnedVmoid scratch_vmoid) :
     txn_manager_(txn_manager), block_iter_provider_(block_iter_provider), node_finder_(node_finder),
-    pager_(pager), metrics_(metrics) {}
+    pager_(pager), metrics_(metrics), scratch_vmo_(std::move(scratch_vmo)),
+    scratch_vmoid_(std::move(scratch_vmoid)) {}
 
 zx_status_t BlobLoader::Create(
     TransactionManager* txn_manager,
@@ -40,7 +51,20 @@ zx_status_t BlobLoader::Create(
     UserPager* pager,
     BlobfsMetrics* metrics,
     BlobLoader* out) {
-  *out = BlobLoader(txn_manager, block_iter_provider, node_finder, pager, metrics);
+  fzl::OwnedVmoMapper scratch_vmo;
+  storage::OwnedVmoid scratch_vmoid(txn_manager);
+  zx_status_t status = scratch_vmo.CreateAndMap(kScratchBufferSize, "blobfs-loader");
+  if (status != ZX_OK) {
+    FS_TRACE_ERROR("blobfs: Failed to map scratch vmo: %s\n", zx_status_get_string(status));
+    return status;
+  }
+  status = scratch_vmoid.AttachVmo(scratch_vmo.vmo());
+  if (status != ZX_OK) {
+    FS_TRACE_ERROR("blobfs: Failed to attach scratch vmo: %s\n", zx_status_get_string(status));
+    return status;
+  }
+  *out = BlobLoader(txn_manager, block_iter_provider, node_finder, pager, metrics,
+                    std::move(scratch_vmo), std::move(scratch_vmoid));
   return ZX_OK;
 }
 
@@ -133,11 +157,17 @@ zx_status_t BlobLoader::LoadBlobPaged(uint32_t node_index,
     return status;
   }
 
+  std::unique_ptr<SeekableDecompressor> decompressor;
+  if ((status = InitDecompressor(node_index, *inode, *verifier, &decompressor)) != ZX_OK) {
+    return status;
+  }
+
   UserPagerInfo userpager_info;
   userpager_info.identifier = node_index;
   userpager_info.data_start_bytes = ComputeNumMerkleTreeBlocks(*inode) * kBlobfsBlockSize;
   userpager_info.data_length_bytes = inode->blob_size;
   userpager_info.verifier = std::move(verifier);
+  userpager_info.decompressor = std::move(decompressor);
   auto page_watcher = std::make_unique<PageWatcher>(pager_, std::move(userpager_info));
 
   fbl::StringBuffer<ZX_MAX_NAME_LEN> data_vmo_name;
@@ -209,6 +239,62 @@ zx_status_t BlobLoader::InitMerkleVerifier(uint32_t node_index, const Inode& ino
 
   *out_vmo = std::move(merkle_mapper);
   *out_verifier = std::move(verifier);
+  return ZX_OK;
+}
+
+zx_status_t BlobLoader::InitDecompressor(
+    uint32_t node_index, const Inode& inode, const BlobVerifier& verifier,
+    std::unique_ptr<SeekableDecompressor>* decompressor_out) {
+  CompressionAlgorithm algorithm = AlgorithmForInode(inode);
+  if (algorithm == CompressionAlgorithm::UNCOMPRESSED) {
+    return ZX_OK;
+  } else if (algorithm != CompressionAlgorithm::CHUNKED) {
+    return ZX_ERR_NOT_SUPPORTED;
+  }
+
+  TRACE_DURATION("blobfs", "BlobLoader::InitDecompressor");
+
+  // Zero the scratch buffer before each use since it is shared between all blobs.
+  bzero(scratch_vmo_.start(), scratch_vmo_.size());
+  
+  zx_status_t status;
+  fs::ReadTxn txn(txn_manager_);
+
+  // Stream the blocks, skipping the first |merkle_blocks| which contain the merkle tree.
+  uint32_t merkle_blocks = ComputeNumMerkleTreeBlocks(inode);
+  // XXX overflow?
+  uint32_t data_blocks = static_cast<uint32_t>(fbl::round_up(scratch_vmo_.size(), kBlobfsBlockSize)
+                                               / kBlobfsBlockSize);
+  data_blocks = fbl::min(data_blocks, inode.block_count - merkle_blocks);
+  ZX_ASSERT(data_blocks > 0);
+  const uint64_t kDataStart = DataStartBlock(txn_manager_->Info());
+  BlockIterator block_iter = block_iter_provider_->BlockIteratorByNodeIndex(node_index);
+  if ((status = IterateToBlock(&block_iter, merkle_blocks)) != ZX_OK) {
+    FS_TRACE_ERROR("blobfs: Failed to seek past merkle blocks: %s\n", zx_status_get_string(status));
+    return status;
+  }
+
+  status = StreamBlocks(&block_iter, data_blocks,
+                        [&](uint64_t vmo_offset, uint64_t dev_offset, uint32_t length) {
+                          txn.Enqueue(scratch_vmoid_.get(), vmo_offset - merkle_blocks,
+                                      kDataStart + dev_offset, length);
+                          return ZX_OK;
+                        });
+  if (status != ZX_OK) {
+    return status;
+  }
+  if ((status = txn.Transact()) != ZX_OK) {
+    FS_TRACE_ERROR("blobfs: Failed to flush data read transaction: %d\n", status);
+    return status;
+  }
+
+  if ((status = ChunkedDecompressor::CreateDecompressor(scratch_vmo_.start(),
+                                                        data_blocks * kBlobfsBlockSize,
+                                                        decompressor_out)) != ZX_OK) {
+    FS_TRACE_ERROR("blobfs: Failed to init decompressor: %s\n", zx_status_get_string(status));
+    return status;
+  }
+
   return ZX_OK;
 }
 

@@ -58,6 +58,9 @@ class ChunkedDecompressor : public Decompressor, public SeekableDecompressor {
   ChunkedDecompressor() = default;
   DISALLOW_COPY_ASSIGN_AND_MOVE(ChunkedDecompressor);
 
+  static zx_status_t CreateDecompressor(const void* header_buf, size_t header_buf_sz,
+                                        std::unique_ptr<SeekableDecompressor>* out);
+
   // Decompressor implementation.
   zx_status_t Decompress(void* uncompressed_buf, size_t* uncompressed_size,
                          const void* compressed_buf, const size_t max_compressed_size) final;
@@ -66,6 +69,7 @@ class ChunkedDecompressor : public Decompressor, public SeekableDecompressor {
   zx_status_t DecompressRange(void* uncompressed_buf, size_t* uncompressed_size,
                               const void* compressed_buf, size_t max_compressed_size,
                               size_t offset) final;
+  zx_status_t MappingForDecompressedAddress(size_t offset, CompressionMapping* map) final;
 
  private:
   chunked_compression::ChunkedArchiveHeader header_;

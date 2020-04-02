@@ -17,6 +17,13 @@
 
 namespace blobfs {
 
+struct CompressionMapping {
+  size_t compressed_offset;
+  size_t compressed_length;
+  size_t decompressed_offset;
+  size_t decompressed_length;
+};
+
 // A `SeekableDecompressor` is used to decompress parts of blobs transparently. See `Compressor`
 // documentation for properties of `Compressor`/`SeekableDecompressor` pair implementations.
 class SeekableDecompressor {
@@ -25,15 +32,11 @@ class SeekableDecompressor {
   virtual ~SeekableDecompressor() = default;
   DISALLOW_COPY_ASSIGN_AND_MOVE(SeekableDecompressor);
 
-  // Decompresses data archive from buffer, `compressed_buf`, which has size `max_compressed_size`,
-  // starting at _uncompressed_ byte offset, `offset`. Decompress at most `uncompressed_size` bytes.
-  // The actual archive contents is at most `max_compressed_size`, but may be smaller. Decompressed
-  // data is written to `uncompressed_buf`, which has a size of `*uncompressed_size`. If the return
-  // value is `ZX_OK, then the number of bytes written is written to `uncompressed_buf` is stored in
-  // `*uncompressed_size`.
   virtual zx_status_t DecompressRange(void* uncompressed_buf, size_t* uncompressed_size,
-                                      const void* compressed_buf, size_t max_compressed_size,
+                                      const void* compressed_buf, size_t compressed_buff_size,
                                       size_t offset) = 0;
+
+  virtual zx_status_t MappingForDecompressedAddress(size_t offset, CompressionMapping* map) = 0;
 };
 
 }  // namespace blobfs

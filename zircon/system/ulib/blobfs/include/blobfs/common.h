@@ -26,7 +26,7 @@ namespace blobfs {
 
 // The minimum number of blocks that must be saved by
 // compression to consider on-disk compression before writeback.
-constexpr uint64_t kCompressionMinBlocksSaved = 8;
+constexpr uint64_t kCompressionMinBlocksSaved = 2;
 constexpr uint64_t kCompressionMinBytesSaved = kCompressionMinBlocksSaved * kBlobfsBlockSize;
 
 #ifdef __Fuchsia__

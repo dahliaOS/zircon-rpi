@@ -91,7 +91,7 @@ void PageWatcher::GetPrefetchRangeInBytes(const uint64_t requested_offset,
   //
   // For now read read in at least 128KB (if the blob is larger than 128KB). 128KB is completely
   // arbitrary. Tune this for optimal performance (until we can support dynamic prefetch sizing).
-  constexpr uint64_t kPrefetchClusterSize = (128 * (1 << 10));
+  constexpr uint64_t kPrefetchClusterSize = (1024 * (1 << 10));
 
   uint64_t end_offset = requested_offset + fbl::max(kPrefetchClusterSize, requested_length);
   uint64_t total_length;
@@ -139,6 +139,7 @@ void PageWatcher::PopulateAndVerifyPagesInRange(uint64_t offset, uint64_t length
   if (status != ZX_OK) {
     FS_TRACE_ERROR("blobfs pager: Failed to transfer pages to the blob, error: %s\n",
                    zx_status_get_string(status));
+    ZX_ASSERT(false);
     return;
   }
 }

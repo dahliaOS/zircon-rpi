@@ -14,7 +14,10 @@
 #include <lib/async/dispatcher.h>
 #include <lib/zx/pager.h>
 
+#include <memory>
+
 #include "../blob-verifier.h"
+#include "../compression/seekable-decompressor.h"
 
 namespace blobfs {
 
@@ -32,6 +35,9 @@ struct UserPagerInfo {
   // Used to verify the pages as they are read in.
   // TODO(44742): Make BlobVerifier movable, unwrap from unique_ptr.
   std::unique_ptr<BlobVerifier> verifier;
+  // An optional decompressor which should be applied to the raw bytes received from the disk.
+  // If unset, the data is assumed to be uncompressed and is not modified.
+  std::unique_ptr<SeekableDecompressor> decompressor;
 };
 
 // The size of a transfer buffer for reading from storage.
@@ -100,6 +106,8 @@ class UserPager {
   // calling |zx_pager_supply_pages|. Map this only when an explicit address is required, e.g. for
   // verification, and unmap it immediately after.
   zx::vmo transfer_buffer_;
+
+  zx::vmo decompression_buffer_;
 
   // Async loop for pager requests.
   async::Loop pager_loop_ = async::Loop(&kAsyncLoopConfigNoAttachToCurrentThread);
