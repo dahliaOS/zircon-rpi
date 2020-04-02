@@ -154,6 +154,14 @@ class BlobLoaderTest : public zxtest::Test {
     ASSERT_OK(Sync());
   }
 
+  BlobLoader CreateLoader(UserPager* pager) {
+    BlobLoader loader;
+    auto* fs_ptr = fs_.get();
+    EXPECT_OK(BlobLoader::Create(fs_ptr, fs_ptr, fs_->GetNodeFinder(), pager, fs_->Metrics(),
+                                 &loader));
+    return loader;
+  }
+
   // Sync waits for blobfs to sync with the underlying block device.
   zx_status_t Sync() {
     sync_completion_t completion;
@@ -199,6 +207,7 @@ class BlobLoaderTest : public zxtest::Test {
 
  protected:
   std::unique_ptr<Blobfs> fs_;
+  BlobLoader loader_;
   async::Loop loop_{&kAsyncLoopConfigNoAttachToCurrentThread};
 };
 
@@ -225,8 +234,8 @@ void DoTest_NullBlob(BlobLoaderTest* test) {
   test->AddRandomBlob(blob_len, &info);
   ASSERT_OK(test->Sync());
 
-  FakeUserPager pager;
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(nullptr);
+
   fzl::OwnedVmoMapper data, merkle;
 
   ASSERT_OK(loader.LoadBlob(test->LookupInode(*info), &data, &merkle));
@@ -247,8 +256,8 @@ void DoTest_SmallBlob(BlobLoaderTest* test) {
   test->AddRandomBlob(blob_len, &info);
   ASSERT_OK(test->Sync());
 
-  FakeUserPager pager;
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(nullptr);
+
   fzl::OwnedVmoMapper data, merkle;
   ASSERT_OK(loader.LoadBlob(test->LookupInode(*info), &data, &merkle));
 
@@ -270,7 +279,8 @@ void DoTest_Paged_SmallBlob(BlobLoaderTest* test) {
   ASSERT_OK(test->Sync());
 
   FakeUserPager pager(info->data.get(), info->size_data);
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(&pager);
+
   fzl::OwnedVmoMapper data, merkle;
   std::unique_ptr<PageWatcher> page_watcher;
   ASSERT_OK(loader.LoadBlobPaged(test->LookupInode(*info), &page_watcher, &data, &merkle));
@@ -299,8 +309,8 @@ void DoTest_LargeBlob(BlobLoaderTest* test) {
   test->AddRandomBlob(blob_len, &info);
   ASSERT_OK(test->Sync());
 
-  FakeUserPager pager;
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(nullptr);
+
   fzl::OwnedVmoMapper data, merkle;
   ASSERT_OK(loader.LoadBlob(test->LookupInode(*info), &data, &merkle));
 
@@ -322,8 +332,8 @@ void DoTest_LargeBlob_NonAlignedLength(BlobLoaderTest* test) {
   test->AddRandomBlob(blob_len, &info);
   ASSERT_OK(test->Sync());
 
-  FakeUserPager pager;
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(nullptr);
+
   fzl::OwnedVmoMapper data, merkle;
   ASSERT_OK(loader.LoadBlob(test->LookupInode(*info), &data, &merkle));
 
@@ -350,7 +360,8 @@ void DoTest_Paged_LargeBlob(BlobLoaderTest* test) {
   ASSERT_OK(test->Sync());
 
   FakeUserPager pager(info->data.get(), info->size_data);
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(&pager);
+
   fzl::OwnedVmoMapper data, merkle;
   std::unique_ptr<PageWatcher> page_watcher;
   ASSERT_OK(loader.LoadBlobPaged(test->LookupInode(*info), &page_watcher, &data, &merkle));
@@ -381,7 +392,8 @@ void DoTest_Paged_LargeBlob_NonAlignedLength(BlobLoaderTest* test) {
   ASSERT_OK(test->Sync());
 
   FakeUserPager pager(info->data.get(), info->size_data);
-  BlobLoader loader(test->Fs(), &pager);
+  BlobLoader loader = test->CreateLoader(&pager);
+
   fzl::OwnedVmoMapper data, merkle;
   std::unique_ptr<PageWatcher> page_watcher;
   ASSERT_OK(loader.LoadBlobPaged(test->LookupInode(*info), &page_watcher, &data, &merkle));

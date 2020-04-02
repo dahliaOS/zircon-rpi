@@ -37,7 +37,6 @@
 #include "allocator/extent-reserver.h"
 #include "allocator/node-reserver.h"
 #include "blob-cache.h"
-#include "blob-loader.h"
 #include "compression/blob-compressor.h"
 #include "compression/compressor.h"
 #include "format-assertions.h"
@@ -253,8 +252,6 @@ class Blob final : public CacheNode, fbl::Recyclable<Blob> {
   Blobfs* const blobfs_;
   BlobFlags flags_ = {};
   std::atomic_bool syncing_;
-
-  BlobLoader blob_loader_;
 
   // VMO mappings for the blob's merkle tree and data.
   // Data is stored in a separate VMO from the merkle tree for several reasons:

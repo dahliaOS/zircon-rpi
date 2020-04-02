@@ -110,7 +110,6 @@ Blob::Blob(Blobfs* bs, const Digest& digest)
       blobfs_(bs),
       flags_(kBlobStateEmpty),
       syncing_(false),
-      blob_loader_(bs, bs),
       clone_watcher_(this) {}
 
 zx_status_t Blob::SpaceAllocate(uint64_t size_data) {
@@ -596,9 +595,10 @@ zx_status_t Blob::LoadVmosFromDisk() {
   if (IsDataLoaded()) {
     return ZX_OK;
   }
-  return IsPagerBacked() ? blob_loader_.LoadBlobPaged(map_index_, &page_watcher_, &data_mapping_,
-                                                      &merkle_mapping_)
-                         : blob_loader_.LoadBlob(map_index_, &data_mapping_, &merkle_mapping_);
+  BlobLoader& loader = blobfs_->loader();
+  return IsPagerBacked() ? loader.LoadBlobPaged(map_index_, &page_watcher_, &data_mapping_,
+                                                &merkle_mapping_)
+                         : loader.LoadBlob(map_index_, &data_mapping_, &merkle_mapping_);
 }
 
 zx_status_t Blob::PrepareVmosForWriting(uint32_t node_index, size_t data_size) {
