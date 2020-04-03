@@ -40,6 +40,7 @@ class ProgressWriter {
  public:
   explicit ProgressWriter(int refresh_hz = 60) : refresh_hz_(refresh_hz) {
     last_report_ = std::chrono::steady_clock::time_point::min();
+    printf("\n");
   }
 
   void Update(const char* fmt, ...) {

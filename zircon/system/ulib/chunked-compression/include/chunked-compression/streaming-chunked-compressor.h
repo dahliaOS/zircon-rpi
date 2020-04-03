@@ -40,6 +40,15 @@ class StreamingChunkedCompressor {
   void SetProgressCallback(ProgressFn callback) { progress_callback_ = std::move(callback); }
 
  private:
+  // Must be called before each new frame is written to, and can only be called when |input_offset_|
+  // falls on a frame boundary.
+  Status StartFrame();
+  // Must be called after each frame is completed.
+  Status EndFrame(size_t uncompressed_frame_start, size_t uncompressed_frame_len);
+  // Appends |len| bytes to the current frame. |len| must be less than the expected size of the
+  // frame.
+  // Calls EndFrame if the frame was completed by this data, and then calls StartFrame if there is
+  // still more data expected in the input stream.
   Status AppendToFrame(const void* data, size_t len);
   void MoveFrom(StreamingChunkedCompressor&& o);
   uint8_t* compressed_output_;

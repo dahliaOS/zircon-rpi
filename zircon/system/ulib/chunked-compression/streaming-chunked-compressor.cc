@@ -92,11 +92,14 @@ Status StreamingChunkedCompressor::Init(size_t data_len, void* dst, size_t dst_l
   compressed_output_ = static_cast<uint8_t*>(dst);
   compressed_output_len_ = dst_len;
   compressed_output_offset_ = metadata_size;
-  context_->current_output_frame_start_ = metadata_size;
-  context_->current_output_frame_relative_pos_ = 0ul;
 
   input_len_ = data_len;
   input_offset_ = 0ul;
+
+  Status status = StartFrame();
+  if (status != kStatusOk) {
+    return status;
+  }
 
   writer_ = std::make_unique<ChunkedArchiveWriter>(dst, dst_len, num_frames);
 
@@ -147,6 +150,49 @@ Status StreamingChunkedCompressor::Final(size_t* compressed_size_out) {
   return status;
 }
 
+Status StreamingChunkedCompressor::StartFrame() {
+  ZX_DEBUG_ASSERT(context_->current_output_frame_relative_pos_ == 0ul);
+
+  context_->current_output_frame_start_ = compressed_output_offset_;
+
+  // Since we know the data size in advance we can optimize compression by hinting the size
+  // to zstd. This will make the entire chunk be written as a single data frame
+  size_t next_chunk_size = fbl::min(params_.chunk_size, input_len_ - input_offset_);
+  size_t r = ZSTD_CCtx_reset(context_->inner_, ZSTD_reset_session_only);
+  if (ZSTD_isError(r)) {
+    return kStatusErrInternal;
+  }
+  r = ZSTD_CCtx_setPledgedSrcSize(context_->inner_, next_chunk_size);
+  if (ZSTD_isError(r)) {
+    return kStatusErrInternal;
+  }
+
+  return kStatusOk;
+}
+
+Status StreamingChunkedCompressor::EndFrame(size_t uncompressed_frame_start,
+                                            size_t uncompressed_frame_len) {
+  ZX_DEBUG_ASSERT(uncompressed_frame_start % params_.chunk_size == 0);
+
+  SeekTableEntry entry;
+  entry.decompressed_offset = uncompressed_frame_start;
+  entry.decompressed_size = uncompressed_frame_len;
+  entry.compressed_offset = context_->current_output_frame_start_;
+  entry.compressed_size = compressed_output_offset_ - context_->current_output_frame_start_;
+  Status status = writer_->AddEntry(entry);
+  if (status != kStatusOk) {
+    return status;
+  }
+
+  context_->current_output_frame_relative_pos_ = 0ul;
+
+  if (progress_callback_) {
+    (*progress_callback_)(input_offset_, input_len_, compressed_output_offset_);
+  }
+
+  return kStatusOk;
+}
+
 Status StreamingChunkedCompressor::AppendToFrame(const void* data, size_t len) {
   const size_t current_frame_start = fbl::round_down(input_offset_, params_.chunk_size);
   const size_t current_frame_end = fbl::min(current_frame_start + params_.chunk_size, input_len_);
@@ -183,11 +229,6 @@ Status StreamingChunkedCompressor::AppendToFrame(const void* data, size_t len) {
     return kStatusErrInternal;
   }
 
-  r = ZSTD_flushStream(context_->inner_, &out_buf);
-  if (ZSTD_isError(r)) {
-    FX_LOGF(ERROR, kLogTag, "ZSTD_flushStream failed: %s", ZSTD_getErrorName(r));
-    return kStatusErrInternal;
-  }
   if (will_finish_frame) {
     r = ZSTD_endStream(context_->inner_, &out_buf);
     if (ZSTD_isError(r)) {
@@ -202,23 +243,18 @@ Status StreamingChunkedCompressor::AppendToFrame(const void* data, size_t len) {
   if (will_finish_frame) {
     // Case 1: The frame is finished. Write the seek table entry and advance to the next output
     // frame.
-    SeekTableEntry entry;
-    entry.decompressed_offset = current_frame_start;
-    entry.decompressed_size = current_frame_end - current_frame_start;
-    entry.compressed_offset = context_->current_output_frame_start_;
-    entry.compressed_size = compressed_output_offset_ - context_->current_output_frame_start_;
-    Status status = writer_->AddEntry(entry);
+    Status status = EndFrame(current_frame_start, current_frame_end - current_frame_start);
     if (status != kStatusOk) {
-      FX_LOG(ERROR, kLogTag, "Failed to create seek table entry");
+      FX_LOG(ERROR, kLogTag, "Failed to finalize frame");
       return status;
     }
 
-    if (progress_callback_) {
-      (*progress_callback_)(input_offset_, input_len_, compressed_output_offset_);
+    if (input_offset_ < input_len_) {
+      status = StartFrame();
+      if (status != kStatusOk) {
+        FX_LOG(ERROR, kLogTag, "Failed to start next frame");
+      }
     }
-
-    context_->current_output_frame_start_ = compressed_output_offset_;
-    context_->current_output_frame_relative_pos_ = 0ul;
   } else {
     // Case 2: The frame isn't complete yet. Mark our progress.
     context_->current_output_frame_relative_pos_ = out_buf.pos;
