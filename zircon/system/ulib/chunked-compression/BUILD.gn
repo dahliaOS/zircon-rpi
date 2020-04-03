@@ -26,7 +26,12 @@ zx_library("chunked-compression") {
   ]
 
   if (is_fuchsia) {
-    deps += [ "$zx/system/ulib/syslog" ]
+    deps += [
+      "$zx/system/ulib/syslog",
+    ]
+    public_deps += [
+      "$zx/system/ulib/zx",
+    ]
   }
 }
 

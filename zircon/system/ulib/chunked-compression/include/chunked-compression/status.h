@@ -5,9 +5,15 @@
 #ifndef CHUNKED_COMPRESSION_STATUS_H_
 #define CHUNKED_COMPRESSION_STATUS_H_
 
-namespace chunked_compression {
-
 #include <stdint.h>
+
+#ifdef __Fuchsia__
+
+#include <zircon/types.h>
+
+#endif
+
+namespace chunked_compression {
 
 // Status is a status code which is byte-compatible with zx_status_t.
 // This is locally defined so that this library can be used in both host and Fuchsia code.
@@ -39,6 +45,12 @@ constexpr Status kStatusErrBadState = -20;
 // The data in the operation failed an integrity check and is possibly corrupted.
 // Example: CRC or Parity error.
 constexpr Status kStatusErrIoDataIntegrity = -42;
+
+#ifdef __Fuchsia__
+
+constexpr zx_status_t ToZxStatus(Status status) { return static_cast<zx_status_t>(status); }
+
+#endif
 
 }  // namespace chunked_compression
 

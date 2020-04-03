@@ -86,10 +86,17 @@ Status ChunkedDecompressor::DecompressFrame(const ChunkedArchiveHeader& header, 
   }
 
   size_t decompressed_size =
-      ZSTD_decompressDCtx(context_->inner_, dst, dst_len, frame_data, frame_len);
+      ZSTD_decompressDCtx(context_->inner_, dst, entry.decompressed_size, frame_data,
+                          entry.compressed_size);
   if (ZSTD_isError(decompressed_size)) {
     FX_LOGF(ERROR, kLogTag, "Decompression failed: %s", ZSTD_getErrorName(decompressed_size));
     return kStatusErrInternal;
+  }
+
+  if (decompressed_size != entry.decompressed_size) {
+    FX_LOGF(ERROR, kLogTag, "Decompressed %lu bytes, expected %lu", decompressed_size,
+            entry.decompressed_size);
+    return kStatusErrIoDataIntegrity;
   }
 
   *bytes_written_out = decompressed_size;
