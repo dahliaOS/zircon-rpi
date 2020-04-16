@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef ZIRCON_SYSTEM_UAPP_AUDIO_WAV_COMMON_H_
+#define ZIRCON_SYSTEM_UAPP_AUDIO_WAV_COMMON_H_
 
 #include <endian.h>
 #include <zircon/compiler.h>
@@ -48,7 +49,7 @@ class WAVCommon {
       fmt_chunk_len = htole32(fmt_chunk_len);
       format = htole16(format);
       channel_count = htole16(channel_count);
-      frame_rate = htole32(frame_rate);
+      frame_rate = 48'000;  // htole32(frame_rate);
       average_byte_rate = htole32(average_byte_rate);
       frame_size = htole16(frame_size);
       bits_per_sample = htole16(bits_per_sample);
@@ -79,3 +80,5 @@ class WAVCommon {
 
   int fd_ = -1;
 };
+
+#endif  // ZIRCON_SYSTEM_UAPP_AUDIO_WAV_COMMON_H_

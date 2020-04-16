@@ -90,6 +90,10 @@ int Luis::Thread() {
     zxlogf(ERROR, "%s: SdioInit() failed\n", __func__);
   }
 
+  if (AudioInit() != ZX_OK) {
+    zxlogf(ERROR, "%s: AudioInit() failed\n", __func__);
+  }
+
   return 0;
 }
 }  // namespace board_luis

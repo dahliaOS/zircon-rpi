@@ -14,6 +14,7 @@
 namespace board_luis {
 
 zx_status_t Luis::GpioInit() {
+  // clang-fmt on
   constexpr synaptics::PinmuxMetadata pinmux_metadata = {
       .muxes = 3,
       .pinmux_map = {
@@ -102,6 +103,7 @@ zx_status_t Luis::GpioInit() {
           [85] = { synaptics::PinmuxEntry::kGpio, 2, 21, },  // SM_HDMIRX_PWR5V
       },
   };
+  // clang-fmt off
 
   constexpr pbus_mmio_t gpio_mmios[] = {
       {.base = vs680::kSocPinmuxBase, .length = vs680::kPinmuxSize},
@@ -124,6 +126,7 @@ zx_status_t Luis::GpioInit() {
   };
 
   const gpio_pin_t gpio_pins[] = {
+      {17},  // AMP_EN
   };
 
   const pbus_metadata_t gpio_metadata[] = {

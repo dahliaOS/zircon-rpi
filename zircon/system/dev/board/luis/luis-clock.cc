@@ -32,6 +32,7 @@ zx_status_t Luis::ClockInit() {
   constexpr clock_id_t clock_ids[] = {
       {vs680::kCpuPll},
       {vs680::kSd0Clock},
+      {vs680::Clock::kAPll0},
   };
 
   const pbus_metadata_t clock_metadata[] = {

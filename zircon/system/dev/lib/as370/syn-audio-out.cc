@@ -48,9 +48,6 @@ zx_status_t SynAudioOutDevice::GetBuffer(size_t size, zx::vmo* buffer) {
 uint64_t SynAudioOutDevice::Start() {
   AIO_PRI_TSD0_PRI_CTRL::Get().FromValue(0).set_ENABLE(1).set_MUTE(1).WriteTo(&i2s_);
 
-  constexpr uint32_t divider = 4;  // BCLK = MCLK (24.576 MHz) / 8 = 3.072 MHz.
-  AIO_PRI_PRIAUD_CLKDIV::Get().FromValue(0).set_SETTING(divider).WriteTo(&i2s_);
-
   AIO_MCLKPRI_ACLK_CTRL::Get()
       .FromValue(0)
       .set_sw_sync_rst(1)
@@ -59,16 +56,21 @@ uint64_t SynAudioOutDevice::Start() {
       .set_clk_Enable(1)
       .WriteTo(&i2s_);
 
+  constexpr uint32_t divider = 3;  // BCLK = MCLK (24.576 MHz) / ? = 3.072MHz
+  AIO_PRI_PRIAUD_CLKDIV::Get().FromValue(0).set_SETTING(divider).WriteTo(&i2s_);
+
   // Set I2S, 48K, 32 bits.  So BCLK must be 32 * 2 * 48K = 3.072MHz.
   AIO_PRI_PRIAUD_CTRL::Get()
       .FromValue(0)
       .set_LEFTJFY(0)  // left.
+      .set_TDMCHCNT(0)
+      .set_TDMWSHIGH(0)
       .set_INVCLK(0)
       .set_INVFS(0)
       .set_TLSB(0)     // MSB first.
       .set_TDM(0)      // Channel resolution, 16 bits per channel.
       .set_TCF(2)      // 32 bit-cloks for FSYNC half-period.
-      .set_TFM(2)      // I2S.
+      .set_TFM(1)      // 2-I2S.
       .set_TDMMODE(0)  // I2S.
       .set_TDMWSHIGH(0)
       .WriteTo(&i2s_);

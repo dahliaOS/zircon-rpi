@@ -305,6 +305,7 @@ __BEGIN_CDECLS
 #define PDEV_DID_VS680_CLOCK        14
 #define PDEV_DID_VS680_THERMAL      15
 #define PDEV_DID_VS680_POWER        16
+#define PDEV_DID_SYNAPTICS_CX9000   17
 
 // Maxim
 #define PDEV_VID_MAXIM              21

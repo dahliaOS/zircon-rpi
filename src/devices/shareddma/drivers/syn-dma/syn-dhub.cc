@@ -297,7 +297,7 @@ uint32_t SynDhub::SharedDmaGetTransferSize(uint32_t channel_id) {
 void SynDhub::StartDma(uint32_t channel_id, bool trigger_interrupt) {
   const uint32_t fifo_cmd_id = 2 * channel_id;
   constexpr bool producer = false;
-  const uint16_t ptr = mmio_.Read<uint16_t>(0x1'0500 + (fifo_cmd_id << 2) + (producer << 7) + 2);
+  const uint16_t ptr = mmio_.Read<uint16_t>(0x8500 + (fifo_cmd_id << 2) + (producer << 7) + 2);
   const uint32_t base = (channel_info_[channel_id].bank * 2) << 8;
 
   uint32_t current = 0;

@@ -386,6 +386,7 @@ aggregate_manifest("migrated-image") {
     "//src/media/audio/drivers/astro-pdm-input:astro-pdm-input-manifest",
     "//src/media/audio/drivers/astro-tdm-output:astro-tdm-output-manifest",
     "//src/media/audio/drivers/codecs/max98373:max98373-manifest",
+    "//src/media/audio/drivers/codecs/cx9000:cx9000-manifest",
     "//src/media/audio/drivers/codecs/tas5782:tas5782-manifest",
     "//src/media/audio/drivers/codecs/tas5805:tas5805-manifest",
     "//src/media/audio/drivers/intel-hda/codecs/realtek:realtek-audio-codec-manifest",

@@ -19,12 +19,13 @@ enum {
   BTI_EMMC,
   BTI_SDIO,
   BTI_USB,
+  BTI_AUDIO_DHUB,
 };
 
 class Luis : public ddk::Device<Luis> {
  public:
   Luis(zx_device_t* parent, const ddk::PBusProtocolClient& pbus,
-        const pdev_board_info_t& board_info)
+       const pdev_board_info_t& board_info)
       : ddk::Device<Luis>(parent), pbus_(pbus), board_info_(board_info) {}
 
   static zx_status_t Create(void* ctx, zx_device_t* parent);
@@ -43,6 +44,7 @@ class Luis : public ddk::Device<Luis> {
   zx_status_t I2cInit();
   zx_status_t SdioInit();
   zx_status_t PowerInit();
+  zx_status_t AudioInit();
 
   const ddk::PBusProtocolClient pbus_;
   const pdev_board_info_t board_info_;
