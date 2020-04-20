@@ -611,7 +611,7 @@ zx_status_t GptDevicePartitioner::InitializeProvidedGptDevice(
     auto result = ::llcpp::fuchsia::device::Controller::Call::Rebind(
         caller.channel(), fidl::StringView("/boot/driver/gpt.so"));
     if (!result.ok() || result->result.is_err()) {
-      ERROR("Failed to re-read GPT\n");
+      ERROR("Failed to re-read GPT: %d\n", result->result.err());
       return ZX_ERR_BAD_STATE;
     }
     printf("Rebound GPT driver succesfully\n");
