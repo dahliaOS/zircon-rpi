@@ -19,7 +19,6 @@
 #include <zircon/listnode.h>
 #include <zircon/types.h>
 
-#include <algorithm>
 #include <new>
 
 #include <ffl/string.h>
@@ -556,11 +555,13 @@ Thread* Scheduler::EvaluateNextThread(SchedTime now, Thread* current_thread, boo
 cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
   LocalTraceDuration<KTRACE_DETAILED> trace{"find_target: cpu,avail"_stringref};
 
-  const cpu_num_t last_cpu = thread->scheduler_state_.last_cpu_;
-  const cpu_mask_t current_cpu_mask = cpu_num_to_mask(arch_curr_cpu_num());
+  const cpu_num_t current_cpu = arch_curr_cpu_num();
+  const cpu_num_t last_cpu = thread->scheduler_state_.last_cpu_ != INVALID_CPU
+                                 ? thread->scheduler_state_.last_cpu_
+                                 : current_cpu;
+  const cpu_mask_t current_cpu_mask = cpu_num_to_mask(current_cpu);
   const cpu_mask_t last_cpu_mask = cpu_num_to_mask(last_cpu);
   const cpu_mask_t active_mask = mp_get_active_mask();
-  const cpu_mask_t idle_mask = mp_get_idle_mask();
 
   // Determine the set of CPUs the thread is allowed to run on.
   //
@@ -577,26 +578,7 @@ cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
 
   LOCAL_KTRACE(KTRACE_DETAILED, "target_mask: online,active", mp_get_online_mask(), active_mask);
 
-  cpu_num_t target_cpu;
-  Scheduler* target_queue;
-
-  // Select an initial target.
-  if (last_cpu_mask & available_mask && (!idle_mask || last_cpu_mask & idle_mask)) {
-    target_cpu = last_cpu;
-  } else if (current_cpu_mask & available_mask) {
-    target_cpu = arch_curr_cpu_num();
-  } else {
-    target_cpu = lowest_cpu_set(available_mask);
-  }
-
-  target_queue = Get(target_cpu);
-
-  // See if there is a better target in the set of available CPUs.
-  // TODO(eieio): Replace this with a search in order of increasing cache
-  // distance from the initial target cpu when topology information is available.
-  // TODO(eieio): Add some sort of threshold to terminate search when a
-  // sufficiently unloaded target is found.
-
+  // Define load/utilization comparisons for fair and deadline tasks.
   const auto compare_fair = [](Scheduler* const queue_a,
                                Scheduler* const queue_b) TA_REQ(thread_lock) {
     if (queue_a->total_expected_runtime_ns_.load() == queue_b->total_expected_runtime_ns_.load()) {
@@ -605,7 +587,7 @@ cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
     return queue_a->total_expected_runtime_ns_.load() < queue_b->total_expected_runtime_ns_.load();
   };
   const auto is_idle_fair = [](Scheduler* const queue) TA_REQ(thread_lock) {
-    return queue->total_expected_runtime_ns_.load() == SchedDuration{0};
+    return queue->total_expected_runtime_ns_.load() == 0;
   };
 
   const auto compare_deadline = [](Scheduler* const queue_a,
@@ -617,28 +599,41 @@ cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
     return queue_a->total_deadline_utilization_ < queue_b->total_deadline_utilization_;
   };
   const auto is_idle_deadline = [](Scheduler* const queue) TA_REQ(thread_lock) {
-    return queue->total_deadline_utilization_ == SchedUtilization{0} &&
-           queue->total_expected_runtime_ns_.load() == SchedDuration{0};
+    return queue->total_deadline_utilization_ == 0 && queue->total_expected_runtime_ns_.load() == 0;
   };
 
   const auto compare = IsFairThread(thread) ? compare_fair : compare_deadline;
   const auto is_idle = IsFairThread(thread) ? is_idle_fair : is_idle_deadline;
 
-  cpu_mask_t remaining_mask = available_mask & ~cpu_num_to_mask(target_cpu);
-  while (remaining_mask != 0 && !is_idle(target_queue)) {
-    const cpu_num_t candidate_cpu = lowest_cpu_set(remaining_mask);
+  // Find the best target CPU.
+  DEBUG_ASSERT(last_cpu != INVALID_CPU);
+  const CpuSearchSet& search_set = percpu::Get(last_cpu).search_set;
+
+  cpu_num_t target_cpu = INVALID_CPU;
+  Scheduler* target_queue = nullptr;
+
+  for (const auto& entry : search_set.iterator()) {
+    const cpu_num_t candidate_cpu = entry.cpu;
+    const bool candidate_available = available_mask & cpu_num_to_mask(candidate_cpu);
     Scheduler* const candidate_queue = Get(candidate_cpu);
 
-    if (compare(candidate_queue, target_queue)) {
+    if (candidate_available &&
+        (target_queue == nullptr || compare(candidate_queue, target_queue))) {
       target_cpu = candidate_cpu;
       target_queue = candidate_queue;
-    }
 
-    remaining_mask &= ~cpu_num_to_mask(candidate_cpu);
+      // Stop searching at the first idle CPU.
+      // TODO(eieio): Use the load threshold instead.
+      if (is_idle(target_queue)) {
+        break;
+      }
+    }
   }
 
+  DEBUG_ASSERT(target_cpu != INVALID_CPU);
+
   SCHED_LTRACEF("thread=%s target_cpu=%u\n", thread->name_, target_cpu);
-  trace.End(target_cpu, remaining_mask);
+  trace.End(last_cpu, target_cpu);
 
   bool delay_migration = last_cpu != target_cpu && last_cpu != INVALID_CPU && thread->migrate_fn_ &&
                          (active_mask & last_cpu_mask) != 0;
