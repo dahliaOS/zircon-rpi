@@ -34,8 +34,11 @@
 #include <explicit-memory/bytes.h>
 #include <fbl/auto_lock.h>
 #include <fbl/ref_ptr.h>
+#include <kernel/cpu_distance_map.h>
 #include <kernel/dpc.h>
 #include <kernel/spinlock.h>
+#include <kernel/topology.h>
+#include <ktl/algorithm.h>
 #include <ktl/atomic.h>
 #include <lk/init.h>
 #include <object/resource_dispatcher.h>
@@ -702,9 +705,38 @@ static void arm_resource_dispatcher_init_hook(unsigned int rl) {
     printf("Resources: Failed to initialize SMC allocator: %d\n", status);
   }
 }
-
 LK_INIT_HOOK(arm_resource_init, arm_resource_dispatcher_init_hook, LK_INIT_LEVEL_HEAP)
 
 void topology_init() {
   // This platform initializes the topology earlier than this standard hook.
+  // Setup the CPU distance map with the already initialized topology.
+  const auto processor_count =
+      static_cast<uint>(system_topology::GetSystemTopology().processor_count());
+  CpuDistanceMap::Initialize(processor_count, [](cpu_num_t from_id, cpu_num_t to_id) {
+    const auto& topology = system_topology::GetSystemTopology();
+
+    system_topology::Node* from_node = nullptr;
+    if (topology.ProcessorByLogicalId(from_id, &from_node) != ZX_OK) {
+      printf("Failed to get processor node for CPU %u\n", from_id);
+      return -1;
+    }
+    DEBUG_ASSERT(from_node != nullptr);
+
+    system_topology::Node* to_node = nullptr;
+    if (topology.ProcessorByLogicalId(to_id, &to_node) != ZX_OK) {
+      printf("Failed to get processor node for CPU %u\n", to_id);
+      return -1;
+    }
+    DEBUG_ASSERT(to_node != nullptr);
+
+    const auto& from_info = from_node->entity.processor.architecture_info.arm;
+    const auto& to_info = to_node->entity.processor.architecture_info.arm;
+
+    return ktl::max({(1 << 0) * int{from_info.cpu_id != to_info.cpu_id},
+                     (1 << 1) * int{from_info.cluster_1_id != to_info.cluster_1_id},
+                     (1 << 2) * int{from_info.cluster_2_id != to_info.cluster_2_id},
+                     (1 << 3) * int{from_info.cluster_3_id != to_info.cluster_3_id}});
+  });
+
+  CpuDistanceMap::Get().Dump();
 }
