@@ -43,7 +43,7 @@ ServiceProviderDirImpl::ServiceProviderDirImpl(fbl::RefPtr<LogConnectorImpl> log
       log_connector_(log_connector),
       weak_factory_(this) {
   if (services != nullptr) {
-    has_services_whitelist_ = true;
+    //has_services_whitelist_ = true;
     services_whitelist_.insert(services->begin(), services->end());
   }
 }
