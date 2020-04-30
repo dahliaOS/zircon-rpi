@@ -1,0 +1,87 @@
+// Copyright 2020 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SRC_STORAGE_BLOCK_DRIVERS_BLOCK_VERITY_DEVICE_MANAGER_H_
+#define SRC_STORAGE_BLOCK_DRIVERS_BLOCK_VERITY_DEVICE_MANAGER_H_
+
+#include <fuchsia/hardware/block/verified/llcpp/fidl.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <zircon/compiler.h>
+#include <zircon/types.h>
+
+#include <ddk/device.h>
+#include <ddktl/device.h>
+#include <fbl/macros.h>
+#include <fbl/mutex.h>
+//#include <zxcrypt/volume.h>
+
+namespace block_verity {
+
+// TODO: document
+class DeviceManager;
+using DeviceManagerType = ddk::Device<DeviceManager, ddk::UnbindableDeprecated, ddk::Messageable>;
+
+class DeviceManager final : public DeviceManagerType, public ::llcpp::fuchsia::hardware::block::verified::DeviceManager::Interface {
+ public:
+  explicit DeviceManager(zx_device_t* parent) : DeviceManagerType(parent), state_(kBinding) {}
+  ~DeviceManager() = default;
+  DISALLOW_COPY_ASSIGN_AND_MOVE(DeviceManager);
+
+  static zx_status_t Create(void* ctx, zx_device_t* parent);
+
+  // Adds the device
+  zx_status_t Bind();
+
+  // ddk::Device methods; see ddktl/device.h
+  void DdkUnbindDeprecated() __TA_EXCLUDES(mtx_);
+  void DdkRelease();
+
+  // ddk::Messageable methods
+  zx_status_t DdkMessage(fidl_msg_t* msg, fidl_txn_t* txn) __TA_EXCLUDES(mtx_);
+
+  // Unseals the zxcrypt volume and adds it as a |zxcrypt::Device| to the device tree.
+  //zx_status_t Unseal(const uint8_t* ikm, size_t ikm_len, key_slot_t slot) __TA_EXCLUDES(mtx_);
+
+  // Removes the unsealed |zxcrypt::Device|, if present.
+  //zx_status_t Seal() __TA_EXCLUDES(mtx_);
+
+  // Clobbers the superblock (and any backup superblocks), preventing future
+  // Unseal operations from succeeding (provided no other program is
+  // manipulating the underlying block device).
+  //zx_status_t Shred() __TA_EXCLUDES(mtx_);
+
+  // implement |DeviceManager::Interface|
+  void OpenForWrite(::llcpp::fuchsia::hardware::block::verified::Config config,
+                    OpenForWriteCompleter::Sync completer) override __TA_EXCLUDES(mtx_);
+  void CloseAndGenerateSeal(CloseAndGenerateSealCompleter::Sync completer) override __TA_EXCLUDES(mtx_);
+  void OpenForVerifiedRead(
+      ::llcpp::fuchsia::hardware::block::verified::Config config,
+      ::llcpp::fuchsia::hardware::block::verified::Seal seal,
+      OpenForVerifiedReadCompleter::Sync completer) override __TA_EXCLUDES(mtx_);
+  void Close(CloseCompleter::Sync completer) override __TA_EXCLUDES(mtx_);
+ private:
+  // Represents the state of this device.
+  enum State {
+    kBinding,
+    kSealed,
+    kUnsealed,
+    kShredded,
+    kUnbinding,
+    kRemoved,
+  };
+
+  // Unseals the zxcrypt volume and adds it as a |zxcrypt::Device| to the device tree.
+  //zx_status_t UnsealLocked(const uint8_t* ikm, size_t ikm_len, key_slot_t slot) __TA_REQUIRES(mtx_);
+
+  // Used to ensure calls to |Unseal|, |Seal|, and |Unbind| are exclusive to each
+  // other, and protects access to |state_|.
+  fbl::Mutex mtx_;
+
+  State state_ __TA_GUARDED(mtx_);
+};
+
+}  // namespace block_verity
+
+#endif  // SRC_STORAGE_BLOCK_DRIVERS_BLOCK_VERITY_DEVICE_MANAGER_H_
