@@ -33,19 +33,14 @@ struct percpu;
 class Scheduler {
  public:
   // Default minimum granularity of time slices.
-  static constexpr SchedDuration kDefaultMinimumGranularity = SchedUs(750);
+  static constexpr SchedDuration kDefaultMinimumGranularity = SchedMs(1);
 
   // Default target latency for a scheduling period.
-  static constexpr SchedDuration kDefaultTargetLatency = SchedMs(16);
-
-  // Default peak latency for a scheduling period.
-  static constexpr SchedDuration kDefaultPeakLatency = SchedMs(24);
-
-  static_assert(kDefaultPeakLatency >= kDefaultTargetLatency);
+  static constexpr SchedDuration kDefaultTargetLatency = SchedMs(8);
 
   // The adjustment rate of the exponential moving average tracking the expected
   // runtime of each thread.
-  static constexpr size_t kExpectedRuntimeAdjustmentRateShift = 8;
+  static constexpr ffl::Fixed<int, 2>  kExpectedRuntimeAlpha = ffl::FromRatio(3, 4);
 
   Scheduler() = default;
   ~Scheduler() = default;
@@ -375,11 +370,6 @@ class Scheduler {
   // the timeslices under nominal load to reduce scheduling overhead.
   TA_GUARDED(thread_lock)
   SchedDuration target_latency_grans_{kDefaultTargetLatency / kDefaultMinimumGranularity};
-
-  // The scheduling period threshold over which the CPU is considered
-  // oversubscribed.
-  TA_GUARDED(thread_lock)
-  SchedDuration peak_latency_grans_{kDefaultPeakLatency / kDefaultMinimumGranularity};
 
   // The CPU this scheduler instance is associated with.
   // NOTE: This member is not initialized to prevent clobbering the value set

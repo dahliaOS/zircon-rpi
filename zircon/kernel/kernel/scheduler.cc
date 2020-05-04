@@ -755,12 +755,10 @@ void Scheduler::RescheduleCommon(SchedTime now, EndTraceCallback end_outer_trace
 
     // The expected runtime is an exponential moving average updated as follows:
     //
-    // a = 1 / 2**d
     // Sn = Sn-1 + a * (Yn - Sn-1)
-    //    = Sn-1 + (Yn - Sn-1) >> d
     //
     const SchedDuration delta_ns = total_runtime_ns - current_state->expected_runtime_ns_;
-    const SchedDuration scaled_ns = delta_ns / (1 << kExpectedRuntimeAdjustmentRateShift);
+    const SchedDuration scaled_ns = delta_ns * kExpectedRuntimeAlpha;
     const SchedDuration clamped_ns =
         ktl::max<SchedDuration>(scaled_ns, -current_state->expected_runtime_ns_);
     current_state->expected_runtime_ns_ += clamped_ns;
@@ -883,20 +881,17 @@ void Scheduler::UpdatePeriod() {
 
   DEBUG_ASSERT(runnable_fair_task_count_ >= 0);
   DEBUG_ASSERT(minimum_granularity_ns_ > 0);
-  DEBUG_ASSERT(peak_latency_grans_ > 0);
   DEBUG_ASSERT(target_latency_grans_ > 0);
 
   const int64_t num_tasks = runnable_fair_task_count_;
-  const int64_t peak_tasks = Round<int64_t>(peak_latency_grans_);
   const int64_t normal_tasks = Round<int64_t>(target_latency_grans_);
 
   // The scheduling period stretches when there are too many tasks to fit
   // within the target latency.
   scheduling_period_grans_ = SchedDuration{num_tasks > normal_tasks ? num_tasks : normal_tasks};
 
-  SCHED_LTRACEF("num_tasks=%" PRId64 " peak_tasks=%" PRId64 " normal_tasks=%" PRId64
-                " period_grans=%" PRId64 "\n",
-                num_tasks, peak_tasks, normal_tasks, scheduling_period_grans_.raw_value());
+  SCHED_LTRACEF("num_tasks=%" PRId64 " normal_tasks=%" PRId64 " period_grans=%" PRId64 "\n",
+                num_tasks, normal_tasks, scheduling_period_grans_.raw_value());
 
   trace.End(Round<uint64_t>(scheduling_period_grans_), num_tasks);
 }
