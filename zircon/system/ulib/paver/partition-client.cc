@@ -65,12 +65,17 @@ zx_status_t BlockPartitionClient::RegisterFastBlockIo() {
   auto result = partition_.GetFifo();
   zx_status_t status = result.ok() ? result->status : result.status();
   if (status != ZX_OK) {
+    ERROR("Get fifo failed %d\n", status);
     return status;
+  } else {
+    ERROR("Created a fifo (%p)!\n", this);
   }
+
 
   block_client::Client client;
   status = block_client::Client::Create(std::move(result->fifo), &client);
   if (status != ZX_OK) {
+    ERROR("Get client failed %d\n", status);
     return status;
   }
 
@@ -88,6 +93,7 @@ zx_status_t BlockPartitionClient::RegisterVmo(const zx::vmo& vmo, vmoid_t* out_v
   auto result = partition_.AttachVmo(std::move(dup));
   zx_status_t status = result.ok() ? result->status : result.status();
   if (status != ZX_OK) {
+    ERROR("Couldn't attach buffer vmo: %d\n", status);
     return status;
   }
 
@@ -109,6 +115,7 @@ zx_status_t BlockPartitionClient::Setup(const zx::vmo& vmo, vmoid_t* out_vmoid) 
   size_t block_size;
   status = GetBlockSize(&block_size);
   if (status != ZX_OK) {
+    ERROR("Couldn't get block size : %d\n", status);
     return status;
   }
 

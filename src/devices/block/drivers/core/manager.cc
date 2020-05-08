@@ -31,6 +31,7 @@ bool Manager::IsFifoServerRunning() {
 
 zx_status_t Manager::StartServer(ddk::BlockProtocolClient* protocol, zx::fifo* out_fifo) {
   if (IsFifoServerRunning()) {
+    zxlogf(ERROR, "block: fifo server already running");
     return ZX_ERR_ALREADY_BOUND;
   }
   ZX_DEBUG_ASSERT(server_ == nullptr);

@@ -389,12 +389,14 @@ zx_status_t BlockDeviceInterface::Add() {
 
   switch (df) {
     case DISK_FORMAT_GPT: {
+      fprintf(stderr, "disk is GPT, trying to attach\n");
       return AttachDriver(kGPTDriverPath);
     }
     case DISK_FORMAT_FVM: {
       return AttachDriver(kFVMDriverPath);
     }
     case DISK_FORMAT_MBR: {
+      fprintf(stderr, "disk is MBR, trying to attach\n");
       return AttachDriver(kMBRDriverPath);
     }
     case DISK_FORMAT_ZXCRYPT: {
@@ -404,6 +406,7 @@ zx_status_t BlockDeviceInterface::Add() {
       return ZX_OK;
     }
     default:
+      fprintf(stderr, "disk is unknown, not trying to attach\n");
       break;
   }
 

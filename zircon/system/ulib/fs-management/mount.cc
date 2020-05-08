@@ -181,10 +181,21 @@ disk_format_t detect_disk_format_impl(int fd, DiskFormatLogVerbosity verbosity) 
                                            static_cast<size_t>(resp.value().info->block_size));
 
   uint8_t data[buffer_size];
+
   if (read(fd, data, buffer_size) != static_cast<ssize_t>(buffer_size)) {
     fprintf(stderr, "detect_disk_format: Error reading block device.\n");
     return DISK_FORMAT_UNKNOWN;
   }
+
+  fprintf(stderr, "disk header buffer[0x1f0..0x210]:\n");
+  for (int i = 0x1f0; i < 0x210; i+= 0x10) {
+    fprintf(stderr, "0x%x: ", i);
+    for (int j = 0; j < 0x10 && (i+j) < HEADER_SIZE; j++) {
+      fprintf(stderr, "%02x ", data[i + j]);
+    }
+    fprintf(stderr, "\n");
+  }
+
 
   if (!memcmp(data, fvm_magic, sizeof(fvm_magic))) {
     return DISK_FORMAT_FVM;

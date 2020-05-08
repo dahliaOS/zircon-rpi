@@ -31,6 +31,7 @@ zx_status_t Client::Create(zx::fifo fifo, Client* out) {
   if (status != ZX_OK) {
     return status;
   }
+  fprintf(stderr, "Created fifo %p\n", client);
   *out = Client(client);
   return ZX_OK;
 }
@@ -42,12 +43,14 @@ zx_status_t Client::Transaction(block_fifo_request_t* requests, size_t count) co
 
 void Client::Reset(fifo_client_t* client) {
   if (client_ != nullptr) {
+    fprintf(stderr, "Resetting fifo %p\n", client_);
     block_fifo_release_client(client_);
   }
   client_ = client;
 }
 
 fifo_client_t* Client::Release() {
+  fprintf(stderr, "Releasing fifo %p\n", client_);
   fifo_client_t* client = client_;
   client_ = nullptr;
   return client;

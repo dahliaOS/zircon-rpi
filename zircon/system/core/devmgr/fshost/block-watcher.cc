@@ -49,6 +49,10 @@ namespace {
 constexpr char kPathBlockDeviceRoot[] = "/dev/class/block";
 
 zx_status_t BlockDeviceCallback(int dirfd, int event, const char* name, void* cookie) {
+  if (event == WATCH_EVENT_REMOVE_FILE) {
+    fprintf(stderr, "fshost: (%s/%s) removed\n", kPathBlockDeviceRoot, name);
+    return ZX_OK;
+  }
   if (event != WATCH_EVENT_ADD_FILE) {
     return ZX_OK;
   }
@@ -57,6 +61,7 @@ zx_status_t BlockDeviceCallback(int dirfd, int event, const char* name, void* co
     return ZX_OK;
   }
 
+  fprintf(stderr, "fshost: (%s/%s) added, will attempt to bind.\n", kPathBlockDeviceRoot, name);
   auto mounter = static_cast<FilesystemMounter*>(cookie);
   BlockDevice device(mounter, std::move(device_fd));
   zx_status_t rc = device.Add();
