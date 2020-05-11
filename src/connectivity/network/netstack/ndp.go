@@ -229,7 +229,7 @@ func (n *ndpDispatcher) OnAutoGenAddressInvalidated(nicID tcpip.NICID, addrWithP
 
 // OnRecursiveDNSServerOption implements stack.NDPDispatcher.OnRecursiveDNSServerOption.
 func (n *ndpDispatcher) OnRecursiveDNSServerOption(nicID tcpip.NICID, addrs []tcpip.Address, lifetime time.Duration) {
-	syslog.Infof("ndp: OnRecursiveDNSServerOption(%d, %s, %s)", nicID, addrs, lifetime)
+	//syslog.Infof("ndp: OnRecursiveDNSServerOption(%d, %s, %s)", nicID, addrs, lifetime)
 	n.addEvent(&ndpRecursiveDNSServerEvent{nicID: nicID, addrs: addrs, lifetime: lifetime})
 }
 
@@ -428,7 +428,7 @@ func (n *ndpDispatcher) start(ctx context.Context) {
 
 			case *ndpRecursiveDNSServerEvent:
 				nicID, addrs, lifetime := event.nicID, event.addrs, event.lifetime
-				syslog.Infof("ndp: updating expiring DNS servers (%s) on nicID (%d) with lifetime (%s)...", addrs, nicID, lifetime)
+				//syslog.Infof("ndp: updating expiring DNS servers (%s) on nicID (%d) with lifetime (%s)...", addrs, nicID, lifetime)
 				servers := make([]tcpip.FullAddress, 0, len(addrs))
 				for _, a := range addrs {
 					// The default DNS port will be used since the Port field is
