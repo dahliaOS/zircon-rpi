@@ -1,0 +1,41 @@
+# Copyright 2020 The Fuchsia Authors
+#
+# Use of this source code is governed by a MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT
+
+include("$zx/kernel/phys/phys.gni")
+
+kernel_align = "KERNEL_ALIGN=0x10000"
+
+template("boot_shim") {
+  phys_executable(target_name) {
+    deps = []
+    ldflags = []
+    forward_variables_from(invoker, "*", [ "linker_script" ])
+    deps += [
+      ":shim-header",
+      ":shim-main",
+    ]
+
+    # The linker script expects this symbol definition.
+    ldflags += [ "-Wl,-defsym,$kernel_align" ]
+    linker_script = "boot-shim.ld"
+  }
+}
+
+boot_shim("qemu-boot-shim") {
+  sources = [ "qemu.cc" ]
+}
+
+source_set("header") {
+  visibility = [ ":*" ]
+  sources = [ "shim-header.S" ]
+  deps = [ "$zx/kernel/lib/arch" ]
+}
+
+source_set("main") {
+  visibility = [ ":*" ]
+  sources = [ "shim-main.cc" ]
+  defines = [ kernel_align ]
+}
