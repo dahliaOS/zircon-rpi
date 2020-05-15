@@ -40,7 +40,7 @@ class Scheduler {
 
   // The adjustment rate of the exponential moving average tracking the expected
   // runtime of each thread.
-  static constexpr ffl::Fixed<int, 2>  kExpectedRuntimeAlpha = ffl::FromRatio(3, 4);
+  static constexpr ffl::Fixed<int, 2> kExpectedRuntimeAlpha = ffl::FromRatio(3, 4);
 
   Scheduler() = default;
   ~Scheduler() = default;
@@ -58,8 +58,16 @@ class Scheduler {
   // Returns the number of the CPU this scheduler instance is associated with.
   cpu_num_t this_cpu() const { return this_cpu_; }
 
-  zx_duration_t predicted_queue_time_ns() const {
-    return total_expected_runtime_ns_.load().raw_value();
+  // Returns the lock-free value of the predicted queue time for the CPU this
+  // scheduler instance is associated with.
+  SchedDuration predicted_queue_time_ns() const {
+    return exported_total_expected_runtime_ns_.load();
+  }
+
+  // Returns the lock-free value of the predicted deadline utilization for the
+  // CPU this scheduler instance is associated with.
+  SchedUtilization predicted_deadline_utilization() const {
+    return exported_total_deadline_utilization_.load();
   }
 
   // Public entry points.
@@ -106,9 +114,16 @@ class Scheduler {
   static void ChangeDeadline(Thread* t, const zx_sched_deadline_params_t& params)
       TA_REQ(thread_lock);
 
+  // Init hook to setup the load sampling thread.
+  static void InitHook(uint32_t init_level);
+
  private:
   // Allow percpu to init our cpu number.
   friend struct percpu;
+
+  // Periodically samples the load/utilization of each CPU to establish the
+  // equilibrium state for load balancing.
+  static zx_status_t LoadSampleThread(void* arg);
 
   static void ChangeWeight(Thread* thread, int priority, cpu_mask_t* cpus_to_reschedule_mask)
       TA_REQ(thread_lock);
@@ -348,7 +363,8 @@ class Scheduler {
   // The sum of the expected runtimes of all active threads on this CPU. This
   // value is an estimate of the average queuimg time for this CPU, given the
   // current set of active threads.
-  RelaxedAtomic<SchedDuration> total_expected_runtime_ns_{SchedNs(0)};
+  TA_GUARDED(thread_lock)
+  SchedDuration total_expected_runtime_ns_{0};
 
   // The sum of the worst case utilization of all active deadline threads on
   // this CPU.
@@ -379,6 +395,14 @@ class Scheduler {
   // CPU is associated with each instance of this class. This is needed by
   // non-static methods that are called from arbitrary CPUs, namely Insert().
   cpu_num_t this_cpu_;
+
+  // Values exported for lock-free access across CPUs.
+  RelaxedAtomic<SchedDuration> exported_total_expected_runtime_ns_{SchedNs(0)};
+  RelaxedAtomic<SchedUtilization> exported_total_deadline_utilization_{SchedUtilization{0}};
+
+  // Mean values sampled periodically across all active CPUs.
+  inline static RelaxedAtomic<SchedDuration> mean_expected_runtime_ns_{SchedNs(0)};
+  inline static RelaxedAtomic<SchedUtilization> mean_deadline_utilization_{SchedUtilization{0}};
 };
 
 #endif  // ZIRCON_KERNEL_INCLUDE_KERNEL_SCHEDULER_H_

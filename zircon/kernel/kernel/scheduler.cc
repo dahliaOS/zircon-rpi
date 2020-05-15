@@ -32,6 +32,7 @@
 #include <kernel/thread_lock.h>
 #include <ktl/algorithm.h>
 #include <ktl/move.h>
+#include <lk/init.h>
 #include <object/thread_dispatcher.h>
 #include <vm/vm.h>
 
@@ -187,11 +188,12 @@ cpu_mask_t GetEffectiveCpuMask(cpu_mask_t active_mask, const Thread* thread) {
 
 void Scheduler::Dump() {
   printf("\ttweight=%s nfair=%d ndeadline=%d vtime=%" PRId64 " period=%" PRId64 " ema=%" PRId64
-         " tutil=%s\n",
+         " mema=%" PRId64 " tutil=%s mutil=%s\n",
          Format(weight_total_).c_str(), runnable_fair_task_count_, runnable_deadline_task_count_,
          virtual_time_.raw_value(), scheduling_period_grans_.raw_value(),
-         total_expected_runtime_ns_.load().raw_value(),
-         Format(total_deadline_utilization_).c_str());
+         total_expected_runtime_ns_.raw_value(), mean_expected_runtime_ns_.load().raw_value(),
+         Format(total_deadline_utilization_).c_str(),
+         Format(mean_deadline_utilization_.load()).c_str());
 
   if (active_thread_ != nullptr) {
     const SchedulerState& state = active_thread_->scheduler_state_;
@@ -578,32 +580,38 @@ cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
 
   LOCAL_KTRACE(KTRACE_DETAILED, "target_mask: online,active", mp_get_online_mask(), active_mask);
 
-  // Define load/utilization comparisons for fair and deadline tasks.
-  const auto compare_fair = [](Scheduler* const queue_a,
-                               Scheduler* const queue_b) TA_REQ(thread_lock) {
-    if (queue_a->total_expected_runtime_ns_.load() == queue_b->total_expected_runtime_ns_.load()) {
-      return queue_a->total_deadline_utilization_ < queue_b->total_deadline_utilization_;
-    }
-    return queue_a->total_expected_runtime_ns_.load() < queue_b->total_expected_runtime_ns_.load();
-  };
-  const auto is_idle_fair = [](Scheduler* const queue) TA_REQ(thread_lock) {
-    return queue->total_expected_runtime_ns_.load() == 0;
-  };
+  // Read to global mean values that represent the equilibrium state.
+  const SchedDuration mean_runtime_ns = mean_expected_runtime_ns_.load();
+  const SchedUtilization mean_utilization = mean_deadline_utilization_.load();
 
-  const auto compare_deadline = [](Scheduler* const queue_a,
-                                   Scheduler* const queue_b) TA_REQ(thread_lock) {
-    if (queue_a->total_deadline_utilization_ == queue_b->total_deadline_utilization_) {
-      return queue_a->total_expected_runtime_ns_.load() <
-             queue_b->total_expected_runtime_ns_.load();
-    }
-    return queue_a->total_deadline_utilization_ < queue_b->total_deadline_utilization_;
+  const SchedDuration runtime_threshold_ns = mean_runtime_ns;
+
+  // Define load/utilization comparisons for fair and deadline tasks.
+  const auto compare_fair = [](Scheduler* const queue_a, Scheduler* const queue_b) {
+    std::pair a{queue_a->predicted_queue_time_ns(), queue_a->predicted_deadline_utilization()};
+    std::pair b{queue_b->predicted_queue_time_ns(), queue_b->predicted_deadline_utilization()};
+    return a < b;
   };
-  const auto is_idle_deadline = [](Scheduler* const queue) TA_REQ(thread_lock) {
-    return queue->total_deadline_utilization_ == 0 && queue->total_expected_runtime_ns_.load() == 0;
+  const auto compare_deadline = [](Scheduler* const queue_a, Scheduler* const queue_b) {
+    std::pair a{queue_a->predicted_deadline_utilization(), queue_a->predicted_queue_time_ns()};
+    std::pair b{queue_b->predicted_deadline_utilization(), queue_b->predicted_queue_time_ns()};
+    return a < b;
+  };
+  const auto is_sufficient = [runtime_threshold_ns, mean_utilization,
+                              thread](Scheduler* const queue) {
+    const SchedDuration expected_runtime_ns = thread->scheduler_state_.expected_runtime_ns_;
+    const bool sufficient_runtime =
+        queue->predicted_queue_time_ns() + expected_runtime_ns <= runtime_threshold_ns;
+    if (IsFairThread(thread)) {
+      return sufficient_runtime;
+    } else {
+      const SchedUtilization utilization = thread->scheduler_state_.deadline_.utilization;
+      return sufficient_runtime &&
+             queue->predicted_deadline_utilization() + utilization <= mean_utilization;
+    }
   };
 
   const auto compare = IsFairThread(thread) ? compare_fair : compare_deadline;
-  const auto is_idle = IsFairThread(thread) ? is_idle_fair : is_idle_deadline;
 
   // Find the best target CPU.
   DEBUG_ASSERT(last_cpu != INVALID_CPU);
@@ -622,9 +630,8 @@ cpu_num_t Scheduler::FindTargetCpu(Thread* thread) {
       target_cpu = candidate_cpu;
       target_queue = candidate_queue;
 
-      // Stop searching at the first idle CPU.
-      // TODO(eieio): Use the load threshold instead.
-      if (is_idle(target_queue)) {
+      // Stop searching at the first sufficiently unloaded CPU.
+      if (is_sufficient(target_queue)) {
         break;
       }
     }
@@ -764,9 +771,10 @@ void Scheduler::RescheduleCommon(SchedTime now, EndTraceCallback end_outer_trace
     current_state->expected_runtime_ns_ += clamped_ns;
 
     // Adjust the aggregate value by the same amount.
-    total_expected_runtime_ns_ = total_expected_runtime_ns_.load() + clamped_ns;
+    total_expected_runtime_ns_ += clamped_ns;
+    exported_total_expected_runtime_ns_ = total_expected_runtime_ns_;
 
-    update_ema_trace.End(Round<uint64_t>(total_expected_runtime_ns_.load()),
+    update_ema_trace.End(Round<uint64_t>(total_expected_runtime_ns_),
                          Round<uint64_t>(total_deadline_utilization_));
   }
 
@@ -1091,8 +1099,9 @@ void Scheduler::Insert(SchedTime now, Thread* thread) {
     // CPU to the one this scheduler instance services.
     state->curr_cpu_ = this_cpu();
 
-    total_expected_runtime_ns_ = total_expected_runtime_ns_.load() + state->expected_runtime_ns_;
-    DEBUG_ASSERT(total_expected_runtime_ns_.load() >= SchedDuration{0});
+    total_expected_runtime_ns_ += state->expected_runtime_ns_;
+    exported_total_expected_runtime_ns_ = total_expected_runtime_ns_;
+    DEBUG_ASSERT(total_expected_runtime_ns_ >= SchedDuration{0});
 
     if (IsFairThread(thread)) {
       runnable_fair_task_count_++;
@@ -1105,6 +1114,7 @@ void Scheduler::Insert(SchedTime now, Thread* thread) {
       DEBUG_ASSERT(weight_total_ > SchedWeight{0});
     } else {
       total_deadline_utilization_ += state->deadline_.utilization;
+      exported_total_deadline_utilization_ = total_deadline_utilization_;
       DEBUG_ASSERT(total_deadline_utilization_ > SchedUtilization{0});
 
       runnable_deadline_task_count_++;
@@ -1127,8 +1137,9 @@ void Scheduler::Remove(Thread* thread) {
   if (state->OnRemove()) {
     state->curr_cpu_ = INVALID_CPU;
 
-    total_expected_runtime_ns_ = total_expected_runtime_ns_.load() - state->expected_runtime_ns_;
-    DEBUG_ASSERT(total_expected_runtime_ns_.load() >= SchedDuration{0});
+    total_expected_runtime_ns_ -= state->expected_runtime_ns_;
+    exported_total_expected_runtime_ns_ = total_expected_runtime_ns_;
+    DEBUG_ASSERT(total_expected_runtime_ns_ >= SchedDuration{0});
 
     if (IsFairThread(thread)) {
       DEBUG_ASSERT(runnable_fair_task_count_ > 0);
@@ -1147,6 +1158,7 @@ void Scheduler::Remove(Thread* thread) {
     } else {
       DEBUG_ASSERT(total_deadline_utilization_ > SchedUtilization{0});
       total_deadline_utilization_ -= state->deadline_.utilization;
+      exported_total_deadline_utilization_ = total_deadline_utilization_;
 
       DEBUG_ASSERT(runnable_deadline_task_count_ > 0);
       runnable_deadline_task_count_--;
@@ -1462,6 +1474,7 @@ void Scheduler::UpdateWeightCommon(Thread* thread, int original_priority_, Sched
         // Changed to the fair discipline and update the task counts. Changing
         // from deadline to fair behaves similarly to a yield.
         current->total_deadline_utilization_ -= state->deadline_.utilization;
+        current->exported_total_deadline_utilization_ = current->total_deadline_utilization_;
         state->discipline_ = SchedDiscipline::Fair;
         state->start_time_ = current->virtual_time_;
         state->finish_time_ = current->virtual_time_;
@@ -1568,6 +1581,7 @@ void Scheduler::UpdateDeadlineCommon(Thread* thread, int original_priority_,
       state->finish_time_ = state->start_time_ + params.deadline_ns;
       state->time_slice_ns_ = ktl::min(state->time_slice_ns_, params.capacity_ns);
       current->total_deadline_utilization_ += state->deadline_.utilization;
+      current->exported_total_deadline_utilization_ = current->total_deadline_utilization_;
 
       // Adjust the position of the thread in the run queue based on the new
       // deadline.
@@ -1731,3 +1745,54 @@ void Scheduler::ChangeDeadline(Thread* thread, const zx_sched_deadline_params_t&
     mp_reschedule(cpus_to_reschedule_mask, 0);
   }
 }
+
+void Scheduler::InitHook(uint32_t /*init_level*/) {
+  Thread* thread =
+      Thread::Create("sched_load", Scheduler::LoadSampleThread, nullptr, DEFAULT_PRIORITY);
+  thread->SetDeadline({ZX_USEC(20), ZX_USEC(500), ZX_USEC(500)});
+  thread->Resume();
+}
+
+zx_status_t Scheduler::LoadSampleThread(void* /*arg*/) {
+  Thread* const thread = Thread::Current::Get();
+  while (true) {
+    const SchedDuration interval = kDefaultTargetLatency / 2;
+    Thread::Current::SleepRelative(interval.raw_value());
+    {
+      LocalTraceDuration<KTRACE_COMMON> trace{"sched_load"_stringref};
+
+      SchedDuration total_queue_time{0};
+      SchedUtilization total_utilization{0};
+
+      size_t active_count = 0;
+      const cpu_mask_t active_mask = mp_get_active_mask();
+      for (cpu_num_t i = 0; i < percpu::processor_count(); i++) {
+        if (cpu_num_to_mask(i) & active_mask) {
+          active_count++;
+          const percpu& cpu = percpu::Get(i);
+          total_queue_time += cpu.scheduler.predicted_queue_time_ns();
+          total_utilization += cpu.scheduler.predicted_deadline_utilization();
+        }
+      }
+
+      // Subtract this thread's load and utilization contribution, since it is
+      // small and not relevant to the overall equilibrium state of the system.
+      // Otherwise, diagnostics always display non-zero mean values.
+      {
+        Guard<SpinLock, IrqSave> guard{ThreadLock::Get()};
+        total_queue_time -= thread->scheduler_state_.expected_runtime_ns_;
+        total_utilization -= thread->scheduler_state_.deadline_.utilization;
+      }
+
+      mean_expected_runtime_ns_ = total_queue_time / ktl::min<size_t>(active_count, 1u);
+      mean_deadline_utilization_ = total_utilization / ktl::min<size_t>(active_count, 1u);
+
+      trace.End(Round<uint64_t>(mean_expected_runtime_ns_.load()),
+                Round<uint64_t>(mean_deadline_utilization_.load() * 10000));
+    }
+  }
+
+  return ZX_OK;
+}
+
+LK_INIT_HOOK(sched_load_init, Scheduler::InitHook, LK_INIT_LEVEL_LAST)
