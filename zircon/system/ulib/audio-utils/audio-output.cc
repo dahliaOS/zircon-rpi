@@ -33,6 +33,18 @@ std::unique_ptr<AudioOutput> AudioOutput::Create(const char* dev_path) {
 }
 
 zx_status_t AudioOutput::Play(AudioSource& source) {
+  auto res = PlayPrepare(source);
+  if (res != ZX_OK)
+    return res;
+  res = StartRingBuffer();
+  if (res != ZX_OK) {
+    printf("Failed to start playback (res %d)\n", res);
+    return res;
+  }
+  return PlayToCompletion(source);
+}
+
+zx_status_t AudioOutput::PlayPrepare(AudioSource& source) {
   zx_status_t res;
 
   if (source.finished())
@@ -67,11 +79,26 @@ zx_status_t AudioOutput::Play(AudioSource& source) {
 
   memset(rb_virt_, 0, rb_sz_);
 
+  // Write up to half the ring buffer to be ready to speed up playback start.
+  uint32_t done = 0;
+  auto buf = reinterpret_cast<uint8_t*>(rb_virt_);
+  res = source.GetFrames(buf, rb_sz_ / 2, &done);
+  if (res != ZX_OK) {
+    printf("Error packing frames (res %d)\n", res);
+    return res;
+  }
+  zx_cache_flush(buf, done, ZX_CACHE_FLUSH_DATA);
+  bytes_written_ = done;
+  return ZX_OK;
+}
+
+zx_status_t AudioOutput::PlayToCompletion(AudioSource& source) {
   auto buf = reinterpret_cast<uint8_t*>(rb_virt_);
   uint32_t rd, wr;
   uint32_t playout_rd, playout_amt;
-  bool started = false;
-  rd = wr = 0;
+  zx_status_t res = ZX_OK;
+  rd = 0;
+  wr = bytes_written_;
   playout_rd = playout_amt = 0;
 
   while (true) {
@@ -120,16 +147,6 @@ zx_status_t AudioOutput::Play(AudioSource& source) {
 
     if (res != ZX_OK)
       break;
-
-    // If we have not started yet, do so.
-    if (!started) {
-      res = StartRingBuffer();
-      if (res != ZX_OK) {
-        printf("Failed to start ring buffer!\n");
-        break;
-      }
-      started = true;
-    }
 
     auto position =
         audio_fidl::RingBuffer::Call::WatchClockRecoveryPositionInfo(zx::unowned_channel(rb_ch_));
