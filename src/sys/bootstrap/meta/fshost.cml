@@ -130,6 +130,10 @@
             protocol: "/svc/fuchsia.fshost.Admin",
             from: "self",
         },
+        {
+            protocol: "/svc/fuchsia.fshost.BlockWatcher",
+            from: "self",
+        },
 
         // This service name is breaking the convention whereby the directory entry
         // name matches the protocol name. This is an implementation of

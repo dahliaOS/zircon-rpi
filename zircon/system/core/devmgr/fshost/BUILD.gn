@@ -115,6 +115,7 @@ source_set("block-watcher") {
     "//zircon/public/lib/zx",
     "//zircon/system/fidl/fuchsia-device:c",
     "//zircon/system/fidl/fuchsia-device:llcpp",
+    "//zircon/system/ulib/fidl-async:fidl-async-cpp",
     "//zircon/system/ulib/fs",
     "//zircon/system/ulib/fs-management",
     "//zircon/system/ulib/gpt",

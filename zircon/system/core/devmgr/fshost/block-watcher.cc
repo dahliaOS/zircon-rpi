@@ -25,6 +25,7 @@
 #include <lib/fdio/fdio.h>
 #include <lib/fdio/unsafe.h>
 #include <lib/fdio/watcher.h>
+#include <lib/fidl-async/cpp/bind.h>
 #include <lib/fzl/time.h>
 #include <lib/zx/channel.h>
 #include <lib/zx/process.h>
@@ -41,12 +42,24 @@
 
 #include "block-device.h"
 #include "block-watcher.h"
+#include "fs-manager.h"
 #include "pkgfs-launcher.h"
+#include "zircon/errors.h"
 
 namespace devmgr {
 namespace {
 
 constexpr char kPathBlockDeviceRoot[] = "/dev/class/block";
+
+// The number of times Pause() has been called on the block watcher.
+static unsigned int watcher_pause_count = 0;
+// This mutex is held when pause_count is being modified, and while the
+// block watcher is touching a block device.
+static std::mutex watcher_callback_mutex;
+
+std::mutex& GetWatcherLock() {
+  return watcher_callback_mutex;
+}
 
 zx_status_t BlockDeviceCallback(int dirfd, int event, const char* name, void* cookie) {
   if (event == WATCH_EVENT_REMOVE_FILE) {
@@ -58,6 +71,12 @@ zx_status_t BlockDeviceCallback(int dirfd, int event, const char* name, void* co
   }
   fbl::unique_fd device_fd(openat(dirfd, name, O_RDWR));
   if (!device_fd) {
+    return ZX_OK;
+  }
+
+  // Lock the block watcher, so any pause operations wait until after we're done.
+  auto lock = std::lock_guard<std::mutex>{GetWatcherLock()};
+  if (watcher_pause_count != 0) {
     return ZX_OK;
   }
 
@@ -86,4 +105,45 @@ void BlockDeviceWatcher(std::unique_ptr<FsManager> fshost, BlockWatcherOptions o
   }
 }
 
+fbl::RefPtr<fs::Service> BlockWatcherServer::Create(devmgr::FsManager* fs_manager,
+                                                           async_dispatcher* dispatcher) {
+  return fbl::MakeRefCounted<fs::Service>([dispatcher, fs_manager](zx::channel chan) mutable {
+    zx::event event;
+    zx_status_t status = fs_manager->event()->duplicate(ZX_RIGHT_SAME_RIGHTS, &event);
+    if (status != ZX_OK) {
+      fprintf(stderr, "fshost: failed to duplicate event handle for admin service: %s\n",
+              zx_status_get_string(status));
+      return status;
+    }
+
+    status = fidl::Bind(dispatcher, std::move(chan), std::make_unique<BlockWatcherServer>());
+    if (status != ZX_OK) {
+      fprintf(stderr, "fshost: failed to bind admin service: %s\n", zx_status_get_string(status));
+      return status;
+    }
+    return ZX_OK;
+  });
+}
+
+void BlockWatcherServer::Pause(PauseCompleter::Sync completer) {
+  auto lock = std::lock_guard<std::mutex>{GetWatcherLock()};
+  if (watcher_pause_count == std::numeric_limits<unsigned int>::max()) {
+    completer.Reply(ZX_ERR_BAD_STATE);
+    return;
+  } else {
+    watcher_pause_count++;
+    completer.Reply(ZX_OK);
+  }
+}
+
+void BlockWatcherServer::Resume(ResumeCompleter::Sync completer) {
+  auto lock = std::lock_guard<std::mutex>{GetWatcherLock()};
+  if (watcher_pause_count == 0) {
+    completer.Reply(ZX_ERR_BAD_STATE);
+    return;
+  } else {
+    watcher_pause_count--;
+    completer.Reply(ZX_OK);
+  }
+}
 }  // namespace devmgr

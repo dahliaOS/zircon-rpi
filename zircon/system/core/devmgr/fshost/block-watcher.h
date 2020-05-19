@@ -4,7 +4,11 @@
 
 #pragma once
 
+#include <fuchsia/fshost/llcpp/fidl.h>
+
 #include <memory>
+
+#include <fs/service.h>
 
 #include "fs-manager.h"
 
@@ -18,6 +22,20 @@ struct BlockWatcherOptions {
   // Identifies that the block watcher should wait for a "data" partition
   // to appear before choosing to launch pkgfs.
   bool wait_for_data;
+};
+
+class BlockWatcherServer final : public llcpp::fuchsia::fshost::BlockWatcher::Interface {
+ public:
+  BlockWatcherServer() {}
+
+
+  // Creates a new fs::Service backed by a new BlockWatcherServer, to be inserted into
+  // a pseudo fs.
+  static fbl::RefPtr<fs::Service> Create(devmgr::FsManager* fs_manager,
+                                         async_dispatcher* dispatcher);
+
+  void Pause(PauseCompleter::Sync completer) override;
+  void Resume(ResumeCompleter::Sync completer) override;
 };
 
 // Monitors "/dev/class/block" for new devices indefinitely.
