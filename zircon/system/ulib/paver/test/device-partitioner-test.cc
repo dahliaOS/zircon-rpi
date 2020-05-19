@@ -283,7 +283,7 @@ class EfiDevicePartitionerTests : public zxtest::Test {
   EfiDevicePartitionerTests() {
     IsolatedDevmgr::Args args;
     args.driver_search_paths.push_back("/boot/driver");
-    args.disable_block_watcher = true;
+    args.disable_block_watcher = false;
     ASSERT_OK(IsolatedDevmgr::Create(&args, &devmgr_));
 
     fbl::unique_fd fd;
@@ -617,7 +617,7 @@ class CrosDevicePartitionerTests : public zxtest::Test {
   CrosDevicePartitionerTests() {
     IsolatedDevmgr::Args args;
     args.driver_search_paths.push_back("/boot/driver");
-    args.disable_block_watcher = true;
+    args.disable_block_watcher = false;
     ASSERT_OK(IsolatedDevmgr::Create(&args, &devmgr_));
 
     fbl::unique_fd fd;
@@ -868,7 +868,7 @@ class FixedDevicePartitionerTests : public zxtest::Test {
   FixedDevicePartitionerTests() {
     IsolatedDevmgr::Args args;
     args.driver_search_paths.push_back("/boot/driver");
-    args.disable_block_watcher = true;
+    args.disable_block_watcher = false;
     ASSERT_OK(IsolatedDevmgr::Create(&args, &devmgr_));
 
     fbl::unique_fd fd;
@@ -972,7 +972,7 @@ class SherlockPartitionerTests : public zxtest::Test {
   SherlockPartitionerTests() {
     IsolatedDevmgr::Args args;
     args.driver_search_paths.push_back("/boot/driver");
-    args.disable_block_watcher = true;
+    args.disable_block_watcher = false;
     args.board_name = "sherlock";
     ASSERT_OK(IsolatedDevmgr::Create(&args, &devmgr_));
 
