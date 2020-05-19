@@ -203,12 +203,8 @@ void AmlPdmDevice::ConfigFilters(uint32_t frames_per_second) {
   pdm_mmio_.Write32(0x0000, PDM_COEFF_ADDR);
 }
 
-zx_status_t AmlPdmDevice::SetRate(uint32_t frames_per_second) {
-  if (frames_per_second != 48000 && frames_per_second != 96000) {
-    return ZX_ERR_INVALID_ARGS;
-  }
-  ConfigFilters(frames_per_second);
-  return ZX_OK;
+void AmlPdmDevice::SetMute(uint8_t mute_mask) {
+  mute_mask_ = mute_mask;
 }
 
 uint32_t AmlPdmDevice::GetRingPosition() {
@@ -243,14 +239,14 @@ zx_status_t AmlPdmDevice::SetBuffer(zx_paddr_t buf, size_t len) {
 // Stops the pdm from clocking
 void AmlPdmDevice::PdmInDisable() {
   audio_mmio_.ClearBits32(1 << 31, EE_AUDIO_CLK_PDMIN_CTRL0);
-  pdm_mmio_.ClearBits32((1 << 31) | (1 << 16), PDM_CTRL);
+  pdm_mmio_.ClearBits32((1 << 31) | (0xff << 20) | (1 << 16), PDM_CTRL);
 }
 
 // Enables the pdm to clock data
 void AmlPdmDevice::PdmInEnable() {
   // Start pdm_dclk
   audio_mmio_.SetBits32(1 << 31, EE_AUDIO_CLK_PDMIN_CTRL0);
-  pdm_mmio_.SetBits32((1 << 31) | (1 << 16), PDM_CTRL);
+  pdm_mmio_.SetBits32((1 << 31) | (static_cast<uint32_t>(mute_mask_) << 20) | (1 << 16), PDM_CTRL);
 }
 
 // Takes channels out of reset and enables them.

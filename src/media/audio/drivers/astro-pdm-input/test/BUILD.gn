@@ -1,0 +1,48 @@
+# Copyright 2020 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/fuchsia/rules.gni")
+import("//build/test.gni")
+import("//build/unification/images/migrated_manifest.gni")
+
+test("astro-audio-in-test") {
+  # Dependent manifests unfortunately cannot be marked as `testonly`.
+  # Remove when converting this file to proper GN build idioms.
+  testonly = false
+  configs += [ "//build/unification/config:zircon-migrated" ]
+  output_name = "astro-audio-in-test"
+  sources = [
+    "../audio-stream-in.cc",
+    "test.cc",
+  ]
+  deps = [
+    "//sdk/banjo/ddk.protocol.composite",
+    "//sdk/banjo/ddk.protocol.gpio:ddk.protocol.gpio_mock",
+    "//sdk/banjo/ddk.protocol.i2c",
+    "//sdk/fidl/fuchsia.hardware.audio:fuchsia.hardware.audio_llcpp",
+    "//src/devices/bus/lib/device-protocol-pdev",
+    "//src/devices/i2c/lib/device-protocol-i2c-channel",
+    "//src/devices/i2c/testing/mock-i2c",
+    "//src/devices/lib/amlogic",
+    "//src/devices/lib/mmio",
+    "//src/devices/testing/fake_ddk",
+    "//src/devices/testing/mock-mmio-reg",
+    "//src/lib/ddk",
+    "//src/lib/ddktl",
+    "//src/media/audio/lib/simple-audio-stream",
+    "//zircon/public/lib/fbl",
+    "//zircon/public/lib/fzl",
+    "//zircon/public/lib/mock-function",
+    "//zircon/public/lib/sync",
+    "//zircon/public/lib/zircon-internal",
+    "//zircon/public/lib/zx",
+    "//zircon/public/lib/zxtest",
+    "//zircon/system/ulib/audio-driver-proto",
+    "//zircon/system/ulib/audio-proto-utils",
+  ]
+}
+
+migrated_manifest("astro-audio-in-test-manifest") {
+  deps = [ ":astro-audio-in-test" ]
+}

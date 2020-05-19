@@ -53,7 +53,7 @@ class AmlPdmDevice {
   */
   void Sync();
 
-  zx_status_t SetRate(uint32_t frames_per_second);
+  void SetMute(uint8_t mute_mask);
 
   /*
       shuts down toddr, stops writing data to ring buffer
@@ -62,11 +62,12 @@ class AmlPdmDevice {
 
   uint32_t fifo_depth() const { return fifo_depth_; }
 
-  void ConfigPdmIn(uint8_t mask);
+  virtual void ConfigPdmIn(uint8_t mask);  // virtual for unit testing.
 
- private:
-  friend class std::default_delete<AmlPdmDevice>;
+  void ConfigFilters(uint32_t frames_per_second);
 
+ protected:
+  // Protected for unit test.
   AmlPdmDevice(ddk::MmioBuffer pdm_mmio, ddk::MmioBuffer audio_mmio, ee_audio_mclk_src_t clk_src,
                uint32_t sysclk_div, uint32_t dclk_div, aml_toddr_t toddr, uint32_t fifo_depth,
                AmlVersion version)
@@ -80,9 +81,11 @@ class AmlPdmDevice {
         audio_mmio_(std::move(audio_mmio)),
         version_(version) {}
 
-  ~AmlPdmDevice() = default;
+  // Protected for unit test.
+  virtual ~AmlPdmDevice() = default;
 
-  void ConfigFilters(uint32_t frames_per_second);
+ private:
+  friend class std::default_delete<AmlPdmDevice>;
 
   /* Get the register block offset for our ddr block */
   static zx_off_t GetToddrBase(aml_toddr_t ch) {
@@ -118,6 +121,7 @@ class AmlPdmDevice {
   const ddk::MmioBuffer pdm_mmio_;
   const ddk::MmioBuffer audio_mmio_;
   const AmlVersion version_;
+  uint8_t mute_mask_ = 0;
 };
 
 #endif  // SRC_DEVICES_LIB_AMLOGIC_INCLUDE_SOC_AML_COMMON_AML_PDM_AUDIO_H_
