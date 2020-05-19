@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <fuchsia/boot/llcpp/fidl.h>
 #include <fuchsia/device/llcpp/fidl.h>
+#include <fuchsia/fshost/llcpp/fidl.h>
 #include <fuchsia/hardware/block/llcpp/fidl.h>
 #include <fuchsia/hardware/block/partition/llcpp/fidl.h>
 #include <fuchsia/hardware/skipblock/llcpp/fidl.h>
@@ -20,6 +21,7 @@
 #include <lib/fdio/unsafe.h>
 #include <lib/fdio/watcher.h>
 #include <libgen.h>
+#include <zircon/errors.h>
 #include <zircon/status.h>
 
 #include <array>
@@ -56,6 +58,39 @@ namespace skipblock = ::llcpp::fuchsia::hardware::skipblock;
 constexpr size_t kKibibyte = 1024;
 constexpr size_t kMebibyte = kKibibyte * 1024;
 constexpr size_t kGibibyte = kMebibyte * 1024;
+
+class BlockWatcherPauser {
+ public:
+  BlockWatcherPauser(zx::channel chan) : watcher_(llcpp::fuchsia::fshost::BlockWatcher::SyncClient(std::move(chan))) {
+    auto result = watcher_.Pause();
+    ERROR("Status = %d", result.status());
+    ZX_ASSERT(result.status() == ZX_OK);
+    ZX_ASSERT(result->status == ZX_OK);
+  }
+
+  static std::unique_ptr<BlockWatcherPauser> Create() {
+    zx::channel local, remote;
+    auto status = zx::channel::create(0, &local, &remote);
+    if (status != ZX_OK) {
+      return nullptr;
+    }
+
+    status = fdio_service_connect("/svc/fuchsia.fshost.BlockWatcher", remote.release());
+    if (status != ZX_OK) {
+      return nullptr;
+    }
+    return std::make_unique<BlockWatcherPauser>(std::move(local));
+  }
+
+  ~BlockWatcherPauser() {
+    auto result = watcher_.Resume();
+    ZX_ASSERT(result.status() == ZX_OK);
+    ZX_ASSERT(result->status == ZX_OK);
+  }
+
+ private:
+  llcpp::fuchsia::fshost::BlockWatcher::SyncClient watcher_;
+};
 
 bool FilterByType(const gpt_partition_t& part, const uint8_t type[GPT_GUID_LEN]) {
   return memcmp(part.type, type, GPT_GUID_LEN) == 0;
@@ -625,6 +660,11 @@ zx_status_t GptDevicePartitioner::InitializeProvidedGptDevice(
 zx_status_t GptDevicePartitioner::InitializeGpt(fbl::unique_fd devfs_root,
                                                 std::optional<fbl::unique_fd> block_device,
                                                 std::unique_ptr<GptDevicePartitioner>* gpt_out) {
+  auto pauser = BlockWatcherPauser::Create();
+  if (pauser == nullptr) {
+    ERROR("Failed to connect to block watcher\n");
+    return ZX_ERR_UNAVAILABLE;
+  }
   if (block_device) {
     return InitializeProvidedGptDevice(std::move(devfs_root), *std::move(block_device), gpt_out);
   }

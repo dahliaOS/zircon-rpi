@@ -193,6 +193,7 @@ static constexpr const char* deprecated_services[] = {
 
 // List of services which are re-routed to the fshost service provider handle.
 static constexpr const char* fshost_services[] = {
+    fuchsia_fshost_BlockWatcher_Name,
     fuchsia_fshost_Filesystems_Name,
     fuchsia_fshost_Registry_Name,
     nullptr,
