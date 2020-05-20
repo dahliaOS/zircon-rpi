@@ -36,6 +36,13 @@ protocol BlockWatcher {
     /// Pause() call has had a corresponding Resume().
     /// Returns ZX_ERR_BAD_STATE if the watcher isn't paused.
     Resume() -> (zx.status status);
+
+    /// Lock. This pretends that the watcher is doing work, for testing
+    /// pause/resume's behaviour.
+    Lock() -> (zx.status status);
+
+    /// Unlock.
+    Unlock() -> (zx.status status);
 };
 
 /// Manages fshost lifecycle

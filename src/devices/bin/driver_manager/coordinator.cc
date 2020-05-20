@@ -1000,7 +1000,7 @@ static zx_status_t dh_bind_driver(const fbl::RefPtr<Device>& dev, const char* li
   status = dh_send_bind_driver(
       dev.get(), libname, std::move(vmo), [dev](zx_status_t status, zx::channel test_output) {
         if (status != ZX_OK) {
-          LOGF(ERROR, "Failed to bind driver '%s': %s", dev->name().data(),
+          LOGF(ERROR, "dh_bind_driver: Failed to bind driver for '%s': %s", dev->name().data(),
                zx_status_get_string(status));
           return;
         }
@@ -1140,6 +1140,7 @@ zx_status_t Coordinator::AttemptBind(const Driver* drv, const fbl::RefPtr<Device
       LOGF(ERROR, "Cannot bind to device '%s', it has no driver_host", dev->name().data());
       return ZX_ERR_BAD_STATE;
     }
+    LOGF(ERROR, "Attempting to bind %s to %s", dev->name().data(), drv->libname.data());
     return dh_bind_driver(dev, drv->libname.c_str());
   }
 
@@ -1148,6 +1149,7 @@ zx_status_t Coordinator::AttemptBind(const Driver* drv, const fbl::RefPtr<Device
     return r;
   }
 
+  LOGF(ERROR, "2 Attempting to bind %s to %s", dev->name().data(), drv->libname.data());
   r = dh_bind_driver(dev->proxy(), drv->libname.c_str());
   // TODO(swetland): arrange to mark us unbound when the proxy (or its driver_host) goes away
   if ((r == ZX_OK) && !(dev->flags & DEV_CTX_MULTI_BIND)) {
@@ -1420,7 +1422,7 @@ void Coordinator::DriverAdded(Driver* drv, const char* version) {
     drivers_.push_back(std::move(drv));
     zx_status_t status = BindDriver(borrow_ref);
     if (status != ZX_OK && status != ZX_ERR_UNAVAILABLE) {
-      LOGF(ERROR, "Failed to bind driver '%s': %s", drv->name.data(), zx_status_get_string(status));
+      LOGF(ERROR, "%s: Failed to bind driver '%s': %s", __FUNCTION__, drv->name.data(), zx_status_get_string(status));
     }
   });
 }
@@ -1499,6 +1501,9 @@ zx_status_t Coordinator::BindDriverToDevice(const fbl::RefPtr<Device>& dev, cons
   if (status == ZX_ERR_NEXT) {
     // Convert ERR_NEXT to avoid confusing the caller
     status = ZX_ERR_INTERNAL;
+  }
+  if (status == ZX_OK) {
+    LOGF(ERROR, "Bound driver '%s' to device '%s'.", drv->name.data(), dev->name().data());
   }
   return status;
 }
@@ -1637,7 +1642,7 @@ void Coordinator::BindSystemDrivers() {
     drivers_.push_back(std::move(drv));
     zx_status_t status = BindDriver(borrow_ref);
     if (status != ZX_OK && status != ZX_ERR_UNAVAILABLE) {
-      LOGF(ERROR, "Failed to bind driver '%s': %s", drv->name.data(), zx_status_get_string(status));
+      LOGF(ERROR, "%s: Failed to bind driver '%s': %s", __FUNCTION__, drv->name.data(), zx_status_get_string(status));
     }
   }
   // Bind remaining fallback drivers.
@@ -1647,7 +1652,7 @@ void Coordinator::BindSystemDrivers() {
     drivers_.push_back(std::move(drv));
     zx_status_t status = BindDriver(borrow_ref);
     if (status != ZX_OK && status != ZX_ERR_UNAVAILABLE) {
-      LOGF(ERROR, "Failed to bind driver '%s': %s", drv->name.data(), zx_status_get_string(status));
+      LOGF(ERROR, "BSD2: Failed to bind driver '%s': %s", drv->name.data(), zx_status_get_string(status));
     }
   }
 }
@@ -1656,7 +1661,7 @@ void Coordinator::BindDrivers() {
   for (Driver& drv : drivers_) {
     zx_status_t status = BindDriver(&drv);
     if (status != ZX_OK && status != ZX_ERR_UNAVAILABLE) {
-      LOGF(ERROR, "Failed to bind driver '%s': %s", drv.name.data(), zx_status_get_string(status));
+      LOGF(ERROR, "%s: Failed to bind driver '%s': %s", __FUNCTION__, drv.name.data(), zx_status_get_string(status));
     }
   }
 }

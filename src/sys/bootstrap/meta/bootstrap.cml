@@ -284,6 +284,10 @@
             from: "#driver_manager",
         },
         {
+            protocol: "/svc/fuchsia.fshost.BlockWatcher", // remove
+            from: "#fshost",
+        },
+        {
             protocol: "/svc/fuchsia.hardware.pty.Device",
             from: "#ptysvc",
         },

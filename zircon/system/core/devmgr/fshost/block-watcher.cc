@@ -74,9 +74,12 @@ zx_status_t BlockDeviceCallback(int dirfd, int event, const char* name, void* co
     return ZX_OK;
   }
 
-  // Lock the block watcher, so any pause operations wait until after we're done.
+  // Lock the block watcher, so that pause_count doesn't change midway through touching
+  // the block device.
+  fprintf(stderr, "%s: watcher pause count has address %p, mutex %p\n", __FUNCTION__, &watcher_pause_count, &watcher_callback_mutex);
   auto lock = std::lock_guard<std::mutex>{GetWatcherLock()};
   if (watcher_pause_count != 0) {
+    fprintf(stderr, "fshost: watcher is paused, not doing anything\n");
     return ZX_OK;
   }
 
@@ -129,8 +132,9 @@ void BlockWatcherServer::Pause(PauseCompleter::Sync completer) {
   auto lock = std::lock_guard<std::mutex>{GetWatcherLock()};
   if (watcher_pause_count == std::numeric_limits<unsigned int>::max()) {
     completer.Reply(ZX_ERR_BAD_STATE);
-    return;
   } else {
+  fprintf(stderr, "%s: watcher pause count has address %p, mutex %p\n", __FUNCTION__, &watcher_pause_count, &watcher_callback_mutex);
+  fprintf(stderr, "fshost: pause: watcher pause count = %d\n", watcher_pause_count + 1);
     watcher_pause_count++;
     completer.Reply(ZX_OK);
   }
@@ -142,8 +146,23 @@ void BlockWatcherServer::Resume(ResumeCompleter::Sync completer) {
     completer.Reply(ZX_ERR_BAD_STATE);
     return;
   } else {
+  fprintf(stderr, "%s: watcher pause count has address %p, mutex %p\n", __FUNCTION__, &watcher_pause_count, &watcher_callback_mutex);
+  fprintf(stderr, "fshost: resume: watcher pause count = %d\n", watcher_pause_count - 1);
     watcher_pause_count--;
     completer.Reply(ZX_OK);
   }
+}
+
+
+#pragma clang diagnostic ignored "-Wthread-safety-analysis"
+void BlockWatcherServer::Lock(LockCompleter::Sync completer) {
+  fprintf(stderr, "ACQUIRING LOCK\n");
+  GetWatcherLock().lock();
+  completer.Reply(ZX_OK);
+}
+void BlockWatcherServer::Unlock(UnlockCompleter::Sync completer) {
+  fprintf(stderr, "RELEASING LOCK\n");
+  GetWatcherLock().unlock();
+  completer.Reply(ZX_OK);
 }
 }  // namespace devmgr

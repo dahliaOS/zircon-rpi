@@ -36,6 +36,8 @@ class BlockWatcherServer final : public llcpp::fuchsia::fshost::BlockWatcher::In
 
   void Pause(PauseCompleter::Sync completer) override;
   void Resume(ResumeCompleter::Sync completer) override;
+  void Lock(LockCompleter::Sync completer) override;
+  void Unlock(UnlockCompleter::Sync completer) override;
 };
 
 // Monitors "/dev/class/block" for new devices indefinitely.

@@ -100,6 +100,7 @@
                 "/svc/fuchsia.device.manager.BindDebugger",
                 "/svc/fuchsia.device.manager.DebugDumper",
                 "/svc/fuchsia.device.NameProvider",
+                "/svc/fuchsia.fshost.BlockWatcher",//remove
                 "/svc/fuchsia.hardware.power.statecontrol.Admin",
                 "/svc/fuchsia.hardware.pty.Device",
                 "/svc/fuchsia.kernel.Counter",

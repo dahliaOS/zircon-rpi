@@ -63,7 +63,7 @@ class BlockWatcherPauser {
  public:
   BlockWatcherPauser(zx::channel chan) : watcher_(llcpp::fuchsia::fshost::BlockWatcher::SyncClient(std::move(chan))) {
     auto result = watcher_.Pause();
-    ERROR("Status = %d", result.status());
+    ERROR("Paused\n");
     ZX_ASSERT(result.status() == ZX_OK);
     ZX_ASSERT(result->status == ZX_OK);
   }
@@ -84,6 +84,7 @@ class BlockWatcherPauser {
 
   ~BlockWatcherPauser() {
     auto result = watcher_.Resume();
+    ERROR("Resumed\n");
     ZX_ASSERT(result.status() == ZX_OK);
     ZX_ASSERT(result->status == ZX_OK);
   }
@@ -91,6 +92,12 @@ class BlockWatcherPauser {
  private:
   llcpp::fuchsia::fshost::BlockWatcher::SyncClient watcher_;
 };
+
+auto RebindGptDriver(zx::unowned_channel chan) {
+  auto pauser = BlockWatcherPauser::Create();
+  ZX_ASSERT_MSG(pauser != nullptr, "Failed to connect to block watcher");
+  return ::llcpp::fuchsia::device::Controller::Call::Rebind(std::move(chan), fidl::StringView("/boot/driver/gpt.so"));
+}
 
 bool FilterByType(const gpt_partition_t& part, const uint8_t type[GPT_GUID_LEN]) {
   return memcmp(part.type, type, GPT_GUID_LEN) == 0;
@@ -614,6 +621,11 @@ bool GptDevicePartitioner::FindGptDevices(const fbl::unique_fd& devfs_root, GptD
 zx_status_t GptDevicePartitioner::InitializeProvidedGptDevice(
     fbl::unique_fd devfs_root, fbl::unique_fd gpt_device,
     std::unique_ptr<GptDevicePartitioner>* gpt_out) {
+  auto pauser = BlockWatcherPauser::Create();
+  if (pauser == nullptr) {
+    ERROR("Failed to pause the block watcher");
+    return ZX_ERR_BAD_STATE;
+  }
   fdio_cpp::UnownedFdioCaller caller(gpt_device.get());
   auto result = block::Block::Call::GetInfo(caller.channel());
   if (!result.ok()) {
@@ -643,8 +655,7 @@ zx_status_t GptDevicePartitioner::InitializeProvidedGptDevice(
       ERROR("Failed to sync empty GPT\n");
       return ZX_ERR_BAD_STATE;
     }
-    auto result = ::llcpp::fuchsia::device::Controller::Call::Rebind(
-        caller.channel(), fidl::StringView("/boot/driver/gpt.so"));
+    auto result = RebindGptDriver(caller.channel());
     if (!result.ok() || result->result.is_err()) {
       ERROR("Failed to re-read GPT: %d\n", result->result.err());
       return ZX_ERR_BAD_STATE;
@@ -660,11 +671,6 @@ zx_status_t GptDevicePartitioner::InitializeProvidedGptDevice(
 zx_status_t GptDevicePartitioner::InitializeGpt(fbl::unique_fd devfs_root,
                                                 std::optional<fbl::unique_fd> block_device,
                                                 std::unique_ptr<GptDevicePartitioner>* gpt_out) {
-  auto pauser = BlockWatcherPauser::Create();
-  if (pauser == nullptr) {
-    ERROR("Failed to connect to block watcher\n");
-    return ZX_ERR_UNAVAILABLE;
-  }
   if (block_device) {
     return InitializeProvidedGptDevice(std::move(devfs_root), *std::move(block_device), gpt_out);
   }
@@ -814,8 +820,7 @@ zx_status_t GptDevicePartitioner::CreateGptPartition(const char* name, const uin
     ERROR("Failed to clear first block of new partition\n");
     return status;
   }
-  auto result = ::llcpp::fuchsia::device::Controller::Call::Rebind(
-      Channel(), fidl::StringView("/boot/driver/gpt.so"));
+  auto result = RebindGptDriver(Channel());
   if (!result.ok()) {
     ERROR("Failed to rebind GPT\n");
     return result.status();
@@ -935,8 +940,7 @@ zx_status_t GptDevicePartitioner::WipePartitions(FilterCallback filter) const {
     gpt_->Sync();
     LOG("Immediate reboot strongly recommended\n");
   }
-  ::llcpp::fuchsia::device::Controller::Call::Rebind(Channel(),
-                                                     fidl::StringView("/boot/driver/gpt.so"));
+  RebindGptDriver(Channel());
   return ZX_OK;
 }
 
@@ -1188,6 +1192,12 @@ zx_status_t CrosDevicePartitioner::Initialize(fbl::unique_fd devfs_root, Arch ar
 
   if (!is_ready_to_pave(gpt, reinterpret_cast<fuchsia_hardware_block_BlockInfo*>(&info),
                         SZ_ZX_PART)) {
+    auto pauser = BlockWatcherPauser::Create();
+    if (pauser == nullptr) {
+      ERROR("Failed to pause the block watcher");
+      return ZX_ERR_BAD_STATE;
+    }
+
     status = config_cros_for_fuchsia(
         gpt, reinterpret_cast<fuchsia_hardware_block_BlockInfo*>(&info), SZ_ZX_PART);
     if (status != ZX_OK) {
@@ -1198,8 +1208,7 @@ zx_status_t CrosDevicePartitioner::Initialize(fbl::unique_fd devfs_root, Arch ar
       ERROR("Failed to sync CrOS for Fuchsia.\n");
       return status;
     }
-    llcpp::fuchsia::device::Controller::Call::Rebind(gpt_partitioner->Channel(),
-                                                     fidl::StringView("/boot/driver/gpt.so"));
+    RebindGptDriver(gpt_partitioner->Channel());
   }
 
   LOG("Successfully initialized CrOS Device Partitioner\n");

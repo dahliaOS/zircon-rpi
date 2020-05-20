@@ -175,6 +175,11 @@
                 "/svc/fuchsia.process.Launcher",
             ],
         },
+        //remove this
+        {
+            protocol: "/svc/fuchsia.fshost.BlockWatcher",
+            as: "/svc_for_sys/fuchsia.fshost.BlockWatcher",
+        },
     ],
     expose: [
         {

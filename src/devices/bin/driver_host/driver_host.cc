@@ -861,6 +861,7 @@ zx_status_t DriverHostContext::DeviceBind(const fbl::RefPtr<zx_device_t>& dev,
   if (status == ZX_OK && response.Unwrap()->result.is_err()) {
     call_status = response.Unwrap()->result.err();
   }
+  LOGD(ERROR, dev, "bind-device %s to %s = status: %s, call_status: %s", dev->name, drv_libname, zx_status_get_string(status), zx_status_get_string(call_status));
   log_rpc_result(dev, "bind-device", status, call_status);
   if (status != ZX_OK) {
     return status;
