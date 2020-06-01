@@ -34,4 +34,8 @@ constexpr Type kInstance;
 // is the earliest possible time sample at entry.
 extern "C" [[noreturn]] void PhysMain(void*, arch::EarlyTicks) PHYS_SINGLETHREAD;
 
+// In ZBI executables, PhysMain is defined to set up the console on stdout and
+// then hand off to ZbiMain.
+[[noreturn]] void ZbiMain(void* zbi, arch::EarlyTicks) PHYS_SINGLETHREAD;
+
 #endif  // ZIRCON_KERNEL_PHYS_MAIN_H_
