@@ -4,7 +4,7 @@
     },
     "sandbox": {
         "dev": [
-            "class/input"
+            "class/input-report"
         ],
         "features": [
             "build-info",
@@ -16,6 +16,7 @@
             "fuchsia.deprecatedtimezone.Timezone",
             "fuchsia.devicesettings.DeviceSettingsManager",
             "fuchsia.hardware.power.statecontrol.Admin",
+            "fuchsia.input.report.InputDevice",
             "fuchsia.logger.LogSink",
             "fuchsia.media.AudioCore",
             "fuchsia.media.UsageReporter",

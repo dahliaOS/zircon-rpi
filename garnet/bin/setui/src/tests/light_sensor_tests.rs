@@ -4,12 +4,15 @@
 
 #[cfg(test)]
 use {
-    crate::display::{light_sensor_testing::*, LIGHT_SENSOR_SERVICE_NAME},
+    crate::display::{light_sensor_testing, LIGHT_SENSOR_SERVICE_NAME},
     crate::registry::device_storage::testing::*,
     crate::switchboard::base::SettingType,
     crate::EnvironmentBuilder,
     anyhow::format_err,
     fidl::endpoints::ServerEnd,
+    fidl_fuchsia_input_report::{
+        DeviceDescriptor, InputDeviceRequest, SensorDescriptor, SensorInputDescriptor,
+    },
     fidl_fuchsia_settings::*,
     fuchsia_async as fasync, fuchsia_zircon as zx,
     futures::future::BoxFuture,
@@ -29,7 +32,7 @@ async fn test_light_sensor() {
         }
 
         let stream_result =
-            ServerEnd::<fidl_fuchsia_hardware_input::DeviceMarker>::new(channel).into_stream();
+            ServerEnd::<fidl_fuchsia_input_report::InputDeviceMarker>::new(channel).into_stream();
 
         if stream_result.is_err() {
             return Box::pin(async { Err(format_err!("could not connect to service")) });
@@ -37,16 +40,31 @@ async fn test_light_sensor() {
 
         let mut stream = stream_result.unwrap();
 
-        let data = get_mock_sensor_response();
+        let (sensor_axes, data_fn) = light_sensor_testing::get_mock_sensor_response();
         fasync::spawn(async move {
             while let Some(request) = stream.try_next().await.unwrap() {
-                if let fidl_fuchsia_hardware_input::DeviceRequest::GetReport {
-                    type_: _,
-                    id: _,
-                    responder,
-                } = request
-                {
-                    responder.send(0, &data).unwrap();
+                match request {
+                    InputDeviceRequest::GetReports { responder } => {
+                        let data = data_fn();
+                        responder.send(&mut data.into_iter()).unwrap();
+                    }
+                    InputDeviceRequest::GetDescriptor { responder } => {
+                        responder
+                            .send(DeviceDescriptor {
+                                device_info: None,
+                                mouse: None,
+                                sensor: Some(SensorDescriptor {
+                                    input: Some(SensorInputDescriptor {
+                                        values: Some(sensor_axes.clone()),
+                                    }),
+                                }),
+                                touch: None,
+                                keyboard: None,
+                                consumer_control: None,
+                            })
+                            .unwrap();
+                    }
+                    _ => {}
                 }
             }
         });
@@ -68,13 +86,14 @@ async fn test_light_sensor() {
         .expect("watch completed")
         .expect("watch successful");
 
-    assert_eq!(data.illuminance_lux, Some(TEST_LUX_VAL.into()));
+    // TODO check i64 -> f32?
+    assert_eq!(data.illuminance_lux, Some(light_sensor_testing::TEST_LUX_VAL as f32));
     assert_eq!(
         data.color,
         Some(fidl_fuchsia_ui_types::ColorRgb {
-            red: TEST_RED_VAL.into(),
-            green: TEST_GREEN_VAL.into(),
-            blue: TEST_BLUE_VAL.into(),
+            red: light_sensor_testing::TEST_RED_VAL as f32,
+            green: light_sensor_testing::TEST_GREEN_VAL as f32,
+            blue: light_sensor_testing::TEST_BLUE_VAL as f32,
         })
     );
 }

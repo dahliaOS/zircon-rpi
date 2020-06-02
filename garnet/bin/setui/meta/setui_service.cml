@@ -11,6 +11,7 @@
                 "/svc/fuchsia.deprecatedtimezone.Timezone",
                 "/svc/fuchsia.devicesettings.DeviceSettingsManager",
                 "/svc/fuchsia.hardware.power.statecontrol.Admin",
+                "/svc/fuchsia.input.report.InputDevice",
                 "/svc/fuchsia.logger.LogSink",
                 "/svc/fuchsia.media.audio.VolumeControl",
                 "/svc/fuchsia.media.AudioCore",
@@ -27,7 +28,7 @@
             from: "realm",
         },
         {
-            directory: "/dev/class/input",
+            directory: "/dev/class/input-report",
             from: "realm",
             rights: [ "r*" ],
         },

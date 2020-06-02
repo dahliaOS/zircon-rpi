@@ -1,14 +1,14 @@
 // Copyright 2019 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-use crate::display::light_sensor::{open_sensor, read_sensor};
+use crate::display::light_sensor::{open_sensor, read_sensor, Sensor};
 use crate::registry::base::State;
 use crate::registry::setting_handler::{controller, ClientProxy, ControllerError};
 use crate::switchboard::base::{
     ControllerStateResult, LightData, SettingRequest, SettingResponse, SettingResponseResult,
 };
 use async_trait::async_trait;
-use fidl_fuchsia_hardware_input::{DeviceMarker as SensorMarker, DeviceProxy as SensorProxy};
+use fidl_fuchsia_input_report::InputDeviceMarker;
 use fuchsia_async::{self as fasync, DurationExt};
 use fuchsia_zircon::Duration;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
@@ -22,7 +22,7 @@ const SCAN_DURATION_MS: i64 = 1000;
 
 pub struct LightSensorController {
     client: ClientProxy,
-    proxy: SensorProxy,
+    sensor: Sensor,
     current_value: Arc<Mutex<LightData>>,
     notifier_abort: Option<AbortHandle>,
 }
@@ -31,29 +31,32 @@ pub struct LightSensorController {
 impl controller::Create for LightSensorController {
     async fn create(client: ClientProxy) -> Result<Self, ControllerError> {
         let service_context = client.get_service_context().await;
-        let mut sensor_proxy_result = service_context
+        let sensor_proxy_result = service_context
             .lock()
             .await
-            .connect_named::<SensorMarker>(LIGHT_SENSOR_SERVICE_NAME)
+            .connect_named::<InputDeviceMarker>(LIGHT_SENSOR_SERVICE_NAME)
             .await;
 
-        if sensor_proxy_result.is_err() {
-            sensor_proxy_result = open_sensor().await;
-        }
-
-        if let Ok(proxy) = sensor_proxy_result {
-            let current_data = Arc::new(Mutex::new(get_sensor_data(&proxy).await));
-            Ok(Self {
-                client: client,
-                proxy: proxy,
-                current_value: current_data,
-                notifier_abort: None,
-            })
+        let sensor = if let Ok(proxy) = sensor_proxy_result {
+            let sensor_axes = proxy
+                .get_descriptor()
+                .await
+                .expect("Should have descriptor")
+                .sensor
+                .expect("Should have sensor")
+                .input
+                .expect("Should have input")
+                .values
+                .expect("Should have values");
+            Sensor::new(proxy, sensor_axes)
         } else {
-            Err(ControllerError::InitFailure {
-                description: "Could not connect to proxy".to_string(),
-            })
-        }
+            open_sensor().await.map_err(|_| ControllerError::InitFailure {
+                description: "Could not connect to proxy".to_owned(),
+            })?
+        };
+
+        let current_data = Arc::new(Mutex::new(get_sensor_data(&sensor).await));
+        Ok(Self { client, sensor, current_value: current_data, notifier_abort: None })
     }
 }
 
@@ -73,7 +76,7 @@ impl controller::Handle for LightSensorController {
         match state {
             State::Listen => {
                 let change_receiver =
-                    start_light_sensor_scanner(self.proxy.clone(), SCAN_DURATION_MS);
+                    start_light_sensor_scanner(self.sensor.clone(), SCAN_DURATION_MS);
                 self.notifier_abort = Some(
                     notify_on_change(
                         change_receiver,
@@ -147,7 +150,7 @@ async fn notify_on_change(
 /// Will not send any initial value if nothing changes.
 /// This terminates when the receiver closes without panicking.
 fn start_light_sensor_scanner(
-    sensor: SensorProxy,
+    sensor: Sensor,
     scan_duration_ms: i64,
 ) -> UnboundedReceiver<LightData> {
     let (sender, receiver) = unbounded::<LightData>();
@@ -169,20 +172,22 @@ fn start_light_sensor_scanner(
     receiver
 }
 
-async fn get_sensor_data(sensor: &SensorProxy) -> LightData {
+async fn get_sensor_data(sensor: &Sensor) -> LightData {
     let sensor_data = read_sensor(&sensor).await.expect("Could not read from the sensor");
-    let lux: f32 = sensor_data.illuminance.into();
-    let red: f32 = sensor_data.red.into();
-    let green: f32 = sensor_data.green.into();
-    let blue: f32 = sensor_data.blue.into();
+    // TODO add validation that range values are valid for f32
+    let lux: f32 = sensor_data.illuminance as f32;
+    let red: f32 = sensor_data.red as f32;
+    let green: f32 = sensor_data.green as f32;
+    let blue: f32 = sensor_data.blue as f32;
     LightData { illuminance: lux, color: fidl_fuchsia_ui_types::ColorRgb { red, green, blue } }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::display::light_sensor::testing;
     use crate::switchboard::base::SettingType;
-    use fidl_fuchsia_hardware_input::DeviceRequest as SensorRequest;
+    use fidl_fuchsia_input_report::{InputDeviceRequest, InputReport};
     use futures::channel::mpsc::UnboundedSender;
 
     use fuchsia_async as fasync;
@@ -208,24 +213,53 @@ mod tests {
         }
     }
 
+    struct DataProducer<F> where F: Fn() -> Vec<InputReport> {
+        producer: F,
+        turn_on: bool,
+    }
+
+    impl<F> DataProducer<F> where F: Fn() -> Vec<InputReport> {
+        fn new(producer: F) -> Self {
+            Self {
+                producer,
+                turn_on: false,
+            }
+        }
+
+        fn trigger(&mut self) {
+            self.turn_on = true;
+        }
+
+        fn produce(&self) -> Vec<InputReport> {
+            let mut data = (self.producer)();
+            if self.turn_on {
+                // Set illuminance value on second data report to 32
+                data[0].sensor.as_mut().unwrap().values.as_mut().unwrap()[1] = 32;
+            }
+
+            data
+        }
+    }
+
     #[fuchsia_async::run_singlethreaded(test)]
     async fn test_start_auto_brightness_task() {
         let (proxy, mut stream) =
-            fidl::endpoints::create_proxy_and_stream::<SensorMarker>().unwrap();
+            fidl::endpoints::create_proxy_and_stream::<InputDeviceMarker>().unwrap();
 
-        let data: Arc<RwLock<[u8; 11]>> =
-            Arc::new(RwLock::new([1, 1, 0, 25, 0, 10, 0, 9, 0, 6, 0]));
+        let (sensor_axes, data_fn) = testing::get_mock_sensor_response();
+        let sensor = Sensor::new(proxy, sensor_axes);
+        let data_producer = Arc::new(RwLock::new(DataProducer::new(data_fn)));
+        let data_producer_clone = Arc::clone(&data_producer);
 
-        let data_clone = data.clone();
         fasync::spawn(async move {
             while let Some(request) = stream.try_next().await.unwrap() {
-                if let SensorRequest::GetReport { type_: _, id: _, responder } = request {
-                    // Taken from actual sensor report
-                    responder.send(0, &*data_clone.read()).unwrap();
+                if let InputDeviceRequest::GetReports { responder } = request {
+                    let data = data_producer_clone.read().produce();
+                    responder.send(&mut data.into_iter()).unwrap();
                 }
             }
         });
-        let mut receiver = start_light_sensor_scanner(proxy, 1);
+        let mut receiver = start_light_sensor_scanner(sensor, 1);
 
         let sleep_duration = zx::Duration::from_millis(5);
         fasync::Timer::new(sleep_duration.after_now()).await;
@@ -235,7 +269,7 @@ mod tests {
             panic!("No notifications should happen before value changes")
         };
 
-        (*data.write())[3] = 32;
+        data_producer.write().trigger();
 
         let data = receiver.next().await;
         assert_eq!(data.unwrap().illuminance, 32.0);

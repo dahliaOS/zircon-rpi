@@ -9,130 +9,219 @@ use std::path::Path;
 use std::{fs, io};
 
 use anyhow::{format_err, Context as _, Error};
-use byteorder::{ByteOrder, LittleEndian};
-use fidl_fuchsia_hardware_input::{
-    DeviceMarker as SensorMarker, DeviceProxy as SensorProxy, ReportType,
+use fidl_fuchsia_input_report::{
+    InputDeviceMarker, InputDeviceProxy, InputReport, SensorAxis, SensorDescriptor,
+    SensorInputDescriptor, SensorType,
 };
-use fuchsia_syslog::fx_log_info;
-
-/// Unique signature for the light sensor
-const HID_SENSOR_DESCRIPTOR: [u8; 4] = [5, 32, 9, 65];
+use fuchsia_async as fasync;
+use fuchsia_syslog::{fx_log_err, fx_log_info};
+use fuchsia_zircon as zx;
 
 #[derive(Debug)]
 pub struct AmbientLightInputRpt {
-    pub rpt_id: u8,
-    pub state: u8,
-    pub event: u8,
-    pub illuminance: u16,
-    pub red: u16,
-    pub green: u16,
-    pub blue: u16,
+    pub rpt_id: u64,
+    pub illuminance: i64,
+    pub red: i64,
+    pub green: i64,
+    pub blue: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Sensor {
+    proxy: InputDeviceProxy,
+    sensor_axes: Vec<SensorAxis>,
+}
+
+impl Sensor {
+    pub fn new(proxy: InputDeviceProxy, sensor_axes: Vec<SensorAxis>) -> Self {
+        Self { proxy, sensor_axes }
+    }
 }
 
 /// Opens the sensor's device file.
 /// Tries all the input devices until the one with the correct signature is found.
-pub async fn open_sensor() -> Result<SensorProxy, Error> {
-    let input_devices_directory = "/dev/class/input";
-    let path = Path::new(input_devices_directory);
+pub async fn open_sensor() -> Result<Sensor, Error> {
+    const INPUT_DEVICES_DIRECTORY: &str = "/dev/class/input-report";
+    let path = Path::new(INPUT_DEVICES_DIRECTORY);
     let entries = fs::read_dir(path)?;
     for entry in entries {
         let entry = entry?;
         let device = open_input_device(entry.path().to_str().expect("Bad path"))?;
-        if let Ok(device_descriptor) = device.get_report_desc().await {
-            if device_descriptor.len() < 4 {
-                return Err(format_err!("Short HID header"));
-            }
-            let device_header = &device_descriptor[0..4];
-            if device_header == HID_SENSOR_DESCRIPTOR {
-                return Ok(device);
+        let res = device.get_descriptor().await;
+        if let Ok(device_descriptor) = res {
+            if let Some(SensorDescriptor {
+                input: Some(SensorInputDescriptor { values: Some(values) }),
+            }) = device_descriptor.sensor
+            {
+                let mut illuminance = false;
+                let mut red = false;
+                let mut green = false;
+                let mut blue = false;
+                for sensor_axis in &values {
+                    match sensor_axis.type_ {
+                        SensorType::LightIlluminance => illuminance = true,
+                        SensorType::LightRed => red = true,
+                        SensorType::LightGreen => green = true,
+                        SensorType::LightBlue => blue = true,
+                        _ => (),
+                    }
+                }
+
+                if illuminance && red && green && blue {
+                    return Ok(Sensor::new(device, values));
+                }
             }
         }
     }
+
     Err(io::Error::new(io::ErrorKind::NotFound, "no sensor found").into())
 }
 
-fn open_input_device(path: &str) -> Result<SensorProxy, Error> {
+fn open_input_device(path: &str) -> Result<InputDeviceProxy, Error> {
     fx_log_info!("Opening sensor at {:?}", path);
-    let (proxy, server) =
-        fidl::endpoints::create_proxy::<SensorMarker>().context("Failed to create sensor proxy")?;
+    let (proxy, server) = fidl::endpoints::create_proxy::<InputDeviceMarker>()
+        .context("Failed to create sensor proxy")?;
     fdio::service_connect(path, server.into_channel())
         .context("Failed to connect built-in service")?;
     Ok(proxy)
 }
 
+pub async fn get_reports(sensor: &Sensor) -> Result<Option<InputReport>, Error> {
+    let reports = sensor.proxy.get_reports().await?;
+    fx_log_info!("Got reports: {:?}", reports);
+    Ok(reports.into_iter().max_by_key(|r| r.event_time.unwrap_or(0)))
+}
+
 /// Reads the sensor's HID record and decodes it.
-pub async fn read_sensor(sensor: &SensorProxy) -> Result<AmbientLightInputRpt, Error> {
-    const LIGHT_SENSOR_HID_ID: u8 = 1;
-    let report = sensor.get_report(ReportType::Input, LIGHT_SENSOR_HID_ID).await?;
-    let report = report.1;
-    if report.len() < 11 {
-        return Err(format_err!("Sensor HID report too short"));
+pub async fn read_sensor(sensor: &Sensor) -> Result<AmbientLightInputRpt, Error> {
+    let report = match get_reports(sensor).await? {
+        Some(report) => report,
+        None => {
+            let (status, event) = sensor
+                .proxy
+                .get_reports_event()
+                .await
+                .map(|(status, event)| (fuchsia_zircon::Status::from_raw(status), event))?;
+            if status != fuchsia_zircon::Status::OK {
+                fx_log_err!("Failed to get reports event");
+                return Err(format_err!("Failed to wait on reports event {:?}", status));
+            }
+
+            fx_log_info!("Waiting on readable event...");
+            fasync::OnSignals::new(&event, zx::Signals::USER_0).await?;
+            fx_log_info!("Got event! Getting reports...");
+            get_reports(sensor)
+                .await?
+                .ok_or_else(|| format_err!("Failed to get a device report"))?
+        }
+    };
+    fx_log_info!("Got report {:?}", report);
+
+    let rpt_id = report.trace_id.unwrap();
+    let report = report.sensor.unwrap();
+    let values = report.values.unwrap();
+    let mut illuminance = None;
+    let mut red = None;
+    let mut green = None;
+    let mut blue = None;
+    fx_log_info!("PAUL values: {:?}", values);
+    for (sensor_axis, value) in sensor.sensor_axes.iter().zip(values.into_iter()) {
+        match sensor_axis.type_ {
+            SensorType::LightIlluminance => {
+                illuminance = Some(value);
+            }
+            SensorType::LightRed => {
+                red = Some(value);
+            }
+            SensorType::LightGreen => {
+                green = Some(value);
+            }
+            SensorType::LightBlue => blue = Some(value),
+            _ => {}
+        }
     }
 
-    // This follows the layout defined by //zircon/system/ulib/hid/include/hid/ambient-light.h
-    Ok(AmbientLightInputRpt {
-        rpt_id: report[0],
-        state: report[1],
-        event: report[2],
-        illuminance: LittleEndian::read_u16(&report[3..5]),
-        red: LittleEndian::read_u16(&report[5..7]),
-        blue: LittleEndian::read_u16(&report[7..9]),
-        green: LittleEndian::read_u16(&report[9..11]),
-    })
+    if let (Some(illuminance), Some(red), Some(green), Some(blue)) = (illuminance, red, green, blue)
+    {
+        return Ok(AmbientLightInputRpt { rpt_id, illuminance, red, green, blue });
+    } else {
+        Err(format_err!("Missing light data from sensor report"))
+    }
 }
 
 #[cfg(test)]
 pub mod testing {
-    use byteorder::{ByteOrder, LittleEndian};
+    use fidl_fuchsia_input_report::{
+        Axis, InputReport, Range, SensorAxis, SensorInputReport, SensorType, Unit,
+    };
 
-    pub const TEST_LUX_VAL: u16 = 605;
-    pub const TEST_RED_VAL: u16 = 345;
-    pub const TEST_BLUE_VAL: u16 = 133;
-    pub const TEST_GREEN_VAL: u16 = 164;
+    pub const TEST_LUX_VAL: i64 = 605;
+    pub const TEST_RED_VAL: i64 = 345;
+    pub const TEST_BLUE_VAL: i64 = 133;
+    pub const TEST_GREEN_VAL: i64 = 164;
 
-    pub fn get_mock_sensor_response() -> [u8; 11] {
-        // Taken from actual sensor report
-        // [1, 1, 0, 93, 2, 89, 1, 133, 0, 164, 0]
-        let mut data: [u8; 11] = [0; 11];
-        data[0] = 1;
-        data[1] = 1;
-        LittleEndian::write_u16(&mut data[3..5], TEST_LUX_VAL);
-        LittleEndian::write_u16(&mut data[5..7], TEST_RED_VAL);
-        LittleEndian::write_u16(&mut data[7..9], TEST_BLUE_VAL);
-        LittleEndian::write_u16(&mut data[9..11], TEST_GREEN_VAL);
-        assert_eq!(data, [1, 1, 0, 93, 2, 89, 1, 133, 0, 164, 0]);
-        data
+    pub fn get_mock_sensor_response() -> (Vec<SensorAxis>, impl Fn() -> Vec<InputReport>) {
+        let axis = Axis { range: Range { min: 0, max: 1000 }, unit: Unit::Lux };
+        (
+            vec![
+                SensorAxis { axis: axis.clone(), type_: SensorType::LightRed },
+                SensorAxis { axis: axis.clone(), type_: SensorType::LightIlluminance },
+                SensorAxis { axis: axis.clone(), type_: SensorType::LightBlue },
+                SensorAxis { axis: axis.clone(), type_: SensorType::LightGreen },
+            ],
+            || {
+                vec![InputReport {
+                    event_time: Some(65),
+                    mouse: None,
+                    trace_id: Some(45),
+                    sensor: Some(SensorInputReport {
+                        values: Some(vec![
+                            TEST_RED_VAL,
+                            TEST_LUX_VAL,
+                            TEST_BLUE_VAL,
+                            TEST_GREEN_VAL,
+                        ]),
+                    }),
+                    touch: None,
+                    keyboard: None,
+                    consumer_control: None,
+                }]
+            },
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fidl_fuchsia_hardware_input::DeviceRequest as SensorRequest;
+    use fidl_fuchsia_input_report::InputDeviceRequest;
     use fuchsia_async as fasync;
     use futures::prelude::*;
-    use testing::*;
+    use testing;
 
     #[fuchsia_async::run_singlethreaded(test)]
     async fn test_read_sensor() {
         let (proxy, mut stream) =
-            fidl::endpoints::create_proxy_and_stream::<SensorMarker>().unwrap();
+            fidl::endpoints::create_proxy_and_stream::<InputDeviceMarker>().unwrap();
+        let (axes, data_fn) = testing::get_mock_sensor_response();
         fasync::spawn(async move {
             while let Some(request) = stream.try_next().await.unwrap() {
-                if let SensorRequest::GetReport { type_: _, id: _, responder } = request {
-                    let data = get_mock_sensor_response();
-                    responder.send(0, &data).unwrap();
+                if let InputDeviceRequest::GetReports { responder } = request {
+                    let data = data_fn();
+                    responder.send(&mut data.into_iter()).unwrap();
                 }
             }
         });
 
-        let result = read_sensor(&proxy).await;
+        let sensor = Sensor::new(proxy, axes);
+
+        let result = read_sensor(&sensor).await;
         match result {
             Ok(input_rpt) => {
-                assert_eq!(input_rpt.illuminance, TEST_LUX_VAL);
-                assert_eq!(input_rpt.red, TEST_RED_VAL);
-                assert_eq!(input_rpt.green, TEST_GREEN_VAL);
-                assert_eq!(input_rpt.blue, TEST_BLUE_VAL);
+                assert_eq!(input_rpt.illuminance, testing::TEST_LUX_VAL);
+                assert_eq!(input_rpt.red, testing::TEST_RED_VAL);
+                assert_eq!(input_rpt.green, testing::TEST_GREEN_VAL);
+                assert_eq!(input_rpt.blue, testing::TEST_BLUE_VAL);
             }
             Err(e) => {
                 panic!("Sensor read failed: {:?}", e);
